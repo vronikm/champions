@@ -15,7 +15,7 @@
 // desarrollo (http://localhost/champions_cf_new/).
 //
 // Produccion:
-define('DS_HUB_URL', 'https://champions.digitech.com.ec/');
+define('DS_HUB_URL', 'https://championscf.digitech.com.ec/');
 
 /*----------  Base de datos  ----------*/
 // En produccion, un usuario propio con permisos SOLO sobre esta base.

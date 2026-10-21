@@ -31,7 +31,7 @@ analítica. Construido sobre el ecosistema **DigiSports** (PHP + MySQL, MVC prop
 git clone https://github.com/vronikm/champions.git
 ```
 
-Se instala en la raíz del dominio (`https://champions.digitech.com.ec/`) o en una
+Se instala en la raíz del dominio (`https://championscf.digitech.com.ec/`) o en una
 subcarpeta; la ruta sale de `DS_HUB_URL`.
 
 ### 2. Secretos del entorno

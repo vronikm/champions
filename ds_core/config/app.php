@@ -32,7 +32,7 @@ require_once __DIR__ . "/server.php";
 
 /*----------  Raiz del ecosistema  ----------*/
 /* La URL depende del servidor, no del codigo: en produccion es
-   https://champions.digitech.com.ec/ y en desarrollo la de WAMP. Escrita
+   https://championscf.digitech.com.ec/ y en desarrollo la de WAMP. Escrita
    aqui, cada despliegue obligaba a editar un archivo versionado —y bastaba
    un pull para devolver produccion a localhost—. Se declara en secrets.php
    (DS_HUB_URL); si no esta, se asume el entorno de desarrollo. */

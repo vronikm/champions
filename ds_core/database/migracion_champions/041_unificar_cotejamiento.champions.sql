@@ -51,8 +51,12 @@ SET NAMES utf8mb4;
 -- ---------------------------------------------------------------------
 -- El valor por omisión de la base, para que lo que se cree de aquí en
 -- adelante nazca ya alineado y no haya que acordarse de ponerlo.
+--
+-- Sin nombre: se aplica a la base sobre la que se ejecuta. Antes decía
+-- «digitech_champions_cf», y aplicada a otra base (la de producción, una
+-- copia de ensayo) convertía la de pruebas y dejaba la suya sin tocar.
 -- ---------------------------------------------------------------------
-ALTER DATABASE digitech_champions_cf
+ALTER DATABASE
     CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
 

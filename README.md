@@ -60,6 +60,22 @@ Restaurar el volcado de la base (no está en el repositorio: contiene datos
 personales), con `SET default_storage_engine=InnoDB; SET FOREIGN_KEY_CHECKS=0;`
 al principio y `SET FOREIGN_KEY_CHECKS=1;` al final.
 
+**En un hosting compartido, el volcado no puede llevar `DEFINER`.** Las vistas
+salen exportadas como `DEFINER=root@localhost`, y crear un objeto a nombre de
+otro usuario exige el privilegio `SUPER`, que el hosting no da: la importación se
+corta con `#1227 - Acceso negado`. Con phpMyAdmin el corte es peor de lo que
+parece, porque deja las claves primarias, los `AUTO_INCREMENT` y las claves ajenas
+para el final del archivo: la base queda a medias y hay que vaciarla y volver a
+importar. Generar el volcado así:
+
+```bash
+mysqldump -u root --default-character-set=utf8mb4 --single-transaction \
+  --set-gtid-purged=OFF --no-tablespaces --skip-add-locks digitech_champions_cf \
+  | sed -E 's/DEFINER=`[^`]+`@`[^`]+`//g' > champions_produccion.sql
+```
+
+Sin `DEFINER`, las vistas quedan a nombre del usuario que importa.
+
 Aplicar las migraciones que falten, siempre con el juego de caracteres explícito:
 
 ```bash

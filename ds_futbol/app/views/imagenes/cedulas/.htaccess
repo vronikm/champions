@@ -1,0 +1,8 @@
+# Cedulas escaneadas de alumnos y representantes.
+# Datos personales: no pueden servirse por HTTP directo.
+# El unico camino de lectura es app/media.php, que exige sesion activa.
+Options -Indexes
+Require all denied
+<IfModule mod_access_compat.c>
+    Deny from all
+</IfModule>

@@ -1,0 +1,544 @@
+/* ==========================================================================
+   DigiSports · Pantalla de acceso
+   --------------------------------------------------------------------------
+   Se apoya en los tokens de digisports.css, que es la hoja del Hub. La
+   intencion es que entrar al sistema y llegar al Hub se sientan como la
+   misma aplicacion y no como dos productos distintos: mismo fondo, mismo
+   naranja, mismos radios y la misma iluminacion ambiental.
+
+   No depende de AdminLTE ni de Bootstrap.
+   ========================================================================== */
+
+.dsl-body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--ds-bg);
+    color: var(--ds-text);
+    font-family: var(--ds-font);
+    -webkit-font-smoothing: antialiased;
+}
+
+.dsl-body,
+.dsl-body *,
+.dsl-body *::before,
+.dsl-body *::after { box-sizing: border-box; }
+
+/* --------------------------------------------------------------------------
+   Reparto de la pantalla
+   -------------------------------------------------------------------------- */
+
+.dsl-split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-height: 100vh;
+}
+
+/* ==========================================================================
+   Panel izquierdo: la marca
+   ========================================================================== */
+
+.dsl-hero {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 48px 56px;
+    overflow: hidden;
+
+    /* Sin fotografia disponible, la profundidad se construye con luz: los
+       mismos focos suaves del Hub, aqui mas marcados porque ocupan media
+       pantalla y no hay contenido que competir. */
+    background:
+        radial-gradient(ellipse 90% 60% at 30% 15%, rgba(255, 214, 10, .22), transparent 62%),
+        radial-gradient(ellipse 70% 50% at 85% 85%, rgba(37, 99, 235, .20), transparent 60%),
+        linear-gradient(160deg, #0b1d4a 0%, var(--ds-bg) 55%, #030a1c 100%);
+}
+
+/* La fotografia va en dos capas: la imagen y, encima, un velo.
+   Se oscurece UNA sola vez y de forma desigual. Con opacidad baja en la
+   imagen Y un velo parejo encima, la cancha desaparecia: quedaba una
+   mancha gris que no aportaba nada. Ahora la foto se ve, y el velo es
+   denso a la izquierda —donde se apoya el texto— y se abre hacia la
+   derecha. */
+.dsl-hero--foto::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: var(--dsl-foto);
+    background-size: cover;
+    background-position: center 35%;
+    opacity: 1;
+}
+
+.dsl-hero--foto::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+        /* Base oscura al pie: las etiquetas de las funciones caen sobre la
+           duela, que es la zona mas clara de la foto. Sin esto el contraste
+           depende de la imagen que haya puesta, y basta cambiarla para que
+           el texto deje de leerse. */
+        linear-gradient(to top, rgba(6, 16, 42, .82) 0%, transparent 32%),
+        linear-gradient(105deg,
+            rgba(6, 16, 42, .78) 0%,
+            rgba(6, 16, 42, .40) 45%,
+            rgba(6, 16, 42, .10) 100%),
+        /* Un poco de la luz naranja del ecosistema, para que la foto no
+           se sienta pegada de otro sitio. */
+        radial-gradient(ellipse 80% 55% at 25% 20%, rgba(255, 214, 10, .16), transparent 65%);
+}
+
+/* Con foto, el fondo construido con luz sobra: se deja el color plano por
+   debajo para que no asome por los bordes mientras la imagen carga. */
+.dsl-hero--foto { background: var(--ds-bg); }
+
+/* La malla de puntos de la esquina: textura discreta, sin imagen. */
+.dsl-hero__trama {
+    position: absolute;
+    left: -40px;
+    bottom: -40px;
+    width: 320px;
+    height: 220px;
+    background-image: radial-gradient(var(--ds-primary) 1.4px, transparent 1.4px);
+    background-size: 16px 16px;
+    opacity: .16;
+    pointer-events: none;
+}
+
+/* Se excluye la trama a proposito: es la unica hija posicionada en
+   absoluto, y darle position:relative aqui la devolvia al flujo, donde
+   ocupaba un hueco del space-between y empujaba la marca hacia el centro. */
+.dsl-hero > *:not(.dsl-hero__trama) { position: relative; z-index: 1; }
+
+/* --- Marca --- */
+
+.dsl-marca {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.dsl-marca__logo {
+    width: 64px;
+    height: 64px;
+    object-fit: contain;
+}
+
+.dsl-marca__texto {
+    margin: 0;
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: .5px;
+}
+
+.dsl-marca__modulo {
+    display: block;
+    color: var(--ds-primary);
+    font-size: 21px;
+    font-weight: 700;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+}
+
+/* --- Mensaje --- */
+
+.dsl-hero__titulo {
+    margin: 0 0 18px;
+    font-size: clamp(34px, 4vw, 52px);
+    font-weight: 700;
+    font-style: italic;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+/* La regla naranja bajo el titulo: el mismo acento que marca la seccion
+   activa en el Hub. */
+.dsl-hero__regla {
+    width: 64px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--ds-primary);
+    margin-bottom: 26px;
+}
+
+.dsl-hero__texto {
+    margin: 0;
+    max-width: 30ch;
+    font-size: 19px;
+    line-height: 1.6;
+    color: var(--ds-text-muted);
+}
+
+.dsl-hero__texto b {
+    color: var(--ds-primary);
+    font-weight: 600;
+}
+
+/* --- Lo que ofrece el modulo --- */
+
+.dsl-features {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.dsl-feature {
+    text-align: center;
+    color: var(--ds-text-muted);
+    font-size: 13px;
+    line-height: 1.35;
+}
+
+.dsl-feature i {
+    display: grid;
+    place-items: center;
+    width: 52px;
+    height: 52px;
+    margin: 0 auto 10px;
+    border-radius: var(--ds-radius-md);
+    background: rgba(255, 214, 10, .10);
+    border: 1px solid rgba(255, 214, 10, .22);
+    color: var(--ds-primary);
+    font-size: 20px;
+}
+
+/* ==========================================================================
+   Panel derecho: el formulario
+   ========================================================================== */
+
+.dsl-panel {
+    display: grid;
+    place-items: center;
+    padding: 40px 24px;
+    background:
+        radial-gradient(ellipse 80% 60% at 50% 0%, rgba(255, 214, 10, .05), transparent 60%),
+        var(--ds-bg);
+}
+
+.dsl-card {
+    width: 100%;
+    max-width: 420px;
+    padding: 40px 36px 32px;
+    background: var(--ds-surface);
+    border: 1px solid var(--ds-border);
+    border-radius: var(--ds-radius-lg);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, .45);
+}
+
+.dsl-card__emblema {
+    display: grid;
+    place-items: center;
+    width: 96px;
+    height: 96px;
+    margin: 0 auto 22px;
+    border-radius: 50%;
+    background: var(--ds-surface-2);
+    border: 1px solid var(--ds-border-strong);
+}
+
+.dsl-card__emblema img { width: 58px; height: 58px; object-fit: contain; }
+
+.dsl-card__titulo {
+    margin: 0 0 10px;
+    text-align: center;
+    font-size: 27px;
+    font-weight: 600;
+}
+
+.dsl-card__regla {
+    width: 46px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--ds-primary);
+    margin: 0 auto 28px;
+}
+
+/* --- Campos --- */
+
+.dsl-campo { margin-bottom: 20px; }
+
+.dsl-campo__etiqueta {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ds-text-muted);
+}
+
+.dsl-campo__caja {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 14px;
+    background: var(--ds-surface-2);
+    border: 1px solid var(--ds-border);
+    border-radius: var(--ds-radius-sm);
+    transition: border-color .15s, box-shadow .15s;
+}
+
+/* El foco se marca en la caja entera, no solo en el input: asi el usuario
+   ve donde esta escribiendo aunque el cursor sea fino. */
+.dsl-campo__caja:focus-within {
+    border-color: var(--ds-primary);
+    box-shadow: 0 0 0 3px rgba(255, 214, 10, .16);
+}
+
+.dsl-campo__icono {
+    color: var(--ds-text-muted);
+    font-size: 15px;
+    width: 18px;
+    text-align: center;
+    flex: none;
+}
+
+.dsl-campo__caja:focus-within .dsl-campo__icono { color: var(--ds-primary); }
+
+.dsl-campo__input {
+    flex: 1;
+    min-width: 0;
+    padding: 14px 0;
+    background: none;
+    border: 0;
+    outline: none;
+    color: var(--ds-text);
+    font-family: inherit;
+    font-size: 15px;
+}
+
+.dsl-campo__input::placeholder { color: #5b6880; }
+
+/* Chrome pinta el autorrelleno con un amarillo que rompe el tema oscuro;
+   la sombra interior lo tapa sin desactivar la funcion. */
+.dsl-campo__input:-webkit-autofill,
+.dsl-campo__input:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--ds-text);
+    -webkit-box-shadow: 0 0 0 1000px var(--ds-surface-2) inset;
+    transition: background-color 9999s;
+}
+
+/* Boton de ver/ocultar la contrasena. */
+.dsl-ojo {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    background: none;
+    border: 0;
+    border-radius: 8px;
+    color: var(--ds-text-muted);
+    font-size: 15px;
+    cursor: pointer;
+}
+
+.dsl-ojo:hover  { color: var(--ds-text); background: rgba(255, 255, 255, .05); }
+.dsl-ojo:focus-visible { outline: 2px solid var(--ds-primary); outline-offset: 1px; }
+
+/* --- Boton principal --- */
+
+.dsl-boton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    margin-top: 4px;
+    padding: 15px 20px;
+    background: var(--ds-primary);
+    border: 0;
+    border-radius: var(--ds-radius-sm);
+    color: #10121a;
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background .15s, transform .15s;
+}
+
+.dsl-boton:hover { background: var(--ds-primary-hover); }
+.dsl-boton:active { transform: translateY(1px); }
+.dsl-boton:focus-visible { outline: 2px solid var(--ds-text); outline-offset: 2px; }
+.dsl-boton i { transition: transform .15s; }
+.dsl-boton:hover i { transform: translateX(3px); }
+
+/* Mientras se comprueban las credenciales: sin esto se puede pulsar
+   varias veces y cada pulsacion cuenta como un intento contra el freno
+   de fuerza bruta. */
+.dsl-boton[disabled] {
+    opacity: .65;
+    cursor: progress;
+}
+
+.dsl-boton[disabled] i { transform: none; }
+
+/* --- Pie --- */
+
+.dsl-pie {
+    margin: 26px 0 0;
+    text-align: center;
+    font-size: 13.5px;
+    color: var(--ds-text-muted);
+    line-height: 1.6;
+}
+
+.dsl-pie strong { color: var(--ds-text); font-weight: 600; }
+
+.dsl-pie__sep {
+    height: 1px;
+    background: var(--ds-border);
+    margin: 24px 0 20px;
+}
+
+/* ==========================================================================
+   El aviso de error, en oscuro
+   --------------------------------------------------------------------------
+   SweetAlert2 trae tema claro. Sobre esta pantalla aparecia como un recorte
+   blanco encima del fondo oscuro. Se reviste con los tokens del ecosistema.
+   Esta hoja se carga DESPUES que la de SweetAlert2, por eso basta con la
+   misma especificidad.
+   ========================================================================== */
+
+.dsl-body .swal2-container { backdrop-filter: blur(3px); }
+
+.dsl-body .swal2-popup {
+    background: var(--ds-surface);
+    border: 1px solid var(--ds-border-strong);
+    border-radius: var(--ds-radius-lg);
+    color: var(--ds-text);
+    font-family: var(--ds-font);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, .6);
+}
+
+.dsl-body .swal2-title { color: var(--ds-text); font-weight: 600; }
+.dsl-body .swal2-html-container { color: var(--ds-text-muted); }
+
+.dsl-body .swal2-icon.swal2-error {
+    border-color: var(--ds-danger);
+    color: var(--ds-danger);
+}
+
+.dsl-body .swal2-icon.swal2-error [class^='swal2-x-mark-line'] {
+    background-color: var(--ds-danger);
+}
+
+.dsl-body .swal2-styled.swal2-confirm {
+    background: var(--ds-primary) !important;
+    color: #10121a;
+    font-weight: 700;
+    border-radius: var(--ds-radius-sm);
+    padding: 11px 30px;
+}
+
+.dsl-body .swal2-styled.swal2-confirm:focus-visible {
+    outline: 2px solid var(--ds-text);
+    outline-offset: 2px;
+    box-shadow: none;
+}
+
+/* ==========================================================================
+   Adaptacion a pantallas pequenas
+   ========================================================================== */
+
+@media (max-width: 980px) {
+    /* El panel de marca pasa a ser una cabecera: se queda la identidad y
+       se retiran el mensaje y las funciones, que en movil solo alargarian
+       el desplazamiento hasta el formulario. */
+    /* Las filas se declaran: con el alto automatico, el "stretch" que la
+       rejilla aplica por defecto repartia el sobrante entre las dos y
+       dejaba un hueco muerto bajo el logo. La cabecera ocupa lo suyo y el
+       formulario se queda con el resto. */
+    .dsl-split {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
+    }
+
+    .dsl-hero {
+        padding: 24px;
+        min-height: 0;
+    }
+
+    .dsl-hero__mensaje,
+    .dsl-features,
+    .dsl-hero__trama { display: none; }
+
+    .dsl-panel { padding: 32px 20px 48px; }
+}
+
+@media (max-width: 480px) {
+    .dsl-card { padding: 30px 22px 26px; border-radius: var(--ds-radius-md); }
+    .dsl-card__emblema { width: 78px; height: 78px; }
+    .dsl-card__emblema img { width: 46px; height: 46px; }
+    .dsl-marca__logo { width: 52px; height: 52px; }
+    .dsl-marca__texto { font-size: 25px; }
+    .dsl-marca__modulo { font-size: 17px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dsl-boton, .dsl-boton i, .dsl-campo__caja { transition: none; }
+    .dsl-boton:active { transform: none; }
+    .dsl-boton:hover i { transform: none; }
+}
+
+/* ---------- La marca de la escuela en la tarjeta ----------
+   Sustituye al par «emblema circular + nombre en <h2>»: el logo ya trae el
+   nombre dibujado, así que repetirlo en texto lo decía dos veces y con una
+   tipografía que no es la de la marca.
+
+   max-width y height:auto y no medidas fijas: el logo lo sube la escuela
+   desde Core y puede venir con cualquier proporción. Se le da un alto
+   máximo para que uno muy vertical no empuje el formulario fuera de la
+   pantalla, y el ancho se ajusta solo. */
+.dsl-card__marca {
+    display: grid;
+    place-items: center;
+    margin: 0 auto 18px;
+}
+
+/* ---------- El logo va suelto, sin placa ----------
+   La primera versión le puso un fondo blanco con esquinas redondeadas,
+   porque el archivo en disco tenía blanco OPACO en las cuatro esquinas y
+   sobre la tarjeta oscura se veía como un rectángulo recortado.
+
+   El diagnóstico estaba a medias: ese blanco no venía del archivo de la
+   escuela sino de normalizarLogo(), que pintaba el lienzo de blanco antes
+   de copiar el logo encima y aplanaba cualquier transparencia. Corregido
+   allí, la placa sobra: el logo se apoya en el fondo de la tarjeta.
+
+   Sin medidas fijas: el logo lo sube la escuela y puede venir con cualquier
+   proporción. El alto máximo evita que uno muy vertical empuje el
+   formulario fuera de la pantalla. */
+.dsl-card__marca img {
+    max-width: min(100%, 240px);
+    max-height: 78px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+}
+
+/* ---------- El ojo, del tamaño del pulgar en táctil ----------
+   MEDIDO: 34x34. Por debajo de los 44 px que se aciertan con el dedo, y en
+   la pantalla que más gente abre del sistema —y la única que se usa desde
+   un teléfono cualquiera, no desde el de siempre—.
+
+   Sólo con puntero grueso: con ratón, 34 px se acierta sin esfuerzo y el
+   botón queda más discreto dentro del campo, que es como se diseñó. */
+@media (pointer: coarse) {
+    .dsl-ojo {
+        width: 44px;
+        height: 44px;
+    }
+}
+
+/* ---------- El logo, con el tamaño que merece ----------
+   Ahora que la marca trae el nombre dibujado, es lo único que identifica a
+   la escuela en esta pantalla: antes compartía el trabajo con un <h2> de 27
+   px. Se le da algo más de aire y de alto, sin llegar a competir con el
+   formulario, que es a lo que se viene. */
+.dsl-card__marca { margin-bottom: 22px; }
+.dsl-card__marca img { max-height: 92px; max-width: min(100%, 270px); }

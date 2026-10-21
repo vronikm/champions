@@ -1,0 +1,16 @@
+# =====================================================================
+# Escudos de equipo
+# =====================================================================
+# Defensa en profundidad. La subida ya reescribe cada archivo con GD, de
+# modo que aqui solo deberian existir PNG generados por el servidor. Aun
+# asi se impide ejecutar nada: si alguna vez un archivo llegase intacto,
+# esto es lo que decide que no se ejecute.
+
+php_flag engine off
+
+<FilesMatch "\.(php|phtml|php3|php4|php5|php7|phps|cgi|pl|py|sh|htaccess)$">
+    Require all denied
+</FilesMatch>
+
+Options -Indexes -ExecCGI
+AddType text/plain .php .phtml .php5 .php7 .phps

@@ -1,0 +1,13 @@
+# Este proyecto es una copia del sistema administrativo, pero su única
+# función pública es el formulario de inscripción. Todo endpoint ajax
+# heredado del panel (representantes, usuarios, pagos, etc.) queda cerrado:
+# eran alcanzables desde internet sin autenticación.
+
+<FilesMatch ".+\.php$">
+    Require all denied
+</FilesMatch>
+
+# Único endpoint del formulario público
+<FilesMatch "^registroAjax\.php$">
+    Require all granted
+</FilesMatch>

@@ -1,0 +1,17 @@
+# =====================================================================
+# DigiSports League — portal público
+# =====================================================================
+# Rutas legibles: /publico/t/copa-de-verano-3/ en vez de un querystring.
+# Importa porque estos enlaces se comparten en grupos de mensajería, y
+# uno legible se abre y uno con parámetros se ignora.
+
+RewriteEngine On
+Options All -Indexes
+
+# El controlador y las vistas se incluyen desde index.php, nunca se
+# solicitan por URL.
+RewriteRule ^(vistas/|publicoController\.php) - [F,L]
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php?ruta=$1 [QSA,L]

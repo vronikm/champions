@@ -1,0 +1,4 @@
+# Las vistas se incluyen desde index.php: nunca se piden directamente.
+<FilesMatch ".+\.php$">
+    Require all denied
+</FilesMatch>

@@ -1,0 +1,7 @@
+# El config solo se incluye desde index.php: nunca se pide por URL.
+# Hoy PHP lo ejecuta y devuelve cuerpo vacío, pero basta que el módulo PHP
+# falle o se desactive para que TOKEN_SECRET y las credenciales de la base
+# se sirvan como texto plano. Se cierra de raíz.
+<FilesMatch ".+">
+    Require all denied
+</FilesMatch>

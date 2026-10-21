@@ -1,0 +1,4 @@
+# Los modelos solo se cargan vía autoload: nunca por petición directa.
+<FilesMatch ".+\.php$">
+    Require all denied
+</FilesMatch>

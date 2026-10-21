@@ -1,0 +1,12 @@
+# =====================================================================
+# DigiSports League
+# =====================================================================
+RewriteEngine On
+Options All -Indexes
+
+# Codigo de servidor: se incluye desde index.php, nunca se solicita por URL.
+RewriteRule ^(config/|controllers/|views/) - [F,L]
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^([a-zA-Z0-9/_-]+)$ index.php?views=$1 [QSA,L]

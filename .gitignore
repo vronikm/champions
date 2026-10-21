@@ -1,0 +1,82 @@
+# =====================================================================
+# DigiSports — archivos que nunca deben versionarse
+# =====================================================================
+
+# ---------------------------------------------------------------------
+# Credenciales del ecosistema (fuente única en ds_core)
+# ---------------------------------------------------------------------
+# Credenciales de BD + TOKEN_SECRET del enlace de inscripción.
+# La plantilla ds_core/config/secrets.example.php SÍ se versiona.
+/ds_core/config/secrets.php
+
+# ---------------------------------------------------------------------
+# Secretos de facturación electrónica SRI
+# ---------------------------------------------------------------------
+/ds_futbol/storage/certificados/*.p12
+/ds_futbol/storage/certificados/*.pfx
+/ds_futbol/storage/certificados/*.key
+/ds_futbol/storage/certificados/.cryptokey*
+/ds_futbol/storage/certificados/firma.key.php
+
+# Comprobantes electrónicos emitidos: contienen datos tributarios.
+/ds_futbol/storage/sri/xml/**
+/ds_futbol/storage/sri/ride/**
+/ds_futbol/storage/sri/logs/**
+
+# ---------------------------------------------------------------------
+# Datos personales subidos por la aplicación (LOPDP)
+# ---------------------------------------------------------------------
+# Fotos de alumnos (menores de edad), cédulas escaneadas, fotos de
+# empleados y comprobantes de pago. Se sirven vía ds_futbol/app/media.php
+/ds_futbol/app/views/imagenes/fotos/alumno/*
+/ds_futbol/app/views/imagenes/fotos/empleado/*
+/ds_futbol/app/views/imagenes/fotos/ingresos/*
+/ds_futbol/app/views/imagenes/fotos/egresos/*
+/ds_futbol/app/views/imagenes/cedulas/*
+/ds_futbol/app/views/imagenes/pagos/*
+/ds_futbol/app/views/imagenes/ingresos/*
+/ds_futbol/app/views/fotos/usuario/*
+
+# Excepciones: los marcadores de posición que el código referencia
+# y el .htaccess que protege cada carpeta.
+!/ds_futbol/app/views/imagenes/fotos/alumno/alumno.jpg
+!/ds_futbol/app/views/imagenes/fotos/alumno/alumno.png
+!/ds_futbol/app/views/imagenes/fotos/egresos/egreso_default.jpg
+!/ds_futbol/app/views/imagenes/fotos/ingresos/ingreso_default.jpg
+!/ds_futbol/app/views/imagenes/cedulas/Sinregistro.jpg
+!/ds_futbol/app/views/imagenes/fotos/alumno/.htaccess
+!/ds_futbol/app/views/imagenes/fotos/empleado/.htaccess
+!/ds_futbol/app/views/imagenes/fotos/ingresos/.htaccess
+!/ds_futbol/app/views/imagenes/fotos/egresos/.htaccess
+!/ds_futbol/app/views/imagenes/cedulas/.htaccess
+!/ds_futbol/app/views/imagenes/pagos/.htaccess
+!/ds_futbol/app/views/imagenes/ingresos/.htaccess
+!/ds_futbol/app/views/fotos/usuario/.htaccess
+
+# ---------------------------------------------------------------------
+# Material interno: no se publica
+# ---------------------------------------------------------------------
+# El repositorio es público. Se queda en el disco, fuera de él:
+#   pruebas/          el arnés de regresión: crea y borra usuarios y
+#                     permisos contra la base, y sus capturas y volcados
+#                     pueden llevar datos de alumnos (menores de edad)
+#   DESPLIEGUE.md     la lista de comprobación del paso a producción:
+#                     describe qué falta endurecer en cada servidor
+#   ds_insights/docs/ análisis internos del módulo
+/pruebas/
+/DESPLIEGUE.md
+/ds_insights/docs/
+
+# ---------------------------------------------------------------------
+# Cuarentena y volcados de base
+# ---------------------------------------------------------------------
+# borrar/ es lo que espera revision antes de eliminarse: no se versiona.
+/borrar/
+
+# Un volcado completo de la base ES la base: cédulas, fechas de nacimiento
+# y datos de contacto de menores. Nunca entra en el repositorio.
+# Las migraciones de ds_core/database/ SI se versionan: son el esquema, no
+# los datos, y por eso la regla apunta a los volcados, no a todo *.sql.
+/ds_base_temporal/
+digitech_*.sql
+*_dump.sql

@@ -1,0 +1,7 @@
+# Los archivos de configuracion nunca deben servirse por HTTP.
+# secrets.php contiene credenciales de BD y el secreto HMAC de inscripcion.
+Options -Indexes
+Require all denied
+<IfModule mod_access_compat.c>
+    Deny from all
+</IfModule>

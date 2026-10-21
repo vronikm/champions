@@ -1,0 +1,291 @@
+<!doctype html>
+<!--
+  Generador de ds_core/assets/img/fondo_login.jpg (estadio de fútbol nocturno,
+  colores de Champions). Abrirlo en Chrome y capturarlo a 1024x1536:
+    chrome --headless=new --hide-scrollbars --window-size=1024,1536 --screenshot=estadio.png fondo_login_generador.html
+  Después convertir a JPEG (calidad 84) y copiarlo también como fonfo_login.png.
+  Vive en ds_core/data, que no se sirve por HTTP.
+-->
+<html><head><meta charset="utf-8">
+<style>html,body{margin:0;background:#000;overflow:hidden}canvas{display:block}</style>
+</head><body>
+<canvas id="c"></canvas>
+<script>
+/* Estadio de fútbol nocturno visto desde detrás del punto penal.
+   Perspectiva real: cámara a H metros de altura mirando hacia la portería. */
+const W = 1024, Hpx = 1536;
+const c = document.getElementById('c');
+c.width = W; c.height = Hpx;
+const g = c.getContext('2d');
+
+let semilla = 7;
+const rnd = () => (semilla = (semilla * 16807) % 2147483647) / 2147483647;
+
+const CX = 512, YH = 390, F = 1195, CAM = 6;   // horizonte alto: el texto del login cae sobre césped liso
+const DY = -250;                                // tribunas y muro suben con el horizonte
+const P = (X, Z, Y = 0) => [CX + F * X / Z, YH + F * (CAM - Y) / Z];
+
+/* ---------- Cielo ---------- */
+let gr = g.createLinearGradient(0, 0, 0, YH + 40);
+gr.addColorStop(0, '#050a16'); gr.addColorStop(.55, '#0b1730'); gr.addColorStop(1, '#1a2c4c');
+g.fillStyle = gr; g.fillRect(0, 0, W, YH + 60);
+for (let i = 0; i < 140; i++) {                       // estrellas tenues
+  g.fillStyle = `rgba(200,220,255,${.15 + rnd() * .35})`;
+  g.fillRect(rnd() * W, rnd() * 330, 1.2, 1.2);
+}
+
+/* ---------- Tribunas (silueta escalonada con público) ---------- */
+g.save(); g.translate(0, DY);
+function tribuna(y0, y1, color) {
+  gr = g.createLinearGradient(0, y0, 0, y1);
+  gr.addColorStop(0, color[0]); gr.addColorStop(1, color[1]);
+  g.fillStyle = gr;
+  g.beginPath(); g.moveTo(0, y1); g.lineTo(0, y0 + 40);
+  g.quadraticCurveTo(W / 2, y0 - 25, W, y0 + 40); g.lineTo(W, y1); g.closePath(); g.fill();
+}
+tribuna(395, 730, ['#101b30', '#0a1222']);
+// techo
+g.strokeStyle = 'rgba(150,175,215,.35)'; g.lineWidth = 3;
+g.beginPath(); g.moveTo(0, 432); g.quadraticCurveTo(W / 2, 368, W, 432); g.stroke();
+// público: puntos de color apagados y algunos destellos (flashes de teléfonos)
+for (let i = 0; i < 5200; i++) {
+  const x = rnd() * W, t = rnd();
+  const yTop = 432 - 64 * (1 - Math.pow((x - W / 2) / (W / 2), 2)) + 14;
+  const y = yTop + t * (690 - yTop);
+  const tonos = ['#ffd60a', '#f1c40f', '#1f4e9c', '#e6e6e6', '#2c3e50', '#ffffff', '#123a7a'];
+  g.globalAlpha = .18 + rnd() * .25;
+  g.fillStyle = tonos[(rnd() * tonos.length) | 0];
+  g.fillRect(x, y, 2 + rnd() * 2, 2 + rnd() * 2);
+}
+g.globalAlpha = 1;
+g.globalCompositeOperation = 'lighter';
+for (let i = 0; i < 24; i++) {
+  const x = rnd() * W, y = 455 + rnd() * 220, r = .8 + rnd() * 1.4;
+  const b = g.createRadialGradient(x, y, 0, x, y, r * 3);
+  b.addColorStop(0, 'rgba(255,255,240,.85)'); b.addColorStop(1, 'rgba(255,255,240,0)');
+  g.fillStyle = b; g.beginPath(); g.arc(x, y, r * 3, 0, 7); g.fill();
+}
+g.globalCompositeOperation = 'source-over';
+// muro bajo la grada, hasta las vallas
+gr = g.createLinearGradient(0, 692, 0, 730);
+gr.addColorStop(0, '#0d1626'); gr.addColorStop(1, '#070c16');
+g.fillStyle = gr; g.fillRect(0, 692, W, 38);
+g.fillStyle = 'rgba(255,214,10,.55)'; g.fillRect(0, 692, W, 2);
+// barrida de luz de los focos sobre la grada, sin bordes duros
+gr = g.createLinearGradient(0, 360, 0, 700);
+gr.addColorStop(0, 'rgba(255,240,210,0)'); gr.addColorStop(.35, 'rgba(255,240,210,.08)');
+gr.addColorStop(1, 'rgba(255,240,210,0)');
+g.fillStyle = gr; g.fillRect(0, 360, W, 340);
+g.restore();
+
+/* ---------- Césped con franjas de corte ---------- */
+const ZFONDO = 69, ZCERCA = 7.2;
+g.fillStyle = '#0f3a1f'; g.fillRect(0, P(0, ZFONDO)[1], W, Hpx);
+for (let z = ZCERCA, k = 0; z < ZFONDO; z += 5.5, k++) {
+  const ya = P(0, Math.min(z + 5.5, ZFONDO))[1], yb = P(0, z)[1];
+  g.fillStyle = k % 2 ? '#14532b' : '#1a6434';
+  g.fillRect(0, ya, W, yb - ya + 1);
+}
+// textura de hierba
+for (let i = 0; i < 26000; i++) {
+  const y = P(0, ZFONDO)[1] + Math.pow(rnd(), .8) * (Hpx - P(0, ZFONDO)[1]);
+  const x = rnd() * W, largo = 1 + (y - YH) / 220;
+  g.strokeStyle = rnd() < .5 ? 'rgba(120,200,110,.10)' : 'rgba(0,30,10,.16)';
+  g.lineWidth = .8 + (y - YH) / 900;
+  g.beginPath(); g.moveTo(x, y); g.lineTo(x + (rnd() - .5) * largo, y - largo * 2.2); g.stroke();
+}
+
+/* ---------- Vallas LED detrás de la portería ---------- */
+const [lx0, ly0] = P(-60, 68.5, 1), [lx1, ly1] = P(60, 68.5, 0);
+gr = g.createLinearGradient(0, ly0, 0, ly1);
+gr.addColorStop(0, '#1d3f9e'); gr.addColorStop(1, '#0f2466');
+g.fillStyle = gr; g.fillRect(0, ly0, W, ly1 - ly0);
+g.fillStyle = '#ffd60a';
+g.font = `700 ${Math.round((ly1 - ly0) * .62)}px Arial`;
+g.textBaseline = 'middle';
+for (let x = 18; x < W; x += 250) g.fillText('DIGISPORTS  ·  FÚTBOL', x, (ly0 + ly1) / 2 + 1);
+g.globalCompositeOperation = 'lighter';
+gr = g.createLinearGradient(0, ly1, 0, ly1 + 40);
+gr.addColorStop(0, 'rgba(70,120,255,.30)'); gr.addColorStop(1, 'rgba(70,120,255,0)');
+g.fillStyle = gr; g.fillRect(0, ly1, W, 40);
+g.globalCompositeOperation = 'source-over';
+
+/* ---------- Líneas del campo ---------- */
+function linea(puntos, ancho = .12) {
+  g.strokeStyle = 'rgba(245,250,245,.92)';
+  g.lineJoin = 'round';
+  // grosor proporcional a la distancia
+  for (let i = 0; i < puntos.length - 1; i++) {
+    const [X1, Z1] = puntos[i], [X2, Z2] = puntos[i + 1];
+    const a = P(X1, Z1), b = P(X2, Z2);
+    g.lineWidth = Math.max(1, F * ancho / ((Z1 + Z2) / 2));
+    g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.stroke();
+  }
+}
+const ZG = 60;                                    // línea de meta
+linea([[-60, ZG], [60, ZG]]);
+linea([[-20.16, ZG], [-20.16, ZG - 16.5], [20.16, ZG - 16.5], [20.16, ZG]]);
+linea([[-9.16, ZG], [-9.16, ZG - 5.5], [9.16, ZG - 5.5], [9.16, ZG]]);
+const ZP = ZG - 11;                               // punto penal
+{ const [x, y] = P(0, ZP); g.fillStyle = '#f5faf5';
+  g.beginPath(); g.ellipse(x, y, F * .2 / ZP, F * .2 / ZP * CAM / ZP, 0, 0, 7); g.fill(); }
+const arco = [];                                  // media luna del área
+const ang = Math.acos(5.5 / 9.15);
+for (let t = -ang; t <= ang + 1e-6; t += ang / 20) arco.push([9.15 * Math.sin(t), ZP - 9.15 * Math.cos(t)]);
+linea(arco);
+
+/* ---------- Portería con red ---------- */
+const AN = 3.66, AL = 2.44, PROF = 2.2;
+const p = (X, Z, Y) => P(X, Z, Y);
+g.strokeStyle = 'rgba(230,235,240,.38)'; g.lineWidth = 1;
+for (let X = -AN; X <= AN + 1e-6; X += .25) {     // red: verticales y techo
+  g.beginPath(); g.moveTo(...p(X, ZG, AL)); g.lineTo(...p(X, ZG + PROF, AL * .8)); g.lineTo(...p(X, ZG + PROF, 0)); g.stroke();
+}
+for (let Y = 0; Y <= AL * .8 + 1e-6; Y += .25) {
+  g.beginPath(); g.moveTo(...p(-AN, ZG + PROF, Y)); g.lineTo(...p(AN, ZG + PROF, Y)); g.stroke();
+}
+for (let Y = 0; Y <= AL; Y += .25) {
+  const zf = ZG + PROF * (1 - 0 * Y), yf = Math.min(Y, AL * .8);
+  g.beginPath(); g.moveTo(...p(-AN, ZG, Y)); g.lineTo(...p(-AN, zf, yf)); g.stroke();
+  g.beginPath(); g.moveTo(...p(AN, ZG, Y)); g.lineTo(...p(AN, zf, yf)); g.stroke();
+}
+g.strokeStyle = '#f4f6f8'; g.lineCap = 'round'; g.lineWidth = F * .12 / ZG;
+g.beginPath(); g.moveTo(...p(-AN, ZG, 0)); g.lineTo(...p(-AN, ZG, AL)); g.lineTo(...p(AN, ZG, AL)); g.lineTo(...p(AN, ZG, 0)); g.stroke();
+
+/* ---------- Torres de iluminación y haces ---------- */
+function torre(x, y, ancho, alto) {
+  g.fillStyle = '#0a0f1a';
+  g.fillRect(x + ancho / 2 - 4, y + alto, 8, 300);            // mástil
+  g.fillStyle = '#1b2333'; g.fillRect(x - 4, y - 4, ancho + 8, alto + 8);
+  g.globalCompositeOperation = 'lighter';
+  const halo = g.createRadialGradient(x + ancho / 2, y + alto / 2, 0, x + ancho / 2, y + alto / 2, 330);
+  halo.addColorStop(0, 'rgba(255,250,235,.55)'); halo.addColorStop(.25, 'rgba(255,240,210,.18)');
+  halo.addColorStop(1, 'rgba(255,240,210,0)');
+  g.fillStyle = halo; g.fillRect(x - 340, y - 340, ancho + 680, alto + 680);
+  for (let i = 0; i < 6; i++) for (let j = 0; j < 3; j++) {
+    const lx = x + 8 + i * (ancho - 16) / 5, ly = y + 7 + j * (alto - 14) / 2;
+    const l = g.createRadialGradient(lx, ly, 0, lx, ly, 13);
+    l.addColorStop(0, 'rgba(255,255,255,1)'); l.addColorStop(.35, 'rgba(255,248,225,.8)'); l.addColorStop(1, 'rgba(255,240,200,0)');
+    g.fillStyle = l; g.beginPath(); g.arc(lx, ly, 13, 0, 7); g.fill();
+  }
+  g.globalCompositeOperation = 'source-over';
+}
+function haz(x, y, x1, x2, yb, a) {
+  g.save();
+  g.globalCompositeOperation = 'lighter';
+  g.filter = 'blur(28px)';
+  const h = g.createLinearGradient(x, y, (x1 + x2) / 2, yb);
+  h.addColorStop(0, `rgba(255,245,220,${a})`); h.addColorStop(1, 'rgba(255,245,220,0)');
+  g.fillStyle = h; g.beginPath(); g.moveTo(x - 25, y); g.lineTo(x + 25, y); g.lineTo(x2, yb); g.lineTo(x1, yb); g.closePath(); g.fill();
+  g.restore();
+}
+haz(360, 140, 300, 820, 950, .12);
+haz(900, 120, 240, 760, 950, .12);
+torre(300, 115, 120, 54);
+torre(840, 95, 120, 54);
+
+/* ---------- Bruma sobre el campo ---------- */
+g.globalCompositeOperation = 'lighter';
+gr = g.createLinearGradient(0, YH - 20, 0, YH + 260);
+gr.addColorStop(0, 'rgba(190,215,255,.10)'); gr.addColorStop(1, 'rgba(190,215,255,0)');
+g.fillStyle = gr; g.fillRect(0, YH - 20, W, 280);
+g.globalCompositeOperation = 'source-over';
+
+/* ---------- Balón en primer plano ---------- */
+const BX = 640, BY = 965, BR = 118;   // visible entero en escritorio y en tableta vertical
+// sombra de contacto y sombra proyectada lejos de las torres
+let s = g.createRadialGradient(BX + 30, BY + BR * .93, 4, BX + 30, BY + BR * .93, BR * 1.45);
+s.addColorStop(0, 'rgba(0,0,0,.62)'); s.addColorStop(1, 'rgba(0,0,0,0)');
+g.save(); g.translate(0, BY + BR * .93); g.scale(1, .26); g.translate(0, -(BY + BR * .93));
+g.fillStyle = s; g.beginPath(); g.arc(BX + 30, BY + BR * .93, BR * 1.45, 0, 7); g.fill(); g.restore();
+// foco sobre el césped alrededor del balón
+g.globalCompositeOperation = 'lighter';
+s = g.createRadialGradient(BX, BY + 40, 10, BX, BY + 40, 420);
+s.addColorStop(0, 'rgba(255,245,215,.20)'); s.addColorStop(1, 'rgba(255,245,215,0)');
+g.save(); g.translate(0, BY + 40); g.scale(1, .45); g.translate(0, -(BY + 40));
+g.fillStyle = s; g.beginPath(); g.arc(BX, BY + 40, 420, 0, 7); g.fill(); g.restore();
+g.globalCompositeOperation = 'source-over';
+
+// geometría del icosaedro truncado
+const fi = (1 + Math.sqrt(5)) / 2;
+let V = [[-1, fi, 0], [1, fi, 0], [-1, -fi, 0], [1, -fi, 0], [0, -1, fi], [0, 1, fi], [0, -1, -fi], [0, 1, -fi], [fi, 0, -1], [fi, 0, 1], [-fi, 0, -1], [-fi, 0, 1]];
+const norm = v => { const l = Math.hypot(...v); return v.map(a => a / l); };
+const rot = (v, ax, ay, az) => {
+  let [x, y, z] = v;
+  [y, z] = [y * Math.cos(ax) - z * Math.sin(ax), y * Math.sin(ax) + z * Math.cos(ax)];
+  [x, z] = [x * Math.cos(ay) + z * Math.sin(ay), -x * Math.sin(ay) + z * Math.cos(ay)];
+  [x, y] = [x * Math.cos(az) - y * Math.sin(az), x * Math.sin(az) + y * Math.cos(az)];
+  return [x, y, z];
+};
+V = V.map(v => rot(norm(v), .55, .35, .2));
+const vecinos = V.map((a, i) => V.map((b, j) => j).filter(j => j !== i && Math.hypot(a[0] - V[j][0], a[1] - V[j][1], a[2] - V[j][2]) < 1.1));
+const lerp = (a, b, t) => a.map((x, k) => x + (b[k] - x) * t);
+const proy = v => [BX + v[0] * BR, BY - v[1] * BR, v[2]];
+
+g.save();
+g.beginPath(); g.arc(BX, BY, BR, 0, 7); g.clip();
+s = g.createRadialGradient(BX - BR * .35, BY - BR * .45, BR * .1, BX, BY, BR);
+s.addColorStop(0, '#ffffff'); s.addColorStop(.6, '#e9edf2'); s.addColorStop(1, '#a9b3c1');
+g.fillStyle = s; g.fillRect(BX - BR, BY - BR, BR * 2, BR * 2);
+
+// pentágonos (en azul de Champions) con bordes curvos sobre la esfera
+function arcoEsfera(a, b, n = 8) { const r = []; for (let t = 0; t <= n; t++) r.push(norm(lerp(a, b, t / n))); return r; }
+V.forEach((cv, i) => {
+  if (cv[2] < -.25) return;
+  const ring = vecinos[i].map(j => norm(lerp(cv, V[j], 1 / 3)));
+  // ordenar los vértices alrededor del centro
+  const ref = ring[0];
+  const ux = norm(ref.map((x, k) => x - cv[k]));
+  const uy = [cv[1] * ux[2] - cv[2] * ux[1], cv[2] * ux[0] - cv[0] * ux[2], cv[0] * ux[1] - cv[1] * ux[0]];
+  ring.sort((a, b) => Math.atan2(a.reduce((s, x, k) => s + x * uy[k], 0), a.reduce((s, x, k) => s + x * ux[k], 0))
+                    - Math.atan2(b.reduce((s, x, k) => s + x * uy[k], 0), b.reduce((s, x, k) => s + x * ux[k], 0)));
+  const pts = [];
+  ring.forEach((a, k) => arcoEsfera(a, ring[(k + 1) % 5]).forEach(v => pts.push(v)));
+  g.beginPath();
+  pts.forEach((v, k) => { const [x, y] = proy(v); k ? g.lineTo(x, y) : g.moveTo(x, y); });
+  g.closePath(); g.fillStyle = '#16234a'; g.fill();
+});
+// costuras de los hexágonos
+g.strokeStyle = 'rgba(40,50,70,.55)'; g.lineWidth = 1.6;
+V.forEach((a, i) => vecinos[i].forEach(j => {
+  if (j < i) return;
+  const p1 = norm(lerp(a, V[j], 1 / 3)), p2 = norm(lerp(a, V[j], 2 / 3));
+  const tramo = arcoEsfera(p1, p2);
+  g.beginPath(); let dib = false;
+  tramo.forEach(v => { const [x, y, z] = proy(v); if (z > 0) { dib ? g.lineTo(x, y) : g.moveTo(x, y); dib = true; } else dib = false; });
+  g.stroke();
+  // costuras pentágono-hexágono entre vértices de pentágonos vecinos
+}));
+// volumen: oscurecer el borde y la cara de abajo
+s = g.createRadialGradient(BX - BR * .3, BY - BR * .4, BR * .2, BX, BY, BR * 1.02);
+s.addColorStop(0, 'rgba(0,0,0,0)'); s.addColorStop(.7, 'rgba(10,20,40,.18)'); s.addColorStop(1, 'rgba(5,10,25,.62)');
+g.fillStyle = s; g.fillRect(BX - BR, BY - BR, BR * 2, BR * 2);
+// brillo especular de los focos
+g.globalCompositeOperation = 'lighter';
+s = g.createRadialGradient(BX - BR * .42, BY - BR * .5, 0, BX - BR * .42, BY - BR * .5, BR * .45);
+s.addColorStop(0, 'rgba(255,255,255,.75)'); s.addColorStop(1, 'rgba(255,255,255,0)');
+g.fillStyle = s; g.fillRect(BX - BR, BY - BR, BR * 2, BR * 2);
+// luz de rebote verde del césped
+s = g.createLinearGradient(0, BY + BR * .4, 0, BY + BR);
+s.addColorStop(0, 'rgba(40,140,70,0)'); s.addColorStop(1, 'rgba(40,140,70,.22)');
+g.fillStyle = s; g.fillRect(BX - BR, BY, BR * 2, BR);
+g.restore();
+g.globalCompositeOperation = 'source-over';
+
+// briznas delante del balón para asentarlo en el césped
+for (let i = 0; i < 520; i++) {
+  const x = BX - BR * 1.25 + rnd() * BR * 2.5, y = BY + BR * (.72 + rnd() * .36);
+  g.strokeStyle = rnd() < .5 ? 'rgba(40,120,60,.9)' : 'rgba(20,80,40,.9)'; g.lineWidth = 1.4;
+  g.beginPath(); g.moveTo(x, y); g.lineTo(x + (rnd() - .5) * 8, y - 6 - rnd() * 14); g.stroke();
+}
+
+/* ---------- Acabado: viñeta y grano ---------- */
+s = g.createRadialGradient(W / 2, Hpx * .45, Hpx * .25, W / 2, Hpx * .5, Hpx * .8);
+s.addColorStop(0, 'rgba(0,0,0,0)'); s.addColorStop(1, 'rgba(0,0,0,.55)');
+g.fillStyle = s; g.fillRect(0, 0, W, Hpx);
+const img = g.getImageData(0, 0, W, Hpx), d = img.data;
+for (let i = 0; i < d.length; i += 4) { const n = (rnd() - .5) * 10; d[i] += n; d[i + 1] += n; d[i + 2] += n; }
+g.putImageData(img, 0, 0);
+document.title = 'listo';
+</script>
+</body></html>

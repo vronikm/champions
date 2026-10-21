@@ -1,0 +1,530 @@
+/*
+| =====================================================================
+| Cumpleaños — la paleta de Champions CF
+| =====================================================================
+| Azul #002A64 · Amarillo #FFE001 · Blanco #FFFFFF
+| Los mismos colores y la misma composición que la vista original de
+| champions_cf (app/views/dist/css/cumples.css): barra azul con degradado
+| hasta #004AAD, acentos amarillos, tarjetas con cabecera azul, aro
+| amarillo en la foto y botón azul con texto amarillo.
+|
+| Venía de otra escuela con naranja #FC6702 y azul #012144; se volvió a la
+| paleta del escudo de Champions.
+|
+|
+| CONTRASTE, MEDIDO
+|
+|     amarillo sobre azul     12,0   sirve siempre
+|     azul sobre amarillo     12,0   sirve siempre
+|     blanco sobre azul       14,2   sirve siempre
+|     amarillo sobre #004AAD   6,6   sirve (extremo claro de la barra)
+|
+|     amarillo sobre blanco    1,3   NO sirve como texto
+|     azul sobre fondo oscuro  1,3   NO sirve como texto
+|
+| De ahí las reglas:
+|   1. Las SUPERFICIES de marca son azules en los dos temas.
+|   2. El AMARILLO va como superficie (con texto azul encima) o como texto
+|      sobre azul; nunca como texto sobre el fondo claro de la página.
+|   3. El TEXTO de acento sobre la página cambia con el tema: azul en claro,
+|      amarillo en oscuro.
+*/
+
+:root {
+    /* ---- Marca. Fijos, nunca cambian ---- */
+    --cumple-azul:           #002A64;
+    --cumple-azul-suave:     #004AAD;   /* extremo claro del degradado, como el original */
+    --cumple-azul-hover:     #003D8F;   /* hover del botón de la tarjeta, como el original */
+    --cumple-amarillo:       #FFE001;
+    --cumple-amarillo-hover: #E6CA00;   /* para botones amarillos: se oscurece, no se apaga */
+    --cumple-blanco:         #FFFFFF;
+
+    /* ---- Roles. Estos SÍ cambian con el tema ---- */
+    --cumple-acento:         var(--cumple-azul);   /* texto de acento sobre la página */
+    --cumple-tenue:          #6B7280;              /* 4,83 sobre blanco; el #999 original daba 2,85 */
+    --cumple-sombra:         rgba(0, 42, 100, .13);
+    --cumple-sombra-alta:    rgba(0, 42, 100, .22);
+}
+
+[data-bs-theme="dark"] {
+    /* El azul sobre el fondo oscuro no se lee: el acento pasa al amarillo. */
+    --cumple-acento:         var(--cumple-amarillo);
+    --cumple-tenue:          #ADB5BD;
+    --cumple-sombra:         rgba(0, 0, 0, .35);
+    --cumple-sombra-alta:    rgba(0, 0, 0, .5);
+}
+
+/* ==================== Barra de filtro ==================== */
+.cumple-filtro {
+    background: linear-gradient(90deg, var(--cumple-azul), var(--cumple-azul-suave));
+    border-radius: 10px;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.cumple-filtro .fecha-info {
+    color: var(--cumple-blanco);
+    font-size: 0.88rem;
+    font-weight: 500;
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.cumple-filtro .fecha-info strong { color: var(--cumple-amarillo); }
+.cumple-filtro > i {
+    color: var(--cumple-amarillo);
+    font-size: 1.15rem;
+    flex-shrink: 0;
+}
+.cumple-filtro label,
+.cumple-filtro__etiqueta {
+    color: var(--cumple-blanco);
+    font-weight: 600;
+    margin-bottom: 0;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+
+.cumple-filtro .btn-hoy {
+    background: var(--cumple-amarillo);
+    color: var(--cumple-azul);
+    border: none;
+    border-radius: 6px;
+    padding: 5px 14px;
+    font-weight: 700;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: background .2s;
+    flex-shrink: 0;
+}
+/* Se oscurece el amarillo en vez de bajar la opacidad: así el texto azul
+   conserva su contraste. */
+.cumple-filtro .btn-hoy:hover { background: var(--cumple-amarillo-hover); }
+.cumple-filtro .btn-hoy:focus-visible {
+    outline: 3px solid var(--cumple-blanco);
+    outline-offset: 2px;
+}
+
+/* ==================== Contador ==================== */
+.cumple-badge {
+    background: var(--cumple-amarillo);
+    color: var(--cumple-azul);
+    border-radius: 20px;
+    padding: 3px 14px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    margin-left: auto;
+}
+
+/* ==================== Encabezado de fecha ==================== */
+.cumple-fecha-label {
+    color: var(--cumple-acento);
+    font-weight: 700;
+    font-size: 1rem;
+    margin-bottom: 0;
+}
+
+/* ==================== Sin resultados ==================== */
+.cumple-empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--bs-secondary-color);
+}
+.cumple-empty i {
+    font-size: 3.5rem;
+    color: var(--cumple-acento);
+    opacity: .3;
+    display: block;
+    margin-bottom: 12px;
+}
+
+/* ==================== Tarjeta de alumno ==================== */
+.alumno-card {
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 3px 14px var(--cumple-sombra);
+    transition: transform .2s, box-shadow .2s;
+    background: var(--bs-body-bg);
+    border: none;
+}
+.alumno-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px var(--cumple-sombra-alta);
+}
+@media (prefers-reduced-motion: reduce) {
+    .alumno-card { transition: none; }
+    .alumno-card:hover { transform: none; }
+}
+
+.alumno-card .card-header-azul {
+    background: var(--cumple-azul);
+    padding: 0;
+    text-align: center;
+    position: relative;
+    height: 38px;
+}
+.alumno-card .card-header-azul::after {
+    content: '';
+    position: absolute;
+    bottom: -12px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 16px solid transparent;
+    border-right: 16px solid transparent;
+    border-top: 12px solid var(--cumple-azul);
+}
+.alumno-card .foto-wrapper {
+    margin: 0 auto;
+    margin-top: -2px;
+    width: 108px;
+    height: 108px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 3px solid var(--cumple-amarillo);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .18);
+    background: var(--bs-tertiary-bg);
+}
+.alumno-card .foto-wrapper img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.alumno-card .card-body-custom {
+    padding: 14px 16px 16px;
+    text-align: center;
+}
+/* line-height 1.25 y no el 0,75 original: con 0,75 un nombre que ocupa dos
+   líneas se montaba sobre sí mismo. */
+.alumno-card .alumno-nombre {
+    font-weight: 700;
+    font-size: 0.92rem;
+    color: var(--cumple-acento);
+    line-height: 1.25;
+    margin-bottom: 4px;
+}
+.alumno-card .alumno-id {
+    font-size: 0.78rem;
+    color: var(--cumple-tenue);
+    margin-bottom: 6px;
+}
+.alumno-card .edad-badge {
+    display: inline-block;
+    background: var(--cumple-azul);
+    color: var(--cumple-amarillo);
+    border-radius: 20px;
+    padding: 2px 14px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+.alumno-card .fecha-nacimiento {
+    font-size: 0.78rem;
+    color: var(--cumple-tenue);
+    margin-bottom: 12px;
+}
+/* Botón azul con texto amarillo, como el original. */
+.alumno-card .btn-tarjeta {
+    background: var(--cumple-azul);
+    color: var(--cumple-amarillo);
+    border: none;
+    border-radius: 7px;
+    padding: 6px 16px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-decoration: none;
+    transition: background .2s;
+    display: inline-block;
+}
+.alumno-card .btn-tarjeta:hover {
+    background: var(--cumple-azul-hover);
+    color: var(--cumple-amarillo);
+    text-decoration: none;
+}
+.alumno-card .btn-tarjeta:focus-visible {
+    outline: 3px solid var(--cumple-acento);
+    outline-offset: 2px;
+}
+/* En tema oscuro el botón azul se funde con la tarjeta: se le marca el borde. */
+[data-bs-theme="dark"] .alumno-card .btn-tarjeta { box-shadow: 0 0 0 1px rgba(255, 224, 1, .35); }
+
+/* En táctil, el botón «Hoy» del tamaño del pulgar. */
+@media (pointer: coarse) {
+    .cumple-filtro .btn-hoy { min-height: 44px; }
+}
+
+/*
+| =====================================================================
+| Selector de fecha con los cumpleaños marcados
+| =====================================================================
+| Sustituye al <input type="date"> nativo, que no deja marcar días. El
+| calendario muestra en amarillo los días con cumpleaños y cuántos son,
+| para ver de un vistazo qué días hay que preparar tarjetas.
+|   día con cumpleaños   fondo amarillo, número azul, contador
+|   día elegido          fondo azul, número amarillo (12:1)
+|   hoy                  aro azul (amarillo en tema oscuro)
+*/
+.cumple-picker {
+    position: relative;
+    flex-shrink: 0;
+}
+.cumple-picker__boton {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 2px solid var(--cumple-amarillo);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 0.85rem;
+    background: var(--cumple-blanco);
+    color: var(--cumple-azul);
+    font-weight: 600;
+    cursor: pointer;
+}
+.cumple-picker__boton:hover { background: #FFFBD6; color: var(--cumple-azul); }
+.cumple-picker__boton:focus-visible {
+    outline: 3px solid var(--cumple-amarillo);
+    outline-offset: 2px;
+}
+.cumple-picker__flecha {
+    font-size: .7rem;
+    transition: transform .15s;
+}
+.cumple-picker__boton[aria-expanded="true"] .cumple-picker__flecha { transform: rotate(180deg); }
+
+/* ---- El calendario ---- */
+.cumple-cal {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    z-index: 1060;
+    width: 318px;
+    padding: 12px;
+    border-radius: 12px;
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    border: 1px solid var(--bs-border-color);
+    box-shadow: 0 12px 32px var(--cumple-sombra-alta);
+}
+.cumple-cal[hidden] { display: none; }
+
+.cumple-cal__cabecera {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: -12px -12px 10px;
+    padding: 10px 12px;
+    border-radius: 12px 12px 0 0;
+    background: linear-gradient(90deg, var(--cumple-azul), var(--cumple-azul-suave));
+}
+.cumple-cal__titulo { flex: 1; text-align: center; min-width: 0; }
+.cumple-cal__mes {
+    color: var(--cumple-blanco);
+    font-weight: 700;
+    font-size: .95rem;
+}
+.cumple-cal__total {
+    color: var(--cumple-amarillo);
+    font-size: .74rem;
+    font-weight: 600;
+}
+.cumple-cal__nav {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .14);
+    color: var(--cumple-amarillo);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.cumple-cal__nav:hover { background: rgba(255, 255, 255, .26); }
+.cumple-cal__nav:focus-visible { outline: 2px solid var(--cumple-amarillo); outline-offset: 1px; }
+
+.cumple-cal__semana,
+.cumple-cal__dias {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 3px;
+}
+.cumple-cal__semana {
+    margin-bottom: 4px;
+    text-align: center;
+    font-size: .72rem;
+    font-weight: 700;
+    color: var(--cumple-tenue);
+}
+.cumple-cal__dia {
+    position: relative;
+    aspect-ratio: 1;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--bs-body-color);
+    font-size: .85rem;
+    cursor: pointer;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background .12s;
+}
+.cumple-cal__dia:hover { background: var(--bs-tertiary-bg); }
+.cumple-cal__dia:focus-visible {
+    outline: 2px solid var(--cumple-acento);
+    outline-offset: 1px;
+    z-index: 1;
+}
+
+/* Día con cumpleaños: superficie amarilla con texto azul (12:1). */
+.cumple-cal__dia.con-cumple {
+    background: var(--cumple-amarillo);
+    color: var(--cumple-azul);
+    font-weight: 700;
+}
+.cumple-cal__dia.con-cumple:hover { background: var(--cumple-amarillo-hover); }
+/* El contador, como una chapita azul en la esquina. */
+.cumple-cal__n {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    border-radius: 9px;
+    background: var(--cumple-azul);
+    color: var(--cumple-amarillo);
+    font-size: .64rem;
+    font-weight: 700;
+    line-height: 17px;
+    text-align: center;
+    box-shadow: 0 0 0 2px var(--bs-body-bg);
+}
+/* Hoy: un aro, para no confundirlo con el día elegido. */
+.cumple-cal__dia.hoy { box-shadow: inset 0 0 0 2px var(--cumple-acento); }
+/* Elegido: azul con número amarillo. Gana a «con cumpleaños». */
+.cumple-cal__dia.elegido,
+.cumple-cal__dia.elegido:hover {
+    background: var(--cumple-azul);
+    color: var(--cumple-amarillo);
+    font-weight: 700;
+}
+.cumple-cal__dia.elegido .cumple-cal__n {
+    background: var(--cumple-amarillo);
+    color: var(--cumple-azul);
+}
+[data-bs-theme="dark"] .cumple-cal__dia.elegido { box-shadow: inset 0 0 0 2px var(--cumple-amarillo); }
+
+.cumple-cal__pie {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--bs-border-color);
+}
+.cumple-cal__leyenda {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: .76rem;
+    color: var(--cumple-tenue);
+}
+.cumple-cal__muestra {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    background: var(--cumple-amarillo);
+    box-shadow: inset 0 0 0 1px rgba(0, 42, 100, .25);
+}
+.cumple-cal__hoy {
+    border: none;
+    border-radius: 6px;
+    padding: 5px 12px;
+    background: var(--cumple-azul);
+    color: var(--cumple-amarillo);
+    font-size: .78rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+.cumple-cal__hoy:hover { background: var(--cumple-azul-hover); }
+.cumple-cal__hoy:focus-visible { outline: 2px solid var(--cumple-acento); outline-offset: 2px; }
+[data-bs-theme="dark"] .cumple-cal__hoy { box-shadow: 0 0 0 1px rgba(255, 224, 1, .35); }
+
+/* ==================== Próximos 14 días ==================== */
+.cumple-proximos {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.cumple-proximos__titulo {
+    font-size: .82rem;
+    font-weight: 700;
+    color: var(--cumple-acento);
+    margin-right: 2px;
+}
+.cumple-proximos__vacio {
+    font-size: .82rem;
+    color: var(--cumple-tenue);
+}
+.cumple-proximo {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px 4px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--bs-border-color);
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    font-size: .8rem;
+    font-weight: 600;
+    text-decoration: none;
+    text-transform: capitalize;
+    transition: border-color .15s, box-shadow .15s;
+}
+.cumple-proximo:hover {
+    border-color: var(--cumple-acento);
+    box-shadow: 0 2px 8px var(--cumple-sombra);
+    color: var(--bs-body-color);
+}
+.cumple-proximo:focus-visible { outline: 2px solid var(--cumple-acento); outline-offset: 2px; }
+.cumple-proximo__n {
+    background: var(--cumple-amarillo);
+    color: var(--cumple-azul);
+    border-radius: 12px;
+    padding: 1px 8px;
+    font-weight: 700;
+}
+.cumple-proximo.activo {
+    background: var(--cumple-azul);
+    border-color: var(--cumple-azul);
+    color: var(--cumple-amarillo);
+}
+[data-bs-theme="dark"] .cumple-proximo.activo { border-color: var(--cumple-amarillo); }
+
+@media (prefers-reduced-motion: reduce) {
+    .cumple-picker__flecha, .cumple-cal__dia, .cumple-proximo { transition: none; }
+}
+
+/* En el teléfono el calendario ocupa el ancho de la barra. */
+@media (max-width: 575.98px) {
+    .cumple-picker { position: static; }
+    .cumple-filtro { position: relative; }
+    .cumple-cal {
+        left: 0;
+        right: 0;
+        width: auto;
+    }
+}
+@media (pointer: coarse) {
+    .cumple-picker__boton, .cumple-cal__hoy { min-height: 44px; }
+    .cumple-cal__nav { width: 44px; height: 44px; }
+}

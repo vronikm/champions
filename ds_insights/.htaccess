@@ -1,0 +1,21 @@
+# =====================================================================
+# DigiSports Insights
+# =====================================================================
+RewriteEngine On
+Options All -Indexes
+
+# Codigo de servidor: se incluye desde index.php, nunca se solicita por URL.
+# cli/ va en la lista porque el capturador de cartera es una herramienta de
+# linea de comandos: servirlo por HTTP lo dejaria ejecutable por cualquiera.
+RewriteRule ^(cli/|config/|docs/|controllers/|views/) - [F,L]
+
+# docs/ se anadio despues de comprobarlo: MODELO_INSIGHTS.md, ANALISIS_ACTUAL.md
+# e INDICADORES.pdf se servian con HTTP 200. Las reglas de mod_rewrite de la
+# raiz NO se heredan aqui —un .htaccess con RewriteEngine propio las reemplaza,
+# no las suma—, asi que el bloqueo de .md del .htaccess de arriba no llegaba a
+# este modulo. La documentacion describe el modelo de datos y las formulas: no
+# es un secreto, pero tampoco es contenido publico del sitio.
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^([a-zA-Z0-9/_-]+)$ index.php?views=$1 [QSA,L]

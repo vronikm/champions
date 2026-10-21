@@ -1,0 +1,44 @@
+-- =====================================================================
+-- 053 · Dos indices por fecha, y solo dos
+-- =====================================================================
+-- POR QUE AHORA Y NO ANTES
+--
+-- El §40 del encargo dice que los indices se crean DESPUES de analizar
+-- consultas reales, y asi se hizo: el modulo se construyo entero, se
+-- cronometraron las siete vistas y se midio cada consulta antes de tocar
+-- ningun indice.
+--
+--
+-- LA MEDICION CORRIGIO LA HIPOTESIS
+--
+-- La primera lectura de los planes decia que un indice por fecha no serviria:
+-- las consultas recorrian la tabla entera pese a haber indices, porque el
+-- rango de prueba —ocho meses— cubre casi todos los datos y el optimizador
+-- prefiere el recorrido completo. Cierto, y comprobado:
+--
+--     rango de 8 meses    7,00 ms sin indice   6,16 ms con indice   ALL
+--
+-- Pero el rango de prueba no era el que ve el usuario. El periodo POR
+-- OMISION de todas las vistas es el mes en curso, y ahi el resultado se
+-- invierte:
+--
+--     un mes              5,63 ms sin indice   1,78 ms con indice   range
+--     un dia              2,75 ms sin indice   0,17 ms con indice   ref
+--
+-- Medir el caso comodo en vez del caso real habria dejado el indice fuera
+-- con un argumento que sonaba bien.
+--
+--
+-- LOS QUE NO SE CREAN, Y POR QUE
+--
+--     alumno_pago(pago_fecha)   0,82 -> 0,47 ms sobre 671 filas. Real, pero
+--                               0,35 ms no justifica un indice que hay que
+--                               mantener en cada escritura. Revisar si la
+--                               tabla pasa de unas 5.000 filas, que es donde
+--                               las otras dos empezaron a notarlo.
+--
+--     dsl_abono(abono_fecha)    ya existe: ix_dsla_fecha.
+-- =====================================================================
+
+CREATE INDEX ix_reserva_fecha ON dsa_reserva (reserva_fecha);
+CREATE INDEX ix_dsapago_fecha ON dsa_pago (pago_fecha);

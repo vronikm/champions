@@ -1,0 +1,54 @@
+-- =====================================================================
+-- 045 · «Exportar» pasa a ser una acción con permiso propio
+-- =====================================================================
+-- QUÉ RESUELVE
+--
+-- El vocabulario de acciones del sistema era ver / crear / editar /
+-- eliminar. Exportar no encajaba en ninguna, y no es un detalle menor:
+-- exportar es la acción por la que la información SALE del sistema.
+--
+-- Un coordinador que puede ver la cartera de su sede en pantalla no
+-- necesariamente debería poder llevarse un Excel con ella. Son dos
+-- decisiones distintas y hasta ahora sólo se podía tomar una.
+--
+--
+-- POR QUÉ UNA COLUMNA Y NO OTRA COSA
+--
+-- Se barajaron tres salidas:
+--
+--   (a) Una columna nueva. Es lo que se hace aquí.
+--   (b) Reutilizar permiso_crear como «puede generar un archivo». Cero
+--       cambios de esquema, pero mezcla semánticas: quien administre
+--       permisos vería «crear» marcado en un reporte que no crea nada.
+--   (c) Registrar cada exportación como una vista propia en
+--       seguridad_menu. Tampoco toca el esquema, pero infla el menú con
+--       entradas que no son menú.
+--
+-- La (a) es la única que deja el modelo diciendo la verdad. El coste es
+-- una columna y dos ediciones en seguridad.php, porque los cuatro nombres
+-- estaban cableados en la consulta y en el array que construye.
+--
+--
+-- POR QUÉ 'N' POR DEFECTO
+--
+-- Menor privilegio. Nadie exporta hasta que alguien lo conceda
+-- explícitamente. No se rompe nada al aplicarla porque hoy ninguna
+-- pantalla comprueba esta acción: la estrena Insights.
+--
+-- El rol 1 no necesita la concesión: es_superadministrador() pasa por
+-- encima de toda la matriz.
+--
+--
+-- «VER» SIGUE GOBERNANDO
+--
+-- No se puede exportar lo que no se puede ver, y eso ya está resuelto sin
+-- tocar nada: el guardado borra la fila entera cuando permiso_ver es 'N',
+-- y la matriz de la pantalla deshabilita toda casilla [data-accion] que no
+-- sea «ver» cuando la lectura se apaga. Ambos mecanismos son genéricos y
+-- recogen la acción nueva sin cambios.
+-- =====================================================================
+
+ALTER TABLE seguridad_permiso
+    ADD COLUMN permiso_exportar CHAR(1) NOT NULL DEFAULT 'N'
+    COMMENT 'S/N. Permite sacar la informacion del sistema (Excel, PDF, impresion).'
+    AFTER permiso_eliminar;

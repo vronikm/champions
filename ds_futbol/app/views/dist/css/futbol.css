@@ -1,0 +1,33 @@
+/*
+| =====================================================================
+| Fútbol: ajustes comunes a todas las vistas del módulo
+| =====================================================================
+| Se carga después de core.css, desde app/views/inc/cabecera.php y desde
+| las vistas que arman su propio <head> (agenda, buscarAsistencia y
+| cumpleaniosList). Lo que se ponga aquí afecta sólo a ds_futbol; lo común
+| a todos los módulos va en ds_core/assets/css/core.css.
+*/
+
+/*
+| Título de la página (la cabecera azul de contenido, junto al breadcrumb).
+|
+| Cada vista lo escribía con una etiqueta distinta: h1 (2,5rem) en el
+| dashboard y la mayoría, h3, h4 o h5 en otras. El h1 resultaba demasiado
+| grande para un panel de administración y el tamaño cambiaba al pasar de
+| una vista a otra. Aquí se iguala a 1,5rem sin tocar la etiqueta: el h1
+| sigue siendo el título para lectores de pantalla y buscadores.
+|
+| Se excluye #fecha (empleadoEntrada): es la fecha y hora del marcador,
+| no un título.
+*/
+.app-content-header :is(h1, h2, h3, h4, h5):not(#fecha) {
+    font-size: 1.5rem;
+    font-weight: 500;
+    line-height: 1.3;
+}
+
+@media (max-width: 575.98px) {
+    .app-content-header :is(h1, h2, h3, h4, h5):not(#fecha) {
+        font-size: 1.25rem;
+    }
+}

@@ -1,0 +1,6 @@
+# Datos de servidor. No se sirven por HTTP.
+Options -Indexes
+Require all denied
+<IfModule mod_access_compat.c>
+    Deny from all
+</IfModule>

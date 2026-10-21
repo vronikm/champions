@@ -1,0 +1,935 @@
+/* ==========================================================================
+   DigiSports Core — capa visual sobre AdminLTE
+   --------------------------------------------------------------------------
+   No sustituye a AdminLTE: lo reviste con la identidad DigiSports definida
+   en digisports.css (que debe cargarse antes que este archivo).
+   ========================================================================== */
+
+.ds-core {
+    /* Apuntan a las variables de Bootstrap 5.3, que se redefinen solas
+       dentro de [data-bs-theme=dark]. Asi las veinte declaraciones que
+       usan estos tokens siguen el tema sin tocar ninguna. */
+    --core-borde:   var(--bs-border-color);
+    --core-suave:   var(--bs-tertiary-bg);
+    --core-texto:   var(--bs-body-color);
+    --core-tenue:   var(--bs-secondary-color);
+
+    font-family: var(--ds-font);
+    color: var(--core-texto);
+}
+
+/* ---------- Barra superior y menú lateral ----------
+   OJO CON EL NOMBRE DE LA CLASE: AdminLTE 4 renombró .nav-sidebar a
+   .sidebar-menu. Las reglas de aquí apuntaban a la vieja, así que NO SE
+   APLICABAN desde la migración —en ninguno de los dos temas—. Se vio al
+   medir el menú en claro: los enlaces salían en azul por defecto, a 2.42
+   de contraste, y el elemento activo no tenía el naranja de marca sino el
+   blanco translúcido de AdminLTE. Comprobado en el DOM: .nav-sidebar
+   devuelve 0 elementos. */
+
+/* El fondo lo pone la plantilla: el elemento lleva data-bs-theme="dark" y
+   su clase bg-body resuelve al tono oscuro. Aqui solo el filete. */
+.ds-core__navbar { border-bottom: 1px solid rgba(255, 255, 255, .06); }
+
+/* Se asigna la variable que Bootstrap ya expone en vez de pisar la
+   propiedad con !important: asi la barra se personaliza por el camino
+   previsto y nada tiene que ganar una guerra de especificidad. */
+.ds-core__navbar {
+    --bs-nav-link-color: #cbd5e1;
+    --bs-nav-link-hover-color: #ffffff;
+}
+
+/* Igual que la barra: bg-body-secondary + data-bs-theme="dark". */
+
+/* El rótulo de la marca NO lleva fondo propio: hereda el del menú.
+   Antes se pintaba con var(--ds-bg) —#080d18—, mucho más oscuro que el
+   menú (#343a40), y se veía como una caja negra alrededor del texto. La
+   plantilla no pinta nada ahí: .sidebar-brand y .brand-link sólo hacen
+   maquetación. Se conserva el filete de separación con el menú. */
+/* El rotulo no lleva NADA propio: ni fondo ni filete. Hereda del menu,
+   igual que en Arena, League y Core, cuyo aside no tiene esta clase y
+   por eso nunca los tuvieron. La plantilla tampoco pinta ahi. */
+
+/*
+| EL COLOR DEL MENU LO PONE LA PLANTILLA, NO NOSOTROS.
+|
+| AdminLTE 4 pinta el menu con sus propias variables —--lte-sidebar-color,
+| --lte-sidebar-hover-bg, --lte-sidebar-menu-active-bg…— y esa es la forma
+| prevista de personalizarlo. Aqui habia colores escritos a mano (#cbd5e1,
+| var(--ds-surface-2)) que los pisaban, asi que el menu de DigiSports se
+| apartaba del de la plantilla sin motivo.
+|
+| Se conserva solo lo ESTRUCTURAL —el redondeo, la separacion y el ancho fijo
+| del icono, que alinean las etiquetas— y se devuelve el color a la hoja de
+| AdminLTE. Resultado: el mismo menu en los cuatro modulos.
+|
+| LO QUE SI DISTINGUE A CADA SISTEMA es el elemento activo, y sale de
+| --ds-acento, que cada modulo define. El texto va aparte en
+| --ds-acento-texto porque el naranja de Basketball pide texto oscuro
+| (#212529 sobre #ff7900 = 5.87) y los tonos oscuros de Arena, League y Core
+| piden blanco.
+*/
+.ds-core .sidebar-menu .nav-link {
+    border-radius: var(--ds-radius-sm);
+    margin: 2px 8px;
+}
+
+
+.ds-core .sidebar-menu .nav-link.active {
+    background: var(--ds-acento, var(--ds-primary)) !important;
+    color: var(--ds-acento-texto, #212529) !important;
+    box-shadow: 0 4px 14px rgb(from var(--ds-acento, var(--ds-primary)) r g b / .28);
+}
+
+/* ---------- El padre de la rama abierta ----------
+   Cuando se entra en un submenu, el JS del menu marca como activo TAMBIEN al
+   padre, para que la rama quede abierta y se vea donde se esta. El efecto era
+   que «Asistencia alumnos» y «Registrar asistencia» quedaban pintados
+   exactamente igual: dos elementos con el mismo aspecto y sólo uno es la
+   pagina abierta.
+
+   Ahora hay tres estados distinguibles: normal, RAMA que te contiene, y la
+   pagina en la que estas.
+
+   POR QUE UN TINTE Y NO EL ACENTO COMO TEXTO
+
+   Porque los cuatro acentos estan elegidos para ser FONDO con texto encima,
+   no para ser texto. Medidos contra el fondo del menu (#343A40):
+
+       Basketball #ff7900  4,38      Arena    #0e7490  2,15
+       League     #7c3aed  2,02      Insights #15803d  2,29
+
+   Ninguno llega a 4,5. Pintar el padre con el acento en el texto lo habria
+   dejado ilegible en los cuatro modulos, y peor en League.
+
+   Con el acento al 22 % de fondo y el texto blanco de siempre, la peor
+   combinacion da 8,46 —Basketball— y la mejor 10,28. El rail va aclarado un
+   40 % hacia el blanco porque el acento puro sobre el menu se queda en 2,02
+   y un elemento grafico necesita 3:1; aclarado, el peor caso es 4,24.
+
+   El :has() no llega a navegadores antiguos. Ahi el padre se queda con el
+   relleno solido, que es exactamente el comportamiento de hoy: se pierde la
+   mejora, no se rompe nada. */
+.ds-core .sidebar-menu .nav-item:has(> .nav-treeview) > .nav-link.active {
+    background: color-mix(in srgb, var(--ds-acento, var(--ds-primary)) 22%, transparent) !important;
+    color: #fff !important;
+    /* inset y no border-left: un borde empujaria el texto 3 px y las
+       etiquetas de la rama abierta dejarian de alinearse con las demas. */
+    box-shadow: inset 3px 0 0 color-mix(in srgb, var(--ds-acento, var(--ds-primary)) 60%, #fff);
+}
+
+/* El icono del padre sí lleva el acento aclarado: es un detalle pequeño que
+   ayuda a seguir la rama con la vista, y como grafico le basta el 3:1 que ya
+   se comprobo. */
+.ds-core .sidebar-menu .nav-item:has(> .nav-treeview) > .nav-link.active > i {
+    color: color-mix(in srgb, var(--ds-acento, var(--ds-primary)) 60%, #fff);
+}
+
+.ds-core .sidebar-menu .nav-link i { width: 22px; text-align: center; }
+
+/* ---------- Contenido ----------
+   Aqui habia .ds-core .content-wrapper y .ds-core .content-header h1.
+   AdminLTE 4 renombro .content-wrapper a .app-content y .content-header
+   dejo de existir, asi que las dos reglas no alcanzaban a nada desde la
+   migracion. Comprobado: cero apariciones en adminlte.min.css y cero en
+   nuestro marcado. El fondo del area de contenido lo pone ahora la
+   plantilla segun el tema. */
+
+.ds-core .card {
+    border: 1px solid var(--core-borde);
+    border-radius: var(--ds-radius-md);
+    box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+}
+
+.ds-core .card-header {
+    border-bottom: 1px solid var(--core-borde);
+    background: var(--bs-body-bg);
+    border-radius: var(--ds-radius-md) var(--ds-radius-md) 0 0;
+    padding: 14px 18px;
+}
+
+.ds-core .card-title { font-weight: 700; font-size: 1rem; }
+
+/* ---------- Tarjetas de indicador ----------
+   Retiradas: los cuatro módulos usan ahora .info-box, el componente de
+   AdminLTE, que pone la etiqueta ENCIMA del valor. Antes había tres
+   implementaciones distintas de la misma tarjeta —info-box en Basketball,
+   .ds-kpi propio en Arena y Core, y card con estilos en línea en League—.
+   La comprobación que lo impide está en pruebas/qa_css_temas.php.           */
+
+/* ---------- Tablas ---------- */
+
+.ds-core .table thead th {
+    background: var(--core-suave);
+    border-bottom: 1px solid var(--core-borde) !important;
+    border-top: 0 !important;
+    font-size: .74rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--core-tenue);
+    white-space: nowrap;
+}
+
+.ds-core .table td {
+    vertical-align: middle;
+    border-top: 1px solid var(--core-borde);
+}
+
+.ds-core .table tbody tr:hover { background: var(--core-suave); }
+
+/* ---------- Matriz de permisos ---------- */
+
+.ds-core .tabla-permisos th.accion {
+    text-align: center;
+    width: 92px;
+}
+
+.ds-core .tabla-permisos td.accion { text-align: center; }
+
+.ds-core .tabla-permisos .grupo td {
+    background: var(--core-suave);
+    font-weight: 700;
+    font-size: .78rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--core-tenue);
+}
+
+/* Interruptor accesible y compacto para cada acción. */
+.ds-core .switch { position: relative; display: inline-block; width: 40px; height: 22px; }
+.ds-core .switch input { opacity: 0; width: 0; height: 0; }
+
+.ds-core .switch span {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background: #cbd5e1;
+    border-radius: 999px;
+    transition: background .18s;
+}
+
+.ds-core .switch span::before {
+    content: "";
+    position: absolute;
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    top: 3px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform .18s;
+}
+
+.ds-core .switch input:checked + span { background: var(--ds-primary); }
+.ds-core .switch input:checked + span::before { transform: translateX(18px); }
+.ds-core .switch input:focus-visible + span { outline: 2px solid var(--ds-primary); outline-offset: 2px; }
+.ds-core .switch input:disabled + span { opacity: .45; cursor: not-allowed; }
+
+/* La acción "ver" gobierna al resto: se resalta. */
+.ds-core .switch--ver input:checked + span { background: var(--ds-success); }
+
+/* Fila sin lectura: sus acciones quedan atenuadas. */
+.ds-core tr.sin-lectura td.accion .switch:not(.switch--ver) { opacity: .35; }
+
+/* ---------- Insignias ---------- */
+
+.ds-core .badge-modulo {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: .7rem;
+    font-weight: 700;
+    background: var(--core-suave);
+    border: 1px solid var(--core-borde);
+    color: var(--core-tenue);
+    margin-right: 4px;
+}
+
+/* Cada modulo declara su pareja de colores; la regla de abajo los usa.
+   En claro, fondo palido y texto oscuro. En oscuro se invierte el papel:
+   fondo del mismo tono pero translucido sobre el fondo oscuro, y texto
+   claro del mismo color. Asi la insignia sigue diciendo «naranja es
+   Basketball» en los dos temas. */
+.ds-core .badge-modulo--basketball { --bm-borde: #fde68a; --bm-texto: #1e3a8a; --bm-fondo: #fefce8; }
+.ds-core .badge-modulo--core       { --bm-borde: #c7d2fe; --bm-texto: #3730a3; --bm-fondo: #eef2ff; }
+.ds-core .badge-modulo--arena      { --bm-borde: #a5f3fc; --bm-texto: #0e7490; --bm-fondo: #ecfeff; }
+.ds-core .badge-modulo--league     { --bm-borde: #ddd6fe; --bm-texto: #5b21b6; --bm-fondo: #f5f3ff; }
+.ds-core .badge-modulo--insights   { --bm-borde: #bbf7d0; --bm-texto: #15803d; --bm-fondo: #f0fdf4; }
+
+[data-bs-theme="dark"] .ds-core .badge-modulo--basketball { --bm-borde: rgba(253, 224, 71, .30); --bm-texto: #fde047; --bm-fondo: rgba(202, 138, 4, .20); }
+[data-bs-theme="dark"] .ds-core .badge-modulo--core       { --bm-borde: rgba(199, 210, 254, .30); --bm-texto: #a5b4fc; --bm-fondo: rgba(55, 48, 163, .25); }
+[data-bs-theme="dark"] .ds-core .badge-modulo--arena      { --bm-borde: rgba(165, 243, 252, .30); --bm-texto: #67e8f9; --bm-fondo: rgba(14, 116, 144, .25); }
+[data-bs-theme="dark"] .ds-core .badge-modulo--league     { --bm-borde: rgba(221, 214, 254, .30); --bm-texto: #c4b5fd; --bm-fondo: rgba(91, 33, 182, .28); }
+[data-bs-theme="dark"] .ds-core .badge-modulo--insights   { --bm-borde: rgba(187, 247, 208, .30); --bm-texto: #86efac; --bm-fondo: rgba(21, 128, 61, .25); }
+
+.ds-core .badge-modulo--basketball,
+.ds-core .badge-modulo--core,
+.ds-core .badge-modulo--arena,
+.ds-core .badge-modulo--league,
+.ds-core .badge-modulo--insights {
+    border-color: var(--bm-borde);
+    color: var(--bm-texto);
+    background: var(--bm-fondo);
+}
+
+/* ---------- Botones ---------- */
+
+.ds-core .btn-primary {
+    /* Texto oscuro: el naranja de la marca es demasiado claro para el
+       blanco (2.63 de contraste). Con texto oscuro sube a 5.87, y a
+       6.83 sobre el naranja del hover. */
+    --bs-btn-color:                 #212529;
+    --bs-btn-bg:                    var(--ds-primary);
+    --bs-btn-border-color:          var(--ds-primary);
+    --bs-btn-hover-color:           #212529;
+    --bs-btn-hover-bg:              var(--ds-primary-hover);
+    --bs-btn-hover-border-color:    var(--ds-primary-hover);
+    --bs-btn-active-color:          #212529;
+    --bs-btn-active-bg:             var(--ds-primary-hover);
+    --bs-btn-active-border-color:   var(--ds-primary-hover);
+    --bs-btn-disabled-color:        #212529;
+    --bs-btn-disabled-bg:           var(--ds-primary);
+    --bs-btn-disabled-border-color: var(--ds-primary);
+}
+
+.ds-core .btn { border-radius: var(--ds-radius-sm); font-weight: 600; }
+
+/* ==========================================================================
+   Acciones: un solo patron para toda pantalla administrativa
+   --------------------------------------------------------------------------
+   Antes cada vista resolvia el pie a su manera —unas con
+   d-flex justify-content-between, otras con text-right, otras sin pie— y los
+   botones mezclaban btn-sm, btn-xs y el tamano por defecto en la misma
+   pantalla. El resultado: el boton de Guardar cambiaba de sitio y de tamano
+   al pasar de una vista a otra.
+
+   La regla es una sola: las acciones van SIEMPRE a la derecha, en el mismo
+   orden (salir primero, confirmar al final) y con el mismo tamano.
+   ========================================================================== */
+
+/* Pie de formulario. La accion principal queda a la derecha del todo, que es
+   donde la vista termina de leerse. */
+.ds-acciones {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: .5rem;
+}
+
+/* Un texto informativo a la izquierda no debe empujar los botones. */
+.ds-acciones__nota {
+    margin: 0 auto 0 0;
+    font-size: .85rem;
+    color: var(--core-tenue);
+}
+
+/* Todos los botones de accion miden lo mismo y no se estrechan segun su
+   texto: "Volver" y "Guardar" acaban con el mismo ancho. */
+.ds-acciones .btn {
+    min-width: 7.5rem;
+    justify-content: center;
+}
+
+/* Acciones dentro de una tabla.
+   Se aplica sobre la propia celda y NO cambia su modo de maquetacion: una
+   celda de tabla convertida en flex pierde la alineacion vertical con el
+   resto de la fila. Basta con alinear a la derecha y uniformar el boton. */
+td.ds-tabla-acciones {
+    text-align: right;
+    white-space: nowrap;
+}
+
+/* Los botones de fila son iconos: mismo ancho aunque el icono sea mas
+   estrecho, para que las columnas de acciones queden a plomo. */
+td.ds-tabla-acciones .btn {
+    min-width: 2.1rem;
+    padding: .25rem .5rem;
+    line-height: 1.5;
+    vertical-align: middle;
+}
+
+td.ds-tabla-acciones .btn + .btn,
+td.ds-tabla-acciones form + .btn,
+td.ds-tabla-acciones .btn + form,
+td.ds-tabla-acciones form + form { margin-left: .25rem; }
+
+td.ds-tabla-acciones form {
+    display: inline-block;
+    margin: 0;
+    vertical-align: middle;
+}
+
+/* Hueco del ancho de un boton, para que las filas sin una accion no
+   desplacen las de al lado. */
+td.ds-tabla-acciones .ds-hueco {
+    display: inline-block;
+    min-width: 2.1rem;
+    text-align: center;
+    vertical-align: middle;
+    color: var(--core-tenue);
+}
+
+/* En movil las acciones ocupan el ancho y siguen en el mismo orden. */
+@media (max-width: 576px) {
+    .ds-acciones { flex-direction: column-reverse; align-items: stretch; }
+    .ds-acciones .btn { width: 100%; }
+    .ds-acciones__nota { margin: 0 0 .5rem 0; text-align: center; }
+}
+
+/* ---------- Aviso de rol protegido ---------- */
+
+.ds-core .aviso-superadmin {
+    display: flex;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: var(--ds-radius-sm);
+    /* Misma pareja clara/oscura que las insignias. */
+    background: var(--aviso-fondo, #fff7ed);
+    border: 1px solid var(--aviso-borde, #fed7aa);
+    color: var(--aviso-texto, #9a3412);
+    font-size: .88rem;
+}
+
+@media (max-width: 576px) {
+    .ds-core .tabla-permisos th.accion,
+    .ds-core .tabla-permisos td.accion { width: auto; }
+}
+
+/* ==========================================================================
+   Botones propios de las filas de tabla
+   --------------------------------------------------------------------------
+   .btn-ver y .btn-actualizar no existen en Bootstrap: son de este proyecto.
+   Vivian dentro de dist/css/adminlte.css, el fichero del proveedor, donde
+   una actualizacion de AdminLTE los habria borrado y los botones "Ver" y
+   "Actualizar" de todas las tablas se habrian quedado sin color.
+
+   Se escriben con dos clases (.btn.btn-ver) a proposito: core.css se carga
+   ANTES que adminlte.css en las 70 vistas, y .btn de Bootstrap lleva
+   background-color:transparent. Con una sola clase la especificidad
+   empataria y ganaria el que carga despues, es decir Bootstrap.
+
+   El borde iba en verde —hsl(135,33%,68%)— en los dos, copiado de
+   .btn-actualizar sin ajustarlo: .btn-ver es azul y llevaba borde verde, y
+   ambos hover terminaban en #1e7e34. Aqui cada uno lleva el borde de su
+   propio color.
+   ========================================================================== */
+
+.btn.btn-actualizar {
+    color: #312f2f;
+    background-color: #9ed3ab;
+    border-color: #92c8a0;
+    box-shadow: none;
+}
+
+.btn.btn-actualizar:hover,
+.btn.btn-actualizar:focus {
+    color: #fff;
+    background-color: #218838;
+    border-color: #1e7e34;
+}
+
+.btn.btn-ver {
+    color: #312f2f;
+    background-color: #9fb9d0;
+    border-color: #8aa8c3;
+    box-shadow: none;
+}
+
+.btn.btn-ver:hover,
+.btn.btn-ver:focus {
+    color: #fff;
+    background-color: #17a2b8;
+    border-color: #138496;
+}
+
+/* El aviso de superadministrador, en tema oscuro. */
+[data-bs-theme="dark"] .ds-core .aviso-superadmin {
+    --aviso-fondo: rgba(154, 52, 18, .22);
+    --aviso-borde: rgba(254, 215, 170, .30);
+    --aviso-texto: #fdba74;
+}
+
+/*
+|--------------------------------------------------------------------------
+| Objetivos táctiles en pantallas de dedo
+|--------------------------------------------------------------------------
+| Los botones de acción de una fila miden 31 px de alto, y el de eliminar
+| 30x31. Con ratón sobran; con el dedo no: la recomendación son 44 px, y por
+| debajo se falla el objetivo y se pulsa el de al lado —que aquí puede ser
+| «Eliminar»—.
+|
+| Se comprobó en un móvil de 390 px: DataTables Responsive esconde las
+| columnas y las devuelve al desplegar la fila, así que los botones SÍ están
+| ahí. Sólo eran demasiado pequeños.
+|
+| La regla va tras «pointer: coarse», que distingue el dedo del ratón. No es
+| lo mismo que un ancho de pantalla: una tablet grande se toca y un portátil
+| estrecho no. Así el escritorio queda exactamente igual.
+*/
+@media (pointer: coarse) {
+    td.ds-tabla-acciones .btn,
+    tr.child .btn,
+    .dtr-details .btn,
+    table tbody .btn {
+        min-height: 44px;
+        min-width: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Separación para que dos objetivos de 44 px no se toquen. */
+    td.ds-tabla-acciones .btn + .btn,
+    tr.child .btn + .btn { margin-left: .35rem; }
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| El pie es armazón: oscuro siempre
+|--------------------------------------------------------------------------
+| El armazón de DigiSports —Hub, acceso, barra superior, menú y pie— no
+| sigue el tema: es la identidad del producto. Lo que sí cambia con la
+| elección de la persona es el área donde se cargan las vistas.
+|
+| Sin esta regla, con el tema claro el pie se aclaraba y quedaba como una
+| franja blanca entre el contenido y el borde, rompiendo la continuidad con
+| la barra y el menú, que sí se quedan oscuros.
+*/
+.app-footer {
+    background: var(--ds-bg) !important;
+    color: #94a3b8 !important;
+    border-top: 1px solid rgba(255, 255, 255, .06);
+}
+
+.app-footer a        { color: #cbd5e1; }
+.app-footer a:hover  { color: #fff; }
+.app-footer strong,
+.app-footer b        { color: #e2e8f0; }
+
+/*
+|--------------------------------------------------------------------------
+| El clearfix de la cabecera estorba cuando la cabecera es flex
+|--------------------------------------------------------------------------
+| AdminLTE trae «.card-header::after { display:block; clear:both; content:"" }»,
+| un clearfix pensado para maquetación con flotantes. En un contenedor flex ese
+| pseudoelemento cuenta como UN ELEMENTO MÁS.
+|
+| Consecuencia medida en ds_arena/instalacionList: la cabecera va de 271 a 1479
+| y con «justify-content: space-between» el reparto era
+|
+|     título · grupo de controles · fantasma
+|
+| así que el fantasma se quedaba el borde derecho y los selects y el botón
+| «Nueva instalación» acababan en el medio, a 318 px del borde.
+|
+| Se desactiva SÓLO donde la cabecera se declara flex: ahí no hay flotantes que
+| limpiar, y el reparto vuelve a ser el que el marcado pide. Las cabeceras que
+| no son flex conservan el clearfix de la plantilla.
+*/
+.card-header.d-flex::after,
+.card-header.d-flex::before {
+    display: none;
+}
+
+/*
+| .callout: AdminLTE lo fija en --bs-gray-100 (#f8f9fa) y deja el texto en
+| `inherit`. La escala de grises de Bootstrap NO cambia con el tema —sólo los
+| tokens semánticos—, así que en oscuro queda texto claro sobre fondo claro.
+| Afecta a 13 vistas (League entero, 2 de Basketball, 1 de Core).
+|
+| Se corrige por las variables que la propia plantilla expone, no con reglas
+| que compitan en especificidad. El borde izquierdo lo sigue fijando cada
+| vista con su color de módulo.
+*/
+.callout {
+    --lte-callout-bg:     var(--bs-tertiary-bg);
+    --lte-callout-color:  var(--bs-body-color);
+    --lte-callout-border: var(--bs-border-color);
+}
+
+/* =========================================================================
+   El pie de una small-box sobre fondo oscuro va en blanco puro
+   =========================================================================
+   MEDIDO, no estimado:
+
+     #f8f9fa (el «light» de Bootstrap) sobre #198754 -> 4.30
+     #f8f9fa                           sobre #dc3545 -> 4.30
+     #ffffff                           sobre ambos   -> 4.53
+
+   WCAG pide 4.5 para texto, y el pie de estas tarjetas es texto pequeño. Con
+   el light de Bootstrap se quedaba a dos centesimas de cumplir en las
+   tarjetas verdes y rojas de los dos paneles —Basketball y League—, que es
+   justo donde van «Pagos receptados», «Pagos pendientes» y el diagnostico de
+   League.
+
+   Sobre cian y ambar el pie va en oscuro y ahi el contraste es de 7.88 y
+   9.46: esas no se tocan.
+
+   Hace falta !important porque .link-light de Bootstrap tambien lo lleva;
+   este selector gana por especificidad, no por orden. Las variantes con
+   .ds-core delante sobraban: estas ya alcanzan el mismo marcado.
+   ========================================================================= */
+.small-box.text-bg-success   .small-box-footer,
+.small-box.text-bg-danger    .small-box-footer,
+.small-box.text-bg-primary   .small-box-footer,
+.small-box.text-bg-secondary .small-box-footer {
+    color: #fff !important;
+}
+
+/* =========================================================================
+   .min-w-0 — para que text-truncate funcione dentro de un flex
+   =========================================================================
+   Bootstrap 5.3.8 NO trae utilidades de min-width. Se comprobó:
+
+       grep -o '\.min-w[a-z0-9-]*' bootstrap.min.css   ->  sin resultados
+
+   Y hace falta. Un hijo de flex arranca con min-width:auto, que significa
+   «nunca me encojas por debajo de mi contenido». Con eso, .text-truncate no
+   recorta nada: el texto largo ensancha la fila y empuja lo que tenga al
+   lado fuera de la pantalla. En un teléfono de 390 px eso es un nombre de
+   equipo largo tapando el marcador.
+
+   Poniendo min-width:0 el hijo sí puede encogerse y los puntos suspensivos
+   aparecen donde corresponde.
+
+   Sin !important: es una utilidad, no un parche, y debe poder pisarse.
+   ========================================================================= */
+.min-w-0 { min-width: 0; }
+
+/* =========================================================================
+   Objetivo táctil en el pie de las small-box
+   =========================================================================
+   MEDIDO: el pie de .small-box mide 30 px de alto en toda la plantilla —28
+   tarjetas en el panel de Basketball, las de Arena, Core y League—. No es
+   algo que introdujera un módulo: viene de AdminLTE.
+
+   30 px cumple el mínimo estricto de WCAG 2.5.8 (24x24), pero se queda
+   corto para un pulgar. La referencia práctica son 44 px, y estos paneles
+   se abren desde la cancha, no desde un escritorio.
+
+   Sólo se toca donde importa: @media (pointer: coarse) alcanza a los
+   dispositivos táctiles y deja el escritorio exactamente como estaba, así
+   que ninguna pantalla existente cambia de aspecto con ratón.
+   ========================================================================= */
+@media (pointer: coarse) {
+    .small-box-footer {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: .25rem;
+    }
+}
+
+/* La acción de la cabecera de una tarjeta, también del tamaño del pulgar.
+   Un .btn-sm mide 31 px; en táctil se lleva a 44. Sigue dentro del
+   @media (pointer: coarse) de arriba en intención: el escritorio no cambia. */
+@media (pointer: coarse) {
+    .card-header .btn-sm {
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+    }
+}
+
+/* =========================================================================
+   El acta del partido en un teléfono
+   =========================================================================
+   MEDIDO antes de tocar nada: 38 columnas, tabla de 1.186 px de ancho en una
+   pantalla de 390, y 280 casillas de 50x31 px. Se veían el jugador y DOS de
+   las dieciocho estadísticas; para anotar un triple había que arrastrar de
+   lado hasta perder de vista en qué fila se estaba.
+
+   Y es la pantalla que se llena en la mesa de anotación, en directo, con el
+   partido corriendo. Era la peor pantalla del módulo justo donde más importa.
+
+   QUÉ HACE ESTA REGLA
+
+   Por debajo de 768 px cada <tr> deja de ser una fila y pasa a ser la ficha
+   del jugador: el dorsal y el nombre arriba a todo lo ancho, las
+   estadísticas en rejilla de tres, y el botón de guardar abajo, del ancho
+   completo y de 44 px de alto.
+
+   El rótulo de cada casilla sale de data-rotulo, porque en la ficha ya no hay
+   <thead> que consultar: sin eso quedarían quince números sin nombre.
+
+   POR QUÉ CON CSS Y NO CON DOS MARCADOS
+
+   Duplicar —una tabla para escritorio, unas tarjetas para el teléfono, y
+   d-none para esconder una— habría enviado los campos DOS VECES: llevan
+   name="stat[...]" y el atributo form, así que ambos juegos irían en el
+   mismo envío y el segundo pisaría al primero. Un solo marcado, dos
+   presentaciones, cero riesgo de guardar el valor equivocado.
+
+   El breakpoint es el md de Bootstrap (767.98px), el mismo que usa la
+   plantilla en todo lo demás; no se inventa uno nuevo.
+   ========================================================================= */
+@media (max-width: 767.98px) {
+
+    /* El contenedor con scroll deja de hacer falta y estorba: recortaría
+       las fichas y volvería a ofrecer arrastre lateral. */
+    .ds-acta { display: block; }
+    .ds-acta > thead { display: none; }
+    .ds-acta > tbody,
+    .ds-acta > tfoot { display: block; }
+
+    .ds-acta > tbody > tr,
+    .ds-acta > tfoot > tr {
+        display: grid;
+        /* auto-fit y no repeat(3,1fr): con tres fijas, a 767 px cada casilla
+           medía 228 px de ancho —espacio desperdiciado en una tableta— y a
+           360 px se quedaban justas. Con minmax la rejilla decide sola:
+           tres columnas en un teléfono, siete en una tableta. */
+        grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+        gap: .25rem .5rem;
+        align-items: end;
+        padding: .75rem;
+        margin-bottom: .75rem;
+        border: 1px solid var(--bs-border-color);
+        border-radius: var(--bs-border-radius);
+        background: var(--bs-body-bg);
+    }
+
+    /* Dorsal y nombre encabezan la ficha, a todo lo ancho. */
+    .ds-acta > tbody > tr > td.ds-acta-dorsal,
+    .ds-acta > tbody > tr > td.ds-acta-nombre,
+    .ds-acta > tfoot > tr > td.ds-acta-nombre {
+        grid-column: 1 / -1;
+        border: 0;
+        padding: 0;
+    }
+    .ds-acta > tbody > tr > td.ds-acta-dorsal {
+        font-weight: 700;
+        font-size: 1.1rem;
+        color: var(--bs-emphasis-color);
+    }
+    .ds-acta > tbody > tr > td.ds-acta-dorsal::before { content: "Dorsal "; font-weight: 400; }
+    .ds-acta > tbody > tr > td.ds-acta-nombre,
+    .ds-acta > tfoot > tr > td.ds-acta-nombre {
+        font-weight: 600;
+        padding-bottom: .5rem;
+        margin-bottom: .25rem;
+        border-bottom: 1px solid var(--bs-border-color);
+    }
+
+    /* Cada estadística: su abreviatura encima y el número debajo. */
+    .ds-acta > tbody > tr > td[data-rotulo],
+    .ds-acta > tfoot > tr > td[data-rotulo] {
+        display: block;
+        border: 0;
+        padding: .15rem 0;
+        text-align: center;
+    }
+    .ds-acta > tbody > tr > td[data-rotulo]::before,
+    .ds-acta > tfoot > tr > td[data-rotulo]::before {
+        content: attr(data-rotulo);
+        display: block;
+        font-size: .7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .03em;
+        color: var(--bs-secondary-color);
+        margin-bottom: .15rem;
+    }
+
+    /* La casilla ocupa su hueco entero y llega a 44 px: es un objetivo que
+       se pulsa con el pulgar mientras se mira la cancha, no el teléfono.
+       El width en línea de la vista vale 3.1rem y hay que ganarlo. */
+    .ds-acta > tbody > tr > td[data-rotulo] > input.form-control {
+        width: 100% !important;
+        min-height: 44px;
+        font-size: 1rem;
+    }
+
+    /* Las derivadas no se teclean: se ven como dato, no como casilla. */
+    .ds-acta > tbody > tr > td.ds-acta-calc {
+        background: transparent !important;
+        color: var(--bs-secondary-color);
+    }
+
+    /* Guardar: ancho completo, al final de la ficha. */
+    .ds-acta > tbody > tr > td.ds-acta-guardar {
+        grid-column: 1 / -1;
+        border: 0;
+        padding: .5rem 0 0;
+    }
+    .ds-acta > tbody > tr > td.ds-acta-guardar > .btn {
+        width: 100%;
+        min-height: 44px;
+    }
+    /* En el pie no hay boton que guardar; la celda vacia sobra. */
+    .ds-acta > tfoot > tr > td.ds-acta-guardar { display: none; }
+
+    .ds-acta-solo-movil { margin-left: .4rem; }
+}
+
+/* En la tabla el botón es una columna de 3rem: ahí sólo cabe el icono. */
+@media (min-width: 768px) {
+    .ds-acta-solo-movil { display: none; }
+}
+
+/* Las derivadas, en su propia franja al pie de la ficha.
+   Iban seguidas de las casillas que sí se teclean y PTS caía al lado de FAL:
+   dos números idénticos a la vista, uno editable y otro no. Ahora el grupo
+   calculado arranca en renglón propio y va separado por una línea. */
+@media (max-width: 767.98px) {
+    .ds-acta > tbody > tr > td.ds-acta-calc-primera { grid-column-start: 1; }
+    .ds-acta > tbody > tr > td.ds-acta-calc {
+        border-top: 1px solid var(--bs-border-color) !important;
+        margin-top: .35rem;
+        padding-top: .5rem;
+    }
+}
+
+/* =========================================================================
+   Todo lo que se pulsa, del tamaño del pulgar — sólo en pantallas táctiles
+   =========================================================================
+   AUDITORÍA PREVIA, no impresión: se midieron las 61 vistas del ecosistema a
+   390 px y 38 tenían objetivos por debajo de 32 px. El reparto era:
+
+       input.form-control / form-select / input[search] / input[color]   31 px
+       button.btn-tool (las herramientas de tarjeta de AdminLTE)          31 px
+       .btn-sm en barras de filtro y botoneras                           31 px
+       .form-check-input                                                 16 px
+
+   WCAG 2.5.8 exige 24x24 y eso ya se cumplía; la referencia ergonómica para
+   el dedo son 44 px, y este sistema se usa a pie de cancha y en la mesa de
+   cobro, no sentado ante un escritorio.
+
+   POR QUÉ SÓLO (pointer: coarse)
+
+   Con ratón, 31 px se acierta sin esfuerzo y las tablas densas se leen
+   mejor compactas. La consulta alcanza a móviles y tabletas y deja el
+   escritorio EXACTAMENTE como estaba, así que ninguna pantalla existente
+   cambia de aspecto para quien trabaja con teclado y ratón.
+
+   EFECTO CONOCIDO Y ACEPTADO
+
+   Hay 149 controles dentro de tablas (categoriaPanel, consentimientoList,
+   cobranzaPension, asistencia). Sus filas crecen en táctil. Es el
+   intercambio correcto: una tabla algo más larga se desplaza; un botón de
+   30 px se falla, y fallar un botón en una pantalla de cobro o de acta
+   cuesta un dato mal escrito.
+   ========================================================================= */
+@media (pointer: coarse) {
+
+    .form-control,
+    .form-select,
+    .btn {
+        min-height: 44px;
+    }
+
+    /* El .btn-tool es cuadrado por definición: si sólo crece de alto queda
+       un rectángulo raro en la cabecera de la tarjeta. */
+    .btn-tool {
+        min-width: 44px;
+    }
+
+    /* Casillas y radios: EN PÍXELES, no en em.
+       El primer intento usó 1.4em y salió 22 px en unas pantallas y 18 en
+       otras, porque em depende del tamaño de letra heredado. Un mínimo de
+       accesibilidad no puede depender del contexto: 24 px es el suelo de
+       WCAG 2.5.8 y se fija tal cual.
+
+       Se cubren también los <input type=checkbox> SIN clase: equipoList y
+       bloqueoList los tienen a 13x13 px, la mitad del mínimo, y la regla de
+       .form-check-input no los alcanzaba. */
+    .form-check-input,
+    input[type="checkbox"],
+    input[type="radio"] {
+        min-width: 24px;
+        min-height: 24px;
+    }
+
+    /*
+    | EXCEPCIÓN: el interruptor propio de Core.
+    |
+    | .ds-core .switch input está OCULTO a propósito —opacity:0, width:0,
+    | height:0— y lo que se ve es el <span> de 40x22 que va detrás. La
+    | primera versión de esta regla fijaba width/height a 24px y le devolvía
+    | el tamaño a esa casilla invisible, dejándola encima del interruptor
+    | dibujado: se rompía moduloRol entero.
+    |
+    | De ahí que arriba vayan SÓLO mínimos y nunca width/height: un mínimo
+    | no puede encoger nada. Y aun así este caso se excluye, porque su
+    | tamaño cero es intencionado y no una carencia que corregir.
+    */
+    .ds-core .switch input[type="checkbox"] {
+        min-width: 0;
+        min-height: 0;
+    }
+
+    /* El selector de archivo no lleva clase en varias vistas y se quedaba
+       en 26 px. */
+    input[type="file"] { min-height: 44px; }
+
+    /* La paginación también se pulsa. */
+    .page-link { min-height: 44px; display: flex; align-items: center; }
+
+    /* Excepción: el editor de color y los campos DENTRO de una celda de
+       tabla que ya se hayan resuelto a mano —el acta— no se tocan otra vez.
+       El acta ya fija 44 px con su propia regla y una segunda declaración
+       sólo añadiría confusión al depurar. */
+}
+
+/* El QR del recibo, que se salía de la pantalla en el teléfono.
+   El generador lo emite con 160 px fijos y la columna col-4 mide unos 110
+   en 390 px: sobresalía 24 px y arrastraba la página entera.
+
+   Sólo en pantalla pequeña. Al imprimir —que es para lo que existe un
+   recibo— el SVG conserva su tamaño original y el código se sigue leyendo
+   en papel; una consulta de ancho de pantalla no alcanza al medio print. */
+@media (max-width: 767.98px) {
+    .ds-recibo-qr svg { max-width: 100%; height: auto; }
+}
+
+/* Separación entre los botones de una celda de acciones.
+   Estaba como style="margin-right:5px" repetido en cada enlace: 438 veces
+   en la pantalla de cobranza de pensiones, unos 13 KB de la misma
+   declaración. Una clase lo dice una vez. */
+.ds-accion-sep { margin-right: 5px; }
+
+/* =========================================================================
+   El acta se guarda sola: el estado de cada línea
+   =========================================================================
+   Sustituye al botón de guardar. Con guardado automático, lo que hace falta
+   saber no es «pulsa aquí» sino «¿ya está escrito?».
+
+   Cuatro estados, y sólo tres se ven: en reposo la casilla queda vacía para
+   no llenar la tabla de iconos que dejan de significar nada cuando están
+   todos marcados.
+   ========================================================================= */
+.ds-acta-estado {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.5rem;
+    min-height: 1.5rem;
+    font-size: .85rem;
+}
+.ds-acta-estado[data-estado="pendiente"] { color: var(--bs-secondary-color); }
+.ds-acta-estado[data-estado="guardando"] { color: var(--bs-primary); }
+.ds-acta-estado[data-estado="guardado"]  { color: var(--bs-success); }
+.ds-acta-estado[data-estado="error"]     { color: var(--bs-danger); }
+
+/* La fila que no se pudo guardar se señala entera: el icono de la última
+   columna se pierde de vista en una tabla de dieciocho columnas. */
+.ds-acta > tbody > tr:has(.ds-acta-estado[data-estado="error"]) {
+    background: var(--bs-danger-bg-subtle);
+}
+
+/* El aviso de error no interrumpe: el acta se llena con el partido en
+   marcha y un diálogo modal obligaría a soltar el teclado. Va abajo, fuera
+   del recorrido de la vista, y se apaga solo. */
+.ds-acta-aviso {
+    position: fixed;
+    left: 50%;
+    bottom: 1rem;
+    transform: translateX(-50%);
+    z-index: 1080;
+    max-width: min(90vw, 34rem);
+    margin: 0;
+}

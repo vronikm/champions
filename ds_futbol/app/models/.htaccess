@@ -1,0 +1,7 @@
+# Codigo PHP de servidor: se incluye desde index.php y app/ajax/,
+# nunca se solicita por URL.
+Options -Indexes
+Require all denied
+<IfModule mod_access_compat.c>
+    Deny from all
+</IfModule>

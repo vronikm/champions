@@ -1,0 +1,755 @@
+/* ==========================================================================
+   DigiSports Design System
+   --------------------------------------------------------------------------
+   Lenguaje visual comun de todo el ecosistema DigiSports. Este archivo NO
+   depende de Bootstrap ni de AdminLTE: define sus propios tokens y el layout
+   del Hub con CSS Grid, de modo que cualquier modulo del ecosistema pueda
+   cargarlo sin arrastrar el tema administrativo.
+
+   Convencion de nombres: todo token va prefijado con --ds-
+   ========================================================================== */
+
+:root {
+    /* --- Fondo y superficies --- */
+    --ds-bg:            #06102a;
+    --ds-surface:       #0d1a3a;
+    --ds-surface-2:     #142552;
+
+    /* --- Marca --- */
+    --ds-primary:       #ffd60a;   /* amarillo Champions */
+    --ds-primary-hover: #ffe24d;
+
+    /* --- Texto --- */
+    --ds-text:          #f8fafc;
+    --ds-text-muted:    #94a3b8;
+
+    /* --- Bordes --- */
+    --ds-border:        rgba(255, 255, 255, .08);
+    --ds-border-strong: rgba(255, 255, 255, .14);
+
+    /* --- Estado --- */
+    --ds-success:       #22c55e;
+    --ds-warning:       #f59e0b;
+    --ds-danger:        #ef4444;
+
+    /* --- Radios --- */
+    --ds-radius-sm:     10px;
+    --ds-radius-md:     16px;
+    --ds-radius-lg:     22px;
+
+    /* --- Acentos por modulo ---
+       El color NO tine la tarjeta entera: solo icono, borde y glow. */
+    --ds-core:          #f43f5e;
+    --ds-basketball:    #ffd60a;
+    --ds-arena:         #22d3ee;
+    --ds-league:        #a78bfa;
+    --ds-insights:      #22c55e;
+
+    /* --- Tipografia --- */
+    --ds-font: "Source Sans Pro", -apple-system, BlinkMacSystemFont,
+               "Segoe UI", Roboto, sans-serif;
+}
+
+/* ==========================================================================
+   Base
+   ========================================================================== */
+
+/* Esta hoja es autonoma: no hereda el reset de AdminLTE, asi que fija su
+   propio box-sizing. Sin esto, .ds-container suma su padding al 100% de
+   ancho y provoca scroll horizontal en movil. */
+/* El naranja vivo hace de texto tambien: el Hub es oscuro siempre. */
+:root { --ds-primary-texto: var(--ds-primary); }
+.ds-body,
+.ds-body *,
+.ds-body *::before,
+.ds-body *::after,
+.ds-launcher,
+.ds-launcher * {
+    box-sizing: border-box;
+}
+
+.ds-body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--ds-bg);
+    color: var(--ds-text);
+    font-family: var(--ds-font);
+    -webkit-font-smoothing: antialiased;
+
+    /* Iluminacion ambiental: dos focos muy suaves, sin llegar a distraer. */
+    background-image:
+        radial-gradient(ellipse 70% 50% at 15% -10%, rgba(255, 214, 10, .08), transparent 60%),
+        radial-gradient(ellipse 60% 45% at 90% 0%,   rgba(37, 99, 235, .14), transparent 60%);
+    background-attachment: fixed;
+}
+
+.ds-container {
+    width: 100%;
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 0 24px;
+}
+
+/* ==========================================================================
+   Cabecera
+   ========================================================================== */
+
+.ds-header {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    background: rgba(6, 16, 42, .78);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--ds-border);
+}
+
+.ds-header__inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 14px 0;
+}
+
+.ds-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-decoration: none;
+    color: inherit;
+}
+
+.ds-brand__logo {
+    height: 42px;
+    width: auto;
+    border-radius: var(--ds-radius-sm);
+}
+
+.ds-brand__name {
+    font-size: 1.22rem;
+    font-weight: 700;
+    letter-spacing: -.02em;
+    line-height: 1.1;
+    margin: 0;
+}
+
+.ds-brand__tagline {
+    font-size: .70rem;
+    color: var(--ds-text-muted);
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    margin: 2px 0 0;
+}
+
+.ds-header__actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.ds-iconbtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: var(--ds-radius-sm);
+    border: 1px solid var(--ds-border);
+    background: var(--ds-surface);
+    color: var(--ds-text-muted);
+    cursor: pointer;
+    transition: color .2s, border-color .2s, background .2s;
+}
+
+.ds-iconbtn:hover {
+    color: var(--ds-text);
+    border-color: var(--ds-border-strong);
+    background: var(--ds-surface-2);
+}
+
+.ds-user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 12px 5px 5px;
+    border-radius: 999px;
+    border: 1px solid var(--ds-border);
+    background: var(--ds-surface);
+}
+
+.ds-user__avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--ds-surface-2);
+}
+
+.ds-user__name {
+    font-size: .84rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.ds-user__role {
+    font-size: .70rem;
+    color: var(--ds-text-muted);
+}
+
+/* ==========================================================================
+   Saludo
+   ========================================================================== */
+
+.ds-greeting {
+    padding: 46px 0 30px;
+}
+
+.ds-greeting__title {
+    font-size: clamp(1.6rem, 3.4vw, 2.3rem);
+    font-weight: 700;
+    letter-spacing: -.025em;
+    margin: 0 0 6px;
+}
+
+.ds-greeting__subtitle {
+    color: var(--ds-text-muted);
+    font-size: 1.02rem;
+    margin: 0;
+}
+
+/* ==========================================================================
+   Tarjetas de aplicacion
+   ========================================================================== */
+
+/* Rejilla elastica: acomoda 4, 5 o mas modulos sin dejar huerfanas y sin
+   tener que tocar el CSS cada vez que crece el ecosistema. */
+.ds-apps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(232px, 1fr));
+    gap: 20px;
+    padding-bottom: 12px;
+}
+
+.ds-app {
+    --acento: var(--ds-primary);
+
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 290px;
+    padding: 24px;
+    border-radius: var(--ds-radius-lg);
+    border: 1px solid var(--ds-border);
+    background: rgba(17, 24, 39, .82);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 15px 40px rgba(0, 0, 0, .25);
+    text-decoration: none;
+    color: inherit;
+    overflow: hidden;
+    transition: transform .25s ease, border-color .25s ease, box-shadow .25s ease;
+}
+
+/* Halo de color del modulo, apenas perceptible. */
+.ds-app::before {
+    content: "";
+    position: absolute;
+    inset: -40% 40% 60% -40%;
+    background: radial-gradient(circle, var(--acento), transparent 70%);
+    opacity: .10;
+    pointer-events: none;
+    transition: opacity .25s ease;
+}
+
+.ds-app--activo:hover,
+.ds-app--activo:focus-visible {
+    transform: translateY(-6px);
+    border-color: color-mix(in srgb, var(--acento) 40%, transparent);
+    box-shadow:
+        0 20px 50px rgba(0, 0, 0, .35),
+        0 0 30px color-mix(in srgb, var(--acento) 12%, transparent);
+    outline: none;
+}
+
+.ds-app--activo:hover::before { opacity: .20; }
+
+.ds-app__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 52px;
+    border-radius: var(--ds-radius-md);
+    background: color-mix(in srgb, var(--acento) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--acento) 28%, transparent);
+    color: var(--acento);
+    font-size: 1.42rem;
+    margin-bottom: 18px;
+}
+
+.ds-app__name {
+    font-size: 1.16rem;
+    font-weight: 700;
+    letter-spacing: -.015em;
+    margin: 0 0 4px;
+}
+
+.ds-app__tagline {
+    font-size: .84rem;
+    color: var(--ds-text-muted);
+    margin: 0 0 18px;
+    line-height: 1.45;
+}
+
+.ds-app__metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    margin-top: auto;
+    padding-top: 16px;
+    border-top: 1px solid var(--ds-border);
+}
+
+.ds-metric__value {
+    display: block;
+    font-size: 1.24rem;
+    font-weight: 700;
+    line-height: 1.15;
+}
+
+.ds-metric__label {
+    display: block;
+    font-size: .70rem;
+    color: var(--ds-text-muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-top: 2px;
+}
+
+.ds-app__cta {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 18px;
+    font-size: .84rem;
+    font-weight: 600;
+    color: var(--acento);
+}
+
+.ds-app__cta i { transition: transform .25s ease; }
+.ds-app--activo:hover .ds-app__cta i { transform: translateX(4px); }
+
+/* --- Enlace que cubre la tarjeta ---
+   Se apila por encima del contenido para que cualquier punto de la tarjeta
+   abra el modulo; los accesos rapidos se colocan aun mas arriba y por eso
+   conservan su propio destino. */
+.ds-app__stretch {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    border-radius: inherit;
+}
+
+/* --- Accesos rapidos: aparecen al pasar el mouse --- */
+.ds-app__quick {
+    position: relative;
+    z-index: 6;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 14px;
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: max-height .25s ease, opacity .25s ease, margin-top .25s ease;
+}
+
+.ds-app--activo:hover .ds-app__quick,
+.ds-app--activo:focus-within .ds-app__quick {
+    max-height: 90px;
+    opacity: 1;
+}
+
+.ds-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--ds-border);
+    background: var(--ds-surface-2);
+    color: var(--ds-text-muted);
+    font-size: .74rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: color .18s, border-color .18s;
+}
+
+.ds-chip:hover {
+    color: var(--ds-text);
+    border-color: color-mix(in srgb, var(--acento) 45%, transparent);
+}
+
+/* --- Modulo aun no disponible --- */
+.ds-app--proximo { cursor: default; }
+.ds-app--proximo .ds-app__icon,
+.ds-app--proximo .ds-app__name,
+.ds-app--proximo .ds-app__tagline { opacity: .58; }
+
+.ds-badge-proximo {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--ds-border);
+    background: var(--ds-surface-2);
+    color: var(--ds-text-muted);
+    font-size: .66rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+
+/* ==========================================================================
+   Secciones inferiores
+   ========================================================================== */
+
+.ds-divider {
+    height: 1px;
+    background: var(--ds-border);
+    margin: 40px 0 30px;
+}
+
+.ds-section__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+
+.ds-section__title {
+    font-size: 1.06rem;
+    font-weight: 700;
+    letter-spacing: -.01em;
+    margin: 0;
+}
+
+.ds-link {
+    color: var(--ds-primary-texto);
+    font-size: .84rem;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.ds-link:hover { color: var(--ds-primary-hover); }
+
+/* --- Fila de indicadores --- */
+.ds-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px;
+    margin-bottom: 40px;
+}
+
+.ds-stat {
+    padding: 20px;
+    border-radius: var(--ds-radius-md);
+    border: 1px solid var(--ds-border);
+    background: var(--ds-surface);
+}
+
+.ds-stat__value {
+    font-size: 1.72rem;
+    font-weight: 700;
+    letter-spacing: -.03em;
+    line-height: 1.1;
+}
+
+.ds-stat__label {
+    font-size: .76rem;
+    color: var(--ds-text-muted);
+    margin-top: 4px;
+}
+
+/* --- Dos columnas: actividad y avisos --- */
+.ds-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px;
+    padding-bottom: 56px;
+}
+
+.ds-panel {
+    padding: 22px;
+    border-radius: var(--ds-radius-md);
+    border: 1px solid var(--ds-border);
+    background: var(--ds-surface);
+}
+
+.ds-list { list-style: none; margin: 0; padding: 0; }
+
+.ds-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--ds-border);
+}
+
+.ds-list li:last-child { border-bottom: 0; padding-bottom: 0; }
+
+.ds-dot {
+    flex: 0 0 auto;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-top: 7px;
+    background: var(--ds-text-muted);
+}
+
+.ds-dot--success { background: var(--ds-success); }
+.ds-dot--warning { background: var(--ds-warning); }
+.ds-dot--danger  { background: var(--ds-danger);  }
+
+.ds-item__title { font-size: .88rem; font-weight: 600; }
+
+.ds-item__meta {
+    font-size: .74rem;
+    color: var(--ds-text-muted);
+    margin-top: 2px;
+}
+
+.ds-item__value { margin-left: auto; font-size: .84rem; font-weight: 700; }
+
+.ds-alerta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--ds-border);
+    text-decoration: none;
+    color: inherit;
+}
+
+.ds-alerta:last-child { border-bottom: 0; }
+.ds-alerta:hover .ds-item__title { color: var(--ds-primary-texto); }
+
+.ds-vacio {
+    padding: 26px 0;
+    text-align: center;
+    color: var(--ds-text-muted);
+    font-size: .86rem;
+}
+
+/* ==========================================================================
+   Selector de aplicaciones (dentro de cada modulo)
+   ========================================================================== */
+
+.ds-launcher { position: relative; }
+
+.ds-launcher__panel {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: 268px;
+    padding: 8px;
+    border-radius: var(--ds-radius-md);
+    border: 1px solid var(--ds-border);
+    background: var(--ds-surface);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, .45);
+    display: none;
+    z-index: 1050;
+}
+
+.ds-launcher__panel.abierto { display: block; }
+
+.ds-launcher__titulo {
+    padding: 8px 12px 10px;
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--ds-text-muted);
+}
+
+.ds-launcher__item {
+    --acento: var(--ds-primary);
+
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 12px;
+    border-radius: var(--ds-radius-sm);
+    text-decoration: none;
+    color: var(--ds-text);
+    font-size: .88rem;
+    font-weight: 600;
+    transition: background .18s;
+}
+
+.ds-launcher__item:hover { background: var(--ds-surface-2); color: var(--ds-text); }
+
+.ds-launcher__item i { color: var(--acento); width: 18px; text-align: center; }
+
+.ds-launcher__item--inactivo { opacity: .45; pointer-events: none; }
+
+.ds-launcher__item small {
+    margin-left: auto;
+    font-size: .64rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--ds-text-muted);
+}
+
+.ds-launcher__sep { height: 1px; background: var(--ds-border); margin: 8px 4px; }
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+
+@media (max-width: 1100px) {
+    .ds-apps  { grid-template-columns: repeat(2, 1fr); }
+    .ds-stats { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 780px) {
+    .ds-container   { padding: 0 16px; }
+    .ds-apps        { grid-template-columns: 1fr; }
+    .ds-columns     { grid-template-columns: 1fr; }
+    .ds-greeting    { padding: 32px 0 24px; }
+    .ds-app         { min-height: 0; }
+    .ds-user__name,
+    .ds-user__role  { display: none; }
+    .ds-user        { padding: 4px; }
+
+    /* En movil los accesos rapidos van siempre visibles: no hay hover. */
+    .ds-app__quick  { max-height: 90px; opacity: 1; }
+}
+
+@media (max-width: 460px) {
+    .ds-stats { grid-template-columns: 1fr; }
+}
+
+/* Respeta la preferencia de menos movimiento. */
+@media (prefers-reduced-motion: reduce) {
+    .ds-app,
+    .ds-app__cta i,
+    .ds-app__quick { transition: none; }
+    .ds-app--activo:hover { transform: none; }
+}
+
+/* ==========================================================================
+   Correcciones de maquetacion que valen para todo el ecosistema
+   --------------------------------------------------------------------------
+   Reglas pequenas, medidas, que arreglan un desborde concreto. No son
+   identidad visual: estan aqui porque esta hoja es la unica que llega a
+   todas las pantallas de los cuatro modulos.
+   ========================================================================== */
+
+/* El campo de archivo no encoge dentro de un contenedor flexible.
+   -------------------------------------------------------------------------
+   Medido a 390 px de ancho: el widget de foto de las fichas de alumno
+   arrastraba 360 px y sacaba la pagina 7 px por la derecha. La causa es que
+   <input type="file"> tiene un ancho propio que no cede, y en un
+   .input-group —que es flex— eso empuja a todo el bloque.
+
+   min-width:0 permite que el elemento flexible se encoja por debajo de su
+   contenido, que es justo lo que su valor por defecto (auto) impide. */
+.input-group > .fileinput,
+.fileinput { min-width: 0; }
+
+.fileinput input[type="file"] { max-width: 100%; }
+
+/* Y las miniaturas de las fichas no pasan del ancho disponible. */
+.fileinput .thumbnail,
+.fileinput .thumbnail > img { max-width: 100%; height: auto; }
+
+/* Los bloques apilados necesitan aire entre ellos.
+   -------------------------------------------------------------------------
+   En Bootstrap 5 la tarjeta NO trae margen inferior. La regla que parece
+   darselo, .card-group>.card, solo aplica dentro de un grupo de tarjetas, y
+   ninguna pantalla de aqui usa esa estructura. El resultado eran bloques
+   pegados, sin una linea de aire: se leian como uno solo.
+
+   Las vistas pueden escribir mb-4 a mano —es lo que hace la propia
+   plantilla en su ejemplo— y entonces manda la clase. Esto es la red para
+   las que no lo hagan. */
+.app-content .container-fluid > .card { margin-bottom: 1.5rem; }
+
+/* Y lo mismo para las tarjetas que van en rejilla.
+   -------------------------------------------------------------------------
+   La primera version de la regla de arriba solo cubria la tarjeta suelta, y
+   dejaba fuera las que van en columna con este razonamiento: «ahi el
+   espaciado ya lo pone la rejilla».
+
+   NO LO PONE. En Bootstrap 5 el hueco vertical de la rejilla es
+   --bs-gutter-y, y vale CERO salvo que se pida. La rejilla separa en
+   horizontal y nada mas. Basketball no lo noto porque no usa ni una fila de
+   primer nivel: apila tarjetas sueltas y le bastaba la regla anterior.
+   Insights, Arena y League si las usan, y ahi TODOS los bloques quedaban a
+   0 px, uno encima de otro.
+
+   El margen va en la COLUMNA y no en la fila, porque asi resuelve los dos
+   casos con una sola regla:
+
+       entre filas          la ultima linea de columnas deja su aire debajo
+       al partirse en movil las columnas apiladas quedan separadas igual
+
+   No se usa --bs-gutter-y para esto: anade padding a las columnas Y un
+   margen superior NEGATIVO a la fila, y ese negativo se comeria justo la
+   separacion que se acaba de poner.
+
+   La .info-box trae 1rem propio de AdminLTE. Se anula dentro de estas
+   columnas para que todo el modulo respire el mismo 1.5rem y no haya una
+   fila con 40 px y las demas con 24. */
+.app-content .container-fluid > .row > [class*="col-"] { margin-bottom: 1.5rem; }
+.app-content .container-fluid > .row > [class*="col-"] > .info-box { margin-bottom: 0; }
+
+/* Las utilidades de color de TEXTO, legibles en los dos temas.
+   -------------------------------------------------------------------------
+   Medido sobre los tres fondos habituales del sistema:
+
+                    blanco   gris claro   oscuro
+       text-danger    4.53      3.82        3.41
+       text-success   4.53      3.82        3.40
+       text-primary   4.50      3.80        3.43
+       text-warning   1.63      1.37        9.46
+       text-info      1.96      1.65        7.88
+
+   Es decir: aprueban SOLO sobre blanco puro y por los pelos, y en cuanto el
+   texto cae sobre un gris o sobre el tema oscuro dejan de leerse. Amarillo y
+   cian no llegan ni sobre blanco. Son 119 usos en el sistema.
+
+   Bootstrap 5.3 trae para esto la variante «text-emphasis» de cada color,
+   pensada para texto y no para fondos, y que cambia sola con el tema. Con
+   ella las mismas cinco utilidades quedan entre 5.27 y 12.94 en claro y en
+   oscuro.
+
+   No cambia el significado: el rojo sigue siendo rojo, solo con la
+   saturacion que hace falta para leerlo. */
+.text-danger  { color: var(--bs-danger-text-emphasis)  !important; }
+.text-success { color: var(--bs-success-text-emphasis) !important; }
+.text-warning { color: var(--bs-warning-text-emphasis) !important; }
+.text-info    { color: var(--bs-info-text-emphasis)    !important; }
+.text-primary { color: var(--bs-primary-text-emphasis) !important; }
+
+/* El selector de foto: que rotulo se ve en cada estado.
+   -------------------------------------------------------------------------
+   El marcado de las trece vistas es el de un plugin de la epoca de Bootstrap
+   3 que no se carga en ninguna. Sin sus estilos, los dos rotulos salian a la
+   vez —«Seleccionar Foto Cambiar»— y la previsualizacion no aparecia nunca.
+
+   Son las tres reglas que hacen falta, en lugar de los 42 KB de aquel CSS
+   escrito para otra version del framework. La logica vive en
+   ds_core/assets/js/foto.js. */
+.fileinput .fileinput-exists     { display: none; }
+.fileinput .fileinput-new        { display: inline-block; }
+
+.fileinput.fileinput-exists .fileinput-new    { display: none; }
+.fileinput.fileinput-exists .fileinput-exists { display: inline-block; }
+
+/* La miniatura y la previsualizacion son bloques, no texto en linea. */
+.fileinput .thumbnail            { display: block; overflow: hidden; }
+.fileinput.fileinput-exists .fileinput-preview.thumbnail { display: block; }
+.fileinput .fileinput-preview:empty { display: none; }

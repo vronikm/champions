@@ -1,0 +1,599 @@
+/* =========================================================================
+   Caballito Zeballos — Formulario público de inscripción
+   =========================================================================
+
+   DE DÓNDE SALEN ESTOS COLORES
+
+   Del escudo, y de ningún otro sitio. El azul #012144 es el fondo del
+   escudo, el naranja #FC6702 es el arco que lo rodea, y el blanco #FDFDFD
+   es el caballo y la palabra. Nada más.
+
+   Antes esta hoja se titulaba «AF Pedro Larrea» y traía el granate #a52121
+   de otro club: se copió el módulo entero de aquel proyecto y los colores
+   vinieron dentro. Lo primero que veía un representante al abrir el enlace
+   era una pantalla que no se parecía a la escuela.
+
+
+   EL NARANJA NO PUEDE LLEVAR TEXTO BLANCO
+
+   Medido: #FC6702 sobre blanco da 2,96 de contraste, y blanco sobre
+   #FC6702 da lo mismo. WCAG pide 4,5 para texto. En cambio el naranja
+   SOBRE EL AZUL da 5,45, y el blanco sobre el azul da 16,1.
+
+   De ahí el reparto, que además es el del escudo:
+
+     · el azul es el fondo y lleva texto blanco;
+     · el naranja es el ACENTO —aros, subrayados, el paso activo, el foco—
+       y sólo lleva texto cuando el fondo es azul;
+     · nunca hay texto blanco sobre naranja.
+
+   Es una regla de contraste, no de gusto. Si algún día se pone un botón
+   naranja con letras blancas, deja de cumplir.
+
+
+   UN SOLO TEMA, A PROPÓSITO
+
+   El resto del ecosistema respeta el tema del usuario. Aquí no: esto lo
+   abre una vez un representante desde un enlace, sin cuenta y sin
+   preferencia guardada. Se compromete con un aspecto claro y se pintan
+   todos los colores explícitamente, para que no dependa del tema del
+   sistema operativo de quien lo abra.
+   ========================================================================= */
+
+:root {
+    /* Escudo */
+    --cz-azul:        #0b1f5c;
+    --cz-azul-2:      #14307f;
+    --cz-azul-3:      #1d44a8;
+    --cz-naranja:     #ffd60a;   /* amarillo Champions: fondos, bordes y letra sobre azul */
+    --cz-naranja-2:   #a16207;   /* dorado oscuro: texto sobre blanco (4,9:1) */
+    --cz-blanco:      #fdfdfd;
+
+    /* Neutros con sesgo al azul del escudo: un gris puro se ve prestado */
+    --cz-fondo:       #eef1f6;
+    --cz-superficie:  #ffffff;
+    --cz-texto:       #14213a;
+    --cz-texto-suave: #5b6b85;
+    --cz-borde:       #d3dae6;
+    --cz-borde-suave: #e6ebf2;
+
+    /* Estado. Verde y rojo elegidos para convivir con el azul */
+    --cz-ok:          #17845a;
+    --cz-error:       #c62828;
+    --cz-aviso:       #b26a00;
+
+    --cz-radio:       12px;
+    --cz-sombra:      0 1px 2px rgba(1, 33, 68, .06), 0 8px 24px rgba(1, 33, 68, .07);
+    --cz-sombra-alta: 0 2px 4px rgba(1, 33, 68, .08), 0 16px 40px rgba(1, 33, 68, .12);
+}
+
+* { box-sizing: border-box; }
+
+body {
+    background: var(--cz-fondo);
+    color: var(--cz-texto);
+    font-family: 'Source Sans Pro', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* El pie se queda abajo aunque el formulario sea corto (enlace expirado). */
+main { flex: 1 0 auto; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   Cabecera
+   ─────────────────────────────────────────────────────────────────────
+   El azul del escudo de fondo y una regla naranja debajo, que es el arco
+   del logo llevado a la interfaz. */
+.cz-header {
+    background: linear-gradient(135deg, var(--cz-azul) 0%, var(--cz-azul-2) 55%, var(--cz-azul-3) 100%);
+    color: var(--cz-blanco);
+    padding: 1.15rem 0;
+    border-bottom: 4px solid var(--cz-naranja);
+    box-shadow: 0 6px 24px rgba(1, 33, 68, .18);
+}
+
+.cz-header h1 {
+    font-size: 1.35rem;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: .2px;
+    line-height: 1.15;
+    color: var(--cz-blanco);
+}
+
+.cz-header .cz-sede {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    margin-top: .3rem;
+    /* Naranja sobre azul: 5,45. El mismo texto en blanco sobre naranja no
+       cumpliría, así que el acento va en la LETRA y no en el fondo. */
+    color: var(--cz-naranja);
+    font-size: .875rem;
+    font-weight: 600;
+}
+
+/*
+| El escudo NO se mete en un círculo.
+|
+| El logo que la escuela sube en Core es apaisado —el caballo y la palabra
+| «Caballito Zeballos» en una banda— y forzarlo a 54x54 con border-radius
+| lo dejaba ilegible: un borrón de tres milímetros. Se le da alto fijo y
+| ancho libre, con un fondo blanco redondeado que funciona tanto para una
+| marca cuadrada como para una banda alargada.
+*/
+.cz-logo {
+    height: 52px;
+    width: auto;
+    max-width: 190px;
+    object-fit: contain;
+    border-radius: 10px;
+    background: var(--cz-blanco);
+    padding: 5px 8px;
+    flex: 0 0 auto;
+    box-shadow: 0 0 0 2px rgba(255, 214, 10, .5);
+}
+
+/* ─── Cuenta atrás del enlace ─────────────────────────────────────────
+   Es información con consecuencias: cuando llega a cero el formulario se
+   bloquea y hay que pedir otro enlace. Antes era un texto tenue sobre el
+   fondo; ahora se lee, y cambia de color cuando queda poco. */
+.cz-timer {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    background: rgba(253, 253, 253, .12);
+    border: 1px solid rgba(253, 253, 253, .28);
+    color: var(--cz-blanco);
+    padding: .4rem .8rem;
+    border-radius: 999px;
+    font-size: .85rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;   /* los dígitos no bailan al contar */
+    white-space: nowrap;
+}
+
+.cz-timer--pronto {
+    background: rgba(255, 214, 10, .22);
+    border-color: var(--cz-naranja);
+    color: var(--cz-naranja);
+}
+
+.cz-timer--fin {
+    background: var(--cz-error);
+    border-color: var(--cz-error);
+    color: #fff;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Pasos
+   ─────────────────────────────────────────────────────────────────────
+   El marcado sigue siendo el de Bootstrap (nav-pills + botones), porque
+   form.js los maneja con bootstrap.Tab y no se toca. Todo lo que sigue es
+   presentación: se convierten en un indicador de progreso numerado, que
+   dice CUÁNTOS pasos hay y en cuál se está —cosa que tres pastillas
+   iguales no decían—. */
+.cz-pasos {
+    --cz-paso-linea: var(--cz-borde);
+    display: flex;
+    gap: 0;
+    margin: 0 0 1.5rem;
+    padding: 0;
+    list-style: none;
+    counter-reset: paso;
+}
+
+.cz-pasos .nav-item { flex: 1 1 0; min-width: 0; }
+
+.cz-pasos .nav-link {
+    position: relative;
+    width: 100%;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    padding: .75rem .5rem .25rem;
+    color: var(--cz-texto-suave);
+    font-weight: 600;
+    font-size: .9rem;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: .45rem;
+    transition: color .2s;
+}
+
+/* La línea que une los pasos, por detrás de los números. */
+.cz-pasos .nav-link::after {
+    content: "";
+    position: absolute;
+    top: calc(.75rem + 17px);
+    left: -50%;
+    width: 100%;
+    height: 2px;
+    background: var(--cz-paso-linea);
+    z-index: 0;
+}
+
+.cz-pasos .nav-item:first-child .nav-link::after { display: none; }
+
+/* El número, en un disco. */
+.cz-pasos .nav-link .cz-num {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: var(--cz-superficie);
+    border: 2px solid var(--cz-borde);
+    color: var(--cz-texto-suave);
+    font-size: .95rem;
+    font-weight: 700;
+    transition: background .2s, border-color .2s, color .2s, box-shadow .2s;
+}
+
+.cz-pasos .nav-link:hover:not(.active) { color: var(--cz-azul); }
+.cz-pasos .nav-link:hover:not(.active) .cz-num { border-color: var(--cz-azul-3); }
+
+.cz-pasos .nav-link.active { color: var(--cz-azul); }
+
+.cz-pasos .nav-link.active .cz-num {
+    background: var(--cz-azul);
+    border-color: var(--cz-azul);
+    color: var(--cz-blanco);
+    /* El aro naranja alrededor del paso activo: es el arco del escudo. */
+    box-shadow: 0 0 0 4px rgba(255, 214, 10, .28);
+}
+
+/* Paso ya superado: disco relleno y un visto en lugar del número. El
+   contenido lo pone el CSS porque el número real sigue en el HTML para
+   quien lea el documento sin estilos. */
+.cz-pasos .nav-link.cz-hecho { color: var(--cz-azul); }
+
+.cz-pasos .nav-link.cz-hecho .cz-num {
+    background: var(--cz-ok);
+    border-color: var(--cz-ok);
+    color: #fff;
+    font-size: 0;                       /* oculta el número, no el elemento */
+}
+
+.cz-pasos .nav-link.cz-hecho .cz-num::before {
+    content: "\f00c";                   /* fa-check */
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+    font-size: .85rem;
+}
+
+/* La línea a la izquierda de un paso superado va en verde: se lee de un
+   vistazo hasta dónde se ha llegado. */
+.cz-pasos .nav-link.cz-hecho::after,
+.cz-pasos .nav-link.active::after { background: var(--cz-ok); }
+
+.cz-pasos .nav-link .cz-paso-texto {
+    line-height: 1.15;
+    font-size: .82rem;
+}
+
+@media (max-width: 575.98px) {
+    .cz-pasos .nav-link .cz-paso-texto { font-size: .72rem; }
+    .cz-pasos .nav-link { padding-left: .15rem; padding-right: .15rem; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Tarjetas
+   ─────────────────────────────────────────────────────────────────────
+   Cabeceras claras con texto azul, no barras de color: en un formulario
+   largo, tres franjas saturadas cansan y compiten con los campos, que es
+   donde tiene que ir la atención. El color queda para el icono y para el
+   filete naranja de la izquierda. */
+.cz-card {
+    border: 1px solid var(--cz-borde-suave);
+    border-radius: var(--cz-radio);
+    box-shadow: var(--cz-sombra);
+    overflow: hidden;
+    background: var(--cz-superficie);
+}
+
+.cz-card .card-header {
+    background: var(--cz-superficie);
+    color: var(--cz-azul);
+    padding: 1rem 1.25rem;
+    font-weight: 700;
+    font-size: 1.02rem;
+    border: 0;
+    border-bottom: 1px solid var(--cz-borde-suave);
+    border-left: 4px solid var(--cz-naranja);
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+}
+
+.cz-card .card-header i { color: var(--cz-naranja-2); }
+
+.cz-card .card-body { padding: 1.35rem; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   Campos
+   ───────────────────────────────────────────────────────────────────── */
+.form-label {
+    font-weight: 600;
+    color: var(--cz-texto);
+    font-size: .85rem;
+    margin-bottom: .3rem;
+}
+
+/* El asterisco de obligatorio, en naranja sobre blanco, es un objeto
+   gráfico pequeño y no texto de lectura: se refuerza con el atributo
+   title y con la leyenda de arriba del formulario. */
+.form-label .cz-req {
+    color: var(--cz-naranja-2);
+    font-weight: 700;
+    margin-left: .15rem;
+}
+
+.form-control,
+.form-select {
+    border-radius: 9px;
+    border: 1.5px solid var(--cz-borde);
+    padding: .55rem .85rem;
+    color: var(--cz-texto);
+    background-color: var(--cz-superficie);
+    transition: border-color .15s, box-shadow .15s;
+}
+
+.form-control::placeholder { color: #9aa7bd; }
+
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--cz-azul-3);
+    box-shadow: 0 0 0 3px rgba(255, 214, 10, .28);
+    outline: none;
+}
+
+/* Foco visible también para quien navega con el teclado y no toca campos:
+   sin esto, tabular por los botones no muestra dónde se está. */
+.btn:focus-visible,
+.cz-pasos .nav-link:focus-visible,
+a:focus-visible {
+    outline: 3px solid var(--cz-naranja);
+    outline-offset: 2px;
+    box-shadow: none;
+}
+
+.form-control.is-invalid,
+.form-select.is-invalid {
+    border-color: var(--cz-error);
+    box-shadow: 0 0 0 3px rgba(198, 40, 40, .12);
+}
+
+.form-control.is-valid,
+.form-select.is-valid {
+    border-color: var(--cz-ok);
+    box-shadow: none;
+}
+
+.invalid-feedback { font-size: .8rem; }
+
+.form-text { color: var(--cz-texto-suave); font-size: .8rem; }
+
+/* Leyenda de campos obligatorios, arriba del formulario. */
+.cz-leyenda {
+    color: var(--cz-texto-suave);
+    font-size: .85rem;
+    margin-bottom: 1rem;
+}
+
+.cz-leyenda .cz-req { color: var(--cz-naranja-2); font-weight: 700; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   Foto del alumno
+   ───────────────────────────────────────────────────────────────────── */
+.foto-preview-container {
+    width: 150px;
+    height: 180px;
+    border: 2px dashed var(--cz-borde);
+    border-radius: var(--cz-radio);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: var(--cz-fondo);
+    margin: 0 auto;
+    transition: border-color .2s, background .2s;
+}
+
+.foto-preview-container:hover {
+    border-color: var(--cz-naranja);
+    background: #fff7f1;
+}
+
+.foto-preview-container img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: cover;
+}
+
+.foto-preview-container .placeholder-icon {
+    font-size: 2.5rem;
+    color: #a9b6cb;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Botones
+   ─────────────────────────────────────────────────────────────────────
+   Azul con letra blanca: 16,1 de contraste. El naranja se reserva para el
+   aro de foco y el filete de las tarjetas, donde no lleva texto encima. */
+.btn-cz {
+    background: var(--cz-azul);
+    border: 1.5px solid var(--cz-azul);
+    color: var(--cz-blanco);
+    padding: .65rem 1.6rem;
+    border-radius: 9px;
+    font-weight: 600;
+    transition: background .2s, border-color .2s, transform .12s, box-shadow .2s;
+    box-shadow: 0 2px 8px rgba(1, 33, 68, .18);
+}
+
+.btn-cz:hover:not(:disabled) {
+    background: var(--cz-azul-3);
+    border-color: var(--cz-azul-3);
+    color: var(--cz-blanco);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(1, 33, 68, .26);
+}
+
+.btn-cz:disabled { opacity: .5; transform: none; cursor: not-allowed; }
+
+/* El envío final se distingue del «Siguiente»: es la acción que no tiene
+   vuelta atrás. */
+.btn-cz-enviar {
+    background: var(--cz-ok);
+    border-color: var(--cz-ok);
+}
+
+.btn-cz-enviar:hover:not(:disabled) {
+    background: #126b48;
+    border-color: #126b48;
+}
+
+/* Volver atrás no compite con avanzar. */
+.btn-cz-atras {
+    background: transparent;
+    border: 1.5px solid var(--cz-borde);
+    color: var(--cz-texto-suave);
+    padding: .65rem 1.35rem;
+    border-radius: 9px;
+    font-weight: 600;
+}
+
+.btn-cz-atras:hover {
+    border-color: var(--cz-azul-3);
+    color: var(--cz-azul);
+    background: transparent;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Estados finales
+   ───────────────────────────────────────────────────────────────────── */
+.cz-expirado,
+.cz-exito { text-align: center; padding: 2.5rem 1rem; }
+
+.cz-expirado i { font-size: 3.5rem; color: var(--cz-error); margin-bottom: 1rem; }
+.cz-exito i    { font-size: 3.5rem; color: var(--cz-ok);    margin-bottom: 1rem; }
+
+.cz-expirado h2,
+.cz-exito h2 { color: var(--cz-azul); font-weight: 700; }
+
+.cz-expirado p,
+.cz-exito p { color: var(--cz-texto-suave); font-size: 1.05rem; }
+
+/* ─── Spinner del envío ─── */
+.cz-cargando { display: none; }
+
+.cz-cargando.active {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    color: var(--cz-texto-suave);
+    font-weight: 600;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Autorizaciones (LOPDP)
+   ─────────────────────────────────────────────────────────────────────
+   Son consentimientos sobre datos de un menor: tienen que leerse, no
+   pasarse por encima. De ahí el fondo propio y el marco. */
+#seccion-autorizacion .card {
+    border: 1px solid var(--cz-borde-suave);
+    border-radius: 10px;
+    transition: border-color .2s, box-shadow .2s;
+}
+
+#seccion-autorizacion .card:hover {
+    border-color: var(--cz-borde);
+    box-shadow: var(--cz-sombra);
+}
+
+#seccion-autorizacion .form-check-input {
+    width: 1.15em;
+    height: 1.15em;
+    margin-top: .18em;
+    border-color: var(--cz-borde);
+}
+
+#seccion-autorizacion .form-check-input:checked {
+    background-color: var(--cz-ok);
+    border-color: var(--cz-ok);
+}
+
+#seccion-autorizacion .form-check-input:focus {
+    border-color: var(--cz-azul-3);
+    box-shadow: 0 0 0 3px rgba(255, 214, 10, .28);
+}
+
+#seccion-autorizacion .form-check-label { cursor: pointer; user-select: none; }
+
+#seccion-autorizacion .bg-light {
+    background: var(--cz-fondo) !important;
+    border: 1px solid var(--cz-borde-suave);
+    border-radius: 8px;
+    color: var(--cz-texto);
+}
+
+#seccion-autorizacion .bg-light p:last-child { margin-bottom: 0; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   Pie
+   ───────────────────────────────────────────────────────────────────── */
+.cz-footer {
+    padding: 1.5rem 0;
+    text-align: center;
+    color: var(--cz-texto-suave);
+    font-size: .82rem;
+    border-top: 1px solid var(--cz-borde-suave);
+    margin-top: 2rem;
+    background: var(--cz-superficie);
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Móvil
+   ─────────────────────────────────────────────────────────────────────
+   Este formulario se abre sobre todo desde el teléfono: el enlace llega
+   por WhatsApp. */
+@media (max-width: 767.98px) {
+    .cz-header { padding: .9rem 0; }
+    .cz-header h1 { font-size: 1.05rem; }
+    .cz-logo { height: 40px; max-width: 150px; }
+    .cz-card .card-body { padding: 1rem; }
+    .cz-card .card-header { padding: .85rem 1rem; font-size: .95rem; }
+
+    /* Los botones de avanzar ocupan el ancho: en un pulgar, un botón
+       estrecho al borde de la pantalla se falla. */
+    .btn-cz, .btn-cz-atras { width: 100%; }
+
+    /* 16px evita que iOS haga zoom al enfocar un campo, que descoloca la
+       página y obliga a volver a encuadrar en cada campo. */
+    .form-control, .form-select { font-size: 16px; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Quien pidió menos movimiento, recibe menos movimiento
+   ───────────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: .001ms !important;
+        transition-duration: .001ms !important;
+    }
+    .btn-cz:hover:not(:disabled) { transform: none; }
+}
+
+/* Impresión: el representante a veces guarda el comprobante. */
+@media print {
+    .cz-header, .cz-footer, .cz-pasos, .btn-cz, .btn-cz-atras, .cz-timer { display: none !important; }
+    body { background: #fff; }
+    .cz-card { box-shadow: none; border: 1px solid #999; }
+}

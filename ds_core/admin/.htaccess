@@ -1,0 +1,15 @@
+# =====================================================================
+# DigiSports Core — modulo de administracion
+# =====================================================================
+RewriteEngine On
+Options All -Indexes
+
+# Codigo de servidor: se incluye desde index.php, nunca se solicita por URL.
+# Solo quedan accesibles index.php, ajax/ y assets/.
+RewriteRule ^(config\.php|controllers/|views/) - [F,L]
+
+# Las peticiones a archivos y carpetas reales se sirven tal cual;
+# el resto las resuelve el front controller.
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^([a-zA-Z0-9/_-]+)$ index.php?views=$1 [QSA,L]

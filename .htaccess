@@ -1,0 +1,44 @@
+# =====================================================================
+# DigiSports — raiz del ecosistema
+# =====================================================================
+# Solo se sirve el Hub. Cada modulo vive en su carpeta ds_* y tiene su
+# propio .htaccess, por lo que las peticiones a /ds_futbol/... no
+# pasan por aqui.
+
+RewriteEngine On
+Options All -Indexes
+
+# ---------------------------------------------------------------------
+# Nunca por HTTP: control de versiones, cuarentena y archivos de trabajo
+# ---------------------------------------------------------------------
+# .git NO es una carpeta de la aplicacion. Se comprobo que Apache entregaba
+# .git/config y .git/HEAD con HTTP 200, y con eso se reconstruye el
+# repositorio ENTERO: todo el historico, incluido lo que se subio una vez y
+# se borro despues. Ademas revelaba la URL del remoto.
+#
+# borrar/ es la cuarentena de lo que se va a eliminar. Tiene su propio
+# .htaccess; esta regla es la segunda barrera, por si AllowOverride estuviera
+# limitado en el servidor de produccion.
+RewriteRule ^(\.git|\.github|borrar)(/|$) - [F,L]
+
+# Ningun archivo o carpeta oculta. .gitignore se servia con 200 y es un
+# mapa: nombra donde viven los secretos (secrets.php, los .p12 de la
+# firma electronica) y las carpetas con datos personales.
+#
+# .well-known queda fuera a proposito: en produccion la necesita la
+# renovacion automatica del certificado HTTPS, y sin ella DS_FORZAR_HTTPS
+# dejaria el sitio inaccesible al caducar.
+RewriteRule (^|/)\.(?!well-known/)[^/]+ - [F,L]
+
+# Volcados, registros y copias no son contenido: un .sql olvidado en una
+# carpeta servida es la base entera, con cedulas de menores, a una URL.
+RewriteRule \.(sql|log|bak|orig|ini|md|tgz|zip)$ - [F,L]
+# El nucleo es codigo de servidor y no se solicita por URL. Se exceptuan
+# sus recursos visuales (ds_core/assets/) y el modulo de administracion
+# (ds_core/admin/), que si es una aplicacion navegable.
+RewriteRule ^ds_core/(?!assets/|admin/) - [F,L]
+
+# Cualquier otra ruta que no sea un archivo o carpeta real la atiende el Hub.
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [QSA,L]

@@ -115,6 +115,30 @@ php ds_insights/cli/capturar_cartera.php
 Fotografía la deuda del mes que cierra. La deuda pasada no se puede reconstruir
 después, así que sin esta tarea la evolución de la cartera queda en blanco.
 
+## Actualizar producción
+
+El servidor es un clon de este repositorio (cPanel → Git Version Control) y se
+actualiza con **Update from Remote**. Para que eso siga funcionando:
+
+- **En el servidor sólo se edita `ds_core/config/secrets.php`.** Todo lo que
+  cambia de un entorno a otro —dominio, base de datos, claves— vive ahí, y ese
+  archivo no está en el repositorio.
+- **Ningún otro archivo se sube ni se edita a mano.** Git compara cada archivo
+  con su versión registrada: si uno difiere, se niega a actualizar para no
+  pisarlo, y cPanel lo informa con un mensaje engañoso: *«The system could not
+  contact the remote repository»*. La conexión con GitHub no tiene nada que ver.
+- Los cambios se hacen en desarrollo, se suben a GitHub y se traen con
+  **Update from Remote**.
+
+Si aun así algún archivo queda alterado —por ejemplo, un `config/app.php`
+sobrescrito con el de otra carpeta—, el sistema responde con una página de
+error neutra y un número de referencia en vez de mostrar las rutas del
+servidor: cada punto de entrada carga `ds_core/inc/errores.php` antes que su
+configuración, y el `.user.ini` de la raíz desactiva `display_errors` como
+segunda barrera.
+
+Versiones publicadas: etiquetas `vX.Y.Z` del repositorio.
+
 ## Datos personales
 
 El sistema trata datos de menores de edad (cédulas, fotos, información médica),

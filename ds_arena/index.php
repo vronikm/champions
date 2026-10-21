@@ -7,6 +7,7 @@
 | ecosistema: sesion, modulo y permiso de lectura sobre la vista.
 */
 
+require_once __DIR__ . "/../ds_core/inc/errores.php"; // antes que config: si falla, sin rutas a la vista
 require_once __DIR__ . "/config/app.php";
 require_once __DIR__ . "/../ds_core/autoload.php";
 require_once __DIR__ . "/../ds_core/modulos.php";

@@ -15,6 +15,7 @@
 | El catalogo de tipos vive en medios_catalogo(), en views/inc/seguridad.php.
 */
 
+require_once __DIR__ . "/../../ds_core/inc/errores.php"; // antes que config: si falla, sin rutas a la vista
 require_once __DIR__ . "/../config/app.php";
 require_once __DIR__ . "/views/inc/session_start.php";
 

@@ -8,6 +8,7 @@
  * Sin un token válido y vigente no se muestra ningún dato ni formulario.
  */
 
+    require_once __DIR__ . "/../ds_core/inc/errores.php"; // antes que config: si falla, sin rutas a la vista
     require_once "./config/app.php";
     require_once "./autoload.php";
 

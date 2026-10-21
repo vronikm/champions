@@ -24,6 +24,7 @@
 | Ninguna de las tres depende de que la vista se acuerde de filtrar.
 */
 
+require_once __DIR__ . "/../../ds_core/inc/errores.php"; // antes que config: si falla, sin rutas a la vista
 require_once __DIR__ . "/../config/app.php";
 require_once __DIR__ . "/../../ds_core/inc/seguridad.php";
 require_once __DIR__ . "/publicoController.php";

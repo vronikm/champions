@@ -71,7 +71,11 @@ ALTER TABLE carnet_mes_color
   COMMENT 'Anio al que corresponde esta asignacion de color'
   AFTER mcolor_mes;
 
-UPDATE carnet_mes_color SET mcolor_anio = 2026 WHERE mcolor_anio = 0;
+-- mcolor_fechamod se asigna a sí misma a propósito: es ON UPDATE
+-- CURRENT_TIMESTAMP, y sin esto los doce meses quedaban «modificados hoy»
+-- aunque nadie hubiera tocado su color. Asignarla explícitamente es la forma
+-- documentada de que MySQL no la actualice (visto al migrar producción).
+UPDATE carnet_mes_color SET mcolor_anio = 2026, mcolor_fechamod = mcolor_fechamod WHERE mcolor_anio = 0;
 
 ALTER TABLE carnet_mes_color
   DROP INDEX mcolor_mes,

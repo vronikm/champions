@@ -100,6 +100,26 @@ migración a medias allí no tiene vuelta atrás.
    La pantalla «Fotos de alumnos» dice cuántas fichas apuntan a un archivo que
    falta; sin la foto, el carné de ese alumno no se genera.
 
+## Desde cPanel, sin consola (phpMyAdmin)
+
+En el hosting no hay Terminal. La misma cadena, en un solo archivo:
+
+```bash
+ds_core/database/migracion_champions/aplicar_migracion.sh --generar migracion_produccion_champions.sql
+```
+
+1. **Respaldar** la base de producción: phpMyAdmin → la base → *Exportar*.
+2. phpMyAdmin → la base con la copia de SoccerEasy → *Importar* →
+   `migracion_produccion_champions.sql`, juego de caracteres `utf8mb4`.
+   Dejar marcada la opción que permite interrumpir la importación: si el
+   servidor corta por tiempo, phpMyAdmin la retoma donde quedó.
+3. Comprobar que terminó sin error. Si se detiene, **no** repetir el archivo
+   entero sobre lo ya aplicado: restaurar el respaldo y empezar de nuevo.
+
+Probado el 2026-10-22 con un usuario sin `SUPER` (como el del hosting) sobre
+una copia de SoccerEasy: 25 segundos, sin errores, y la base resultante
+idéntica a la migrada con el script.
+
 ## Comprobación
 
 Con la base apuntada en `secrets.php`:

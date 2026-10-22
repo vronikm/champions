@@ -22,6 +22,9 @@
 				];
 				return json_encode($alerta);
 		    }
+			if (($error = $this->validarRangoEvento($agenda_start, $agenda_end)) !== null) {
+				return $error;
+			}
 
 			$agenda_reg=[
                 [
@@ -76,27 +79,72 @@
             return json_encode($alerta);
 		}
 
+        /*
+        | Los eventos, en JSON para FullCalendar.
+        |
+        | DEVUELVE en vez de imprimir: la vista lo incrusta en un <script> y
+        | agendaAjax.php lo imprime con echo; antes imprimía por su cuenta y
+        | devolvía null, y sólo funcionaba porque echo null no saca nada.
+        |
+        | limpiarHtml() guarda los textos ya escapados («Reunión &quot;A&quot;»).
+        | FullCalendar los pinta como TEXTO, así que se decodifican: si no, el
+        | título mostraría las entidades al pie de la letra. Las banderas JSON_HEX
+        | impiden que un «</script>» dentro de un título cierre la etiqueta.
+        */
         public function obtenerEventos() {
-			$consulta_evento = "SELECT agenda_id AS id, agenda_title AS title, agenda_detail AS detail, agenda_start AS start, agenda_end AS end, agenda_color AS color 
+			$consulta_evento = "SELECT agenda_id AS id, agenda_title AS title, agenda_detail AS detail, agenda_start AS start, agenda_end AS end, agenda_color AS color
 								FROM general_agenda
-								WHERE agenda_estado = 'A'";	
+								WHERE agenda_estado = 'A'";
             $datos = $this->ejecutarConsulta($consulta_evento);
+            $texto = static fn($v) => html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8');
             $eventos = array();
-            if($datos->rowCount()>=0){
-				while ($row = $datos->fetch()) {
-					$eventos[]=[
-						"id" => $row['id'],
-						"title"=>$row['title'],
-						"start"=>$row['start'],
-						"end"=>$row['end'],
-						"color"=>$row['color'],
-						"detail" => $row['detail'] // Campo adicional si es necesario
-					];
-					
-				}
+			while ($row = $datos->fetch()) {
+				$eventos[]=[
+					"id"     => $row['id'],
+					"title"  => $texto($row['title']),
+					"start"  => $row['start'],
+					"end"    => $row['end'],
+					"color"  => $row['color'],
+					"detail" => $texto($row['detail'])
+				];
 			}
-            // Devuelve los eventos como JSON
-            echo json_encode($eventos);
+            return json_encode($eventos, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE);
+        }
+
+        /* Los próximos eventos (los que aún no han terminado), para la
+           columna lateral de la agenda. Textos decodificados como arriba: la
+           vista los escapa al imprimirlos. */
+        public function proximosEventos(int $limite = 6): array {
+			$datos = $this->ejecutarConsulta(
+				"SELECT agenda_id AS id, agenda_title AS title, agenda_start AS start, agenda_end AS end, agenda_color AS color
+				   FROM general_agenda
+				  WHERE agenda_estado = 'A' AND agenda_end >= NOW()
+				  ORDER BY agenda_start ASC
+				  LIMIT " . max(1, min(20, $limite)));
+			$texto = static fn($v) => html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+			$filas = [];
+			while ($row = $datos->fetch()) {
+				$row['title'] = $texto($row['title']);
+				$filas[] = $row;
+			}
+			return $filas;
+        }
+
+        /* Fin no anterior al inicio, y fechas que sean fechas. Devuelve la
+           alerta en JSON o null. Antes se aceptaba un evento que terminaba
+           antes de empezar y el calendario lo dibujaba vacío. */
+        private function validarRangoEvento(string $inicio, string $fin): ?string {
+			$i = strtotime(str_replace('T', ' ', $inicio));
+			$f = strtotime(str_replace('T', ' ', $fin));
+			if ($i === false || $f === false) {
+				return json_encode(["tipo"=>"simple", "titulo"=>"Fecha no válida",
+					"texto"=>"Revise la fecha y hora de inicio y de fin del evento.", "icono"=>"error"]);
+			}
+			if ($f < $i) {
+				return json_encode(["tipo"=>"simple", "titulo"=>"Fechas invertidas",
+					"texto"=>"El evento no puede terminar antes de empezar.", "icono"=>"error"]);
+			}
+			return null;
         }
 
 		public function editarEvento() {			
@@ -116,7 +164,10 @@
 					"icono" => "error"
 				];
 				return json_encode($alerta);
-			}			
+			}
+			if (($error = $this->validarRangoEvento($agenda_start, $agenda_end)) !== null) {
+				return $error;
+			}
 		
 			$agenda_reg=[
                 [

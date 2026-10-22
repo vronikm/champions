@@ -33,6 +33,13 @@
 		if($_POST['modulo_repre']=="estadofirmado"){
 			echo $insRepresentante->actualizarEstadoFormulario();
 		}
+
+		/* El alta pregunta si la identificación ya existe. Empieza por
+		   «consultar»: la guardia lo trata como lectura. */
+		if($_POST['modulo_repre']=="consultarIdentificacion"){
+			header('Content-Type: application/json; charset=utf-8');
+			echo json_encode($insRepresentante->consultarIdentificacion((string)($_POST['repre_identificacion'] ?? '')), JSON_UNESCAPED_UNICODE);
+		}
 	}else{
 		session_destroy();
 		header("Location: ".APP_URL."login/");

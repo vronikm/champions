@@ -121,9 +121,25 @@ formularios_ajax.forEach(formularios => {
 });
 
 
+/* Entidades HTML a texto. Los controladores meten en el aviso nombres que
+   limpiarHtml() guardó escapados, y SweetAlert pinta «text» tal cual: salía
+   «El equipo QA &quot;Águilas&quot; se registró». Decodificar es seguro aquí
+   porque el resultado vuelve a ir como TEXTO (text:), nunca como HTML.
+
+   El título NO se toca: SweetAlert2 interpreta «title» como HTML, así que ya
+   muestra bien las entidades, y decodificarlo podría convertir en marcado lo
+   que un usuario escribió. */
+function textoPlano(s) {
+    if (typeof s !== 'string' || s.indexOf('&') === -1) { return s; }
+    const t = document.createElement('textarea');
+    t.innerHTML = s;
+    return t.value;
+}
+
 /* «formulario» es opcional: hay vistas que llaman a esta funcion por su
    cuenta, sin venir de un envio. */
 function alertas_ajax(alerta, formulario) {
+    alerta = Object.assign({}, alerta, { texto: textoPlano(alerta.texto) });
     if (alerta.tipo == "simple") {
 
         Swal.fire({

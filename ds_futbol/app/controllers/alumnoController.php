@@ -1413,34 +1413,17 @@
 				/*---------------Fin de registro del tab Contacto Emergencia del alumno------*/
 
 				/*---------------Actulizar horario de entrenamiento---------------------*/
-				$horario_id = $this->limpiarCadena($_POST['horarioid']);
+				$horario_id = $this->limpiarCadena($_POST['horarioid'] ?? '');
 				if($horario_id != null){
-					$cmer=$this->ejecutarConsulta("SELECT * FROM asistencia_asignahorario WHERE asignahorario_alumnoid = :alumno", [':alumno' => (int)$alumnoid]);
-					if($cmer->rowCount()>0){					
-										
-						$asignacion_horario_reg = [
-							["campo_nombre" => "asignahorario_horarioid","campo_marcador" => ":Horarioid","campo_valor" => $horario_id],
-							["campo_nombre" => "asignahorario_alumnoid","campo_marcador" => ":Alumnoid","campo_valor" => $alumnoid]
-						];
-
-						$condicion=[
-							"condicion_campo"=>"asignahorario_alumnoid",
-							"condicion_marcador"=>":Alumnoid",
-							"condicion_valor"=>$alumnoid
-						];	
-						
-						$this->actualizarDatos("asistencia_asignahorario",$asignacion_horario_reg,$condicion);
-					}else{
-						if($horario_id!="" || $alumnoid!=""){
-
-							$asignacion_horario_reg = [
-								["campo_nombre" => "asignahorario_horarioid","campo_marcador" => ":Horarioid","campo_valor" => $horario_id],
-								["campo_nombre" => "asignahorario_alumnoid","campo_marcador" => ":Alumnoid","campo_valor" => $alumnoid]
-							];
-
-							$this->guardarDatos("asistencia_asignahorario",$asignacion_horario_reg);
-						}
-					}
+					/* Queda UN horario: el elegido. Antes se hacía UPDATE de todas
+					   las filas del alumno y, si tenía dos horarios, quedaban dos
+					   filas iguales. Se borra y se inserta. */
+					$this->eliminarRegistro("asistencia_asignahorario","asignahorario_alumnoid",$alumnoid);
+					$asignacion_horario_reg = [
+						["campo_nombre" => "asignahorario_horarioid","campo_marcador" => ":Horarioid","campo_valor" => $horario_id],
+						["campo_nombre" => "asignahorario_alumnoid","campo_marcador" => ":Alumnoid","campo_valor" => $alumnoid]
+					];
+					$this->guardarDatos("asistencia_asignahorario",$asignacion_horario_reg);
 				}else{
 					/* Sin horario elegido se quita el que tuviera. Cero filas
 					   borradas no es un fallo: el alumno simplemente no tenía
@@ -1684,10 +1667,145 @@
 			return $tabla;
 		}
 
-		public function HorarioID($alumnoid){		
+		public function HorarioID($alumnoid){
 			$consulta_datos="SELECT asignahorario_horarioid FROM asistencia_asignahorario WHERE asignahorario_alumnoid = :alumno";
-			$datos = $this->ejecutarConsulta($consulta_datos, [':alumno' => (int)$alumnoid]);		
+			$datos = $this->ejecutarConsulta($consulta_datos, [':alumno' => (int)$alumnoid]);
 			return $datos;
+		}
+
+		/*----------  Todo lo que muestra la ficha del alumno, ya en texto  ----------*/
+		/*
+		| La ficha es de solo lectura. Antes pintaba campos deshabilitados y,
+		| para mostrar el nombre de la sede o de la nacionalidad, generaba los
+		| <option> de cada catálogo. Aquí sale el texto.
+		|
+		| Cada catálogo se filtra por SU tabla: el parentesco del representante
+		| se buscaba sólo por valor y, si el valor existía en otro catálogo,
+		| salían dos filas y la pestaña quedaba con variables sin definir.
+		|
+		| Un alumno puede tener más de un horario asignado (los hay): se
+		| devuelven todos. Antes, con dos, el horario salía vacío.
+		|
+		| Devuelve null si el alumno no existe.
+		*/
+		public function fichaAlumno($alumnoid){
+			$p = [':alumno' => (int)$alumnoid];
+			$catalogo = static fn(string $alias, string $tabla, string $valor): string =>
+				"LEFT JOIN (general_tabla_catalogo $alias
+				            INNER JOIN general_tabla {$alias}T ON {$alias}T.tabla_id = $alias.catalogo_tablaid
+				                                            AND {$alias}T.tabla_nombre = '$tabla')
+				       ON $alias.catalogo_valor = $valor";
+
+			$alumno = $this->ejecutarConsulta("SELECT A.*, S.sede_nombre,
+						TI.catalogo_descripcion AS tipo_identificacion,
+						NA.catalogo_descripcion AS nacionalidad,
+						(SELECT COUNT(*) FROM alumno_pago WHERE pago_alumnoid = A.alumno_id AND pago_estado = 'P') AS pagos_pendientes
+					FROM sujeto_alumno A
+					LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
+					" . $catalogo('TI', 'tipo_documento', 'A.alumno_tipoidentificacion') . "
+					" . $catalogo('NA', 'nacionalidad', 'A.alumno_nacionalidadid') . "
+					WHERE A.alumno_id = :alumno", $p)->fetch();
+			if (!$alumno) {
+				return null;
+			}
+
+			$representante = $this->ejecutarConsulta("SELECT R.*, PA.catalogo_descripcion AS parentesco
+					FROM sujeto_alumno A
+					INNER JOIN alumno_representante R ON R.repre_id = A.alumno_repreid
+					" . $catalogo('PA', 'parentesco', 'R.repre_parentesco') . "
+					WHERE A.alumno_id = :alumno LIMIT 1", $p)->fetch();
+
+			$emergencia = $this->ejecutarConsulta("SELECT C.*, PA.catalogo_descripcion AS parentesco
+					FROM alumno_cemergencia C
+					" . $catalogo('PA', 'parentesco', 'C.cemer_parentesco') . "
+					WHERE C.cemer_alumnoid = :alumno ORDER BY C.cemer_id DESC LIMIT 1", $p)->fetch();
+
+			$medica = $this->ejecutarConsulta("SELECT * FROM alumno_infomedic
+					WHERE infomedic_alumnoid = :alumno ORDER BY infomedic_id DESC LIMIT 1", $p)->fetch();
+
+			$ids = $this->ejecutarConsulta("SELECT DISTINCT asignahorario_horarioid FROM asistencia_asignahorario
+					WHERE asignahorario_alumnoid = :alumno ORDER BY 1", $p)->fetchAll(\PDO::FETCH_COLUMN);
+			$horarios = array_values(array_filter(array_map(fn($id) => $this->horarioDias($id), $ids)));
+
+			return [
+				'alumno'        => $alumno,
+				'representante' => $representante ?: null,
+				'emergencia'    => $emergencia ?: null,
+				'medica'        => $medica ?: null,
+				'horarios'      => $horarios,
+			];
+		}
+
+		/*----------  El representante al que se le añade un alumno  ----------*/
+		/*
+		| Para la cabecera del alta (alumnoNew/{repre}): quién es, cómo
+		| localizarlo, su dirección (que el alta ofrece copiar) y cuántos
+		| alumnos tiene ya, que ayuda a contestar «¿hermanos en la escuela?».
+		| Los textos salen sin escapar. Devuelve null si no existe.
+		*/
+		public function representanteParaAlta($repreid){
+			if ((int)$repreid <= 0) {
+				return null;
+			}
+			$r = $this->ejecutarConsulta("SELECT R.repre_id, R.repre_identificacion, R.repre_primernombre, R.repre_segundonombre,
+						R.repre_apellidopaterno, R.repre_apellidomaterno, R.repre_celular, R.repre_direccion,
+						(SELECT COUNT(*) FROM sujeto_alumno A WHERE A.alumno_repreid = R.repre_id) AS alumnos
+					FROM alumno_representante R WHERE R.repre_id = :repre", [':repre' => (int)$repreid])->fetch();
+			if (!$r) {
+				return null;
+			}
+			$texto = static fn($v) => html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+			return [
+				'id'             => (int)$r['repre_id'],
+				'nombre'         => preg_replace('/\s+/', ' ', trim($texto($r['repre_primernombre'] . ' ' . $r['repre_segundonombre'] . ' '
+				                    . $r['repre_apellidopaterno'] . ' ' . $r['repre_apellidomaterno']))),
+				'identificacion' => $texto($r['repre_identificacion']),
+				'celular'        => $texto($r['repre_celular']),
+				'direccion'      => trim($texto($r['repre_direccion'])),
+				'alumnos'        => (int)$r['alumnos'],
+			];
+		}
+
+		/*----------  Un horario, día por día  ----------*/
+		/*
+		| Un renglón por día con hora, cancha y profesor. Lo usan la ficha y la
+		| edición del alumno (también al cambiar de horario, por AJAX): la tabla
+		| de antes —una columna por día— no cabía en un teléfono.
+		|
+		| Los textos salen ya sin escapar (se guardan con limpiarHtml): quien
+		| los pinte los escapa una vez, en PHP o con textContent.
+		|
+		| Devuelve null si el horario no existe.
+		*/
+		public function horarioDias($horarioid){
+			$filas = $this->ejecutarConsulta("SELECT H.horario_id, H.horario_nombre, H.horario_detalle,
+						D.detalle_dia, HO.hora_inicio, HO.hora_fin, L.lugar_nombre, E.empleado_nombre
+					FROM asistencia_horario H
+					LEFT JOIN asistencia_horario_detalle D ON D.detalle_horarioid = H.horario_id
+					LEFT JOIN asistencia_hora HO ON HO.hora_id = D.detalle_horaid
+					LEFT JOIN asistencia_lugar L ON L.lugar_id = D.detalle_lugarid
+					LEFT JOIN sujeto_empleado E ON E.empleado_id = D.detalle_profesorid
+					WHERE H.horario_id = :horario
+					ORDER BY D.detalle_dia, HO.hora_inicio", [':horario' => (int)$horarioid])->fetchAll();
+			if (!$filas) {
+				return null;
+			}
+
+			$texto = static fn($v) => $v === null ? '' : html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+			$horario = ['id' => (int)$filas[0]['horario_id'], 'nombre' => $texto($filas[0]['horario_nombre']),
+			            'detalle' => $texto($filas[0]['horario_detalle']), 'dias' => []];
+			foreach ($filas as $f) {
+				if ($f['detalle_dia'] !== null) {
+					$horario['dias'][] = [
+						'dia'      => (int)$f['detalle_dia'],
+						'inicio'   => $f['hora_inicio'] ? substr($f['hora_inicio'], 0, 5) : '',
+						'fin'      => $f['hora_fin'] ? substr($f['hora_fin'], 0, 5) : '',
+						'lugar'    => $texto($f['lugar_nombre']),
+						'profesor' => $texto($f['empleado_nombre']),
+					];
+				}
+			}
+			return $horario;
 		}
 
 		public function listarhorariosProfile($horarioid = null, $sedeid = null){
@@ -1702,12 +1820,15 @@
 										GROUP BY detalle_horarioid, detalle_horaid, H.hora_inicio, H.hora_fin
 									)HORA ON HORA.detalle_horarioid = AH.horario_id
 
-								WHERE AH.horario_estado = 'A' AND AH.horario_sedeid = $sedeid";	
-					
-			$datos = $this->ejecutarConsulta($consulta_datos);
+								WHERE (AH.horario_estado = 'A' AND AH.horario_sedeid = :sede)
+								   OR AH.horario_id = :actual";
+			/* El horario que ya tiene el alumno entra siempre, aunque esté
+			   inactivo o sea de otra sede: si faltaba, el desplegable abría en
+			   «Seleccione» y al guardar se le quitaba el horario sin avisar. */
+			$datos = $this->ejecutarConsulta($consulta_datos, [':sede' => (int)$sedeid, ':actual' => (int)$horarioid]);
 			$datos = $datos->fetchAll();
 			foreach($datos as $rows){
-				if($horarioid == $rows['horario_id']){	
+				if($horarioid == $rows['horario_id']){
 					$option.='<option value='.$rows['horario_id'].' selected="selected">'.$rows['HORARIO'].'</option>';
 				}else{
 					$option.='<option value='.$rows['horario_id'].'>'.$rows['HORARIO'].'</option>';

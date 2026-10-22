@@ -41,6 +41,14 @@
 		if ($_POST['modulo_alumno'] == "cargarHorario" && isset($_POST['horarioid'])) {
 			echo $insAlumno->generarHorarioProfile($_POST['horarioid']);
 		}
+
+		/* El mismo horario día por día, en JSON: la edición del alumno lo
+		   pinta como lista, que se lee en un teléfono. Empieza por «cargar»
+		   para que la guardia lo trate como lectura (accion_de_operacion). */
+		if ($_POST['modulo_alumno'] == "cargarHorarioDias" && isset($_POST['horarioid'])) {
+			header('Content-Type: application/json; charset=utf-8');
+			echo json_encode($insAlumno->horarioDias($_POST['horarioid']), JSON_UNESCAPED_UNICODE);
+		}
 		
 	}else{
 		session_destroy();

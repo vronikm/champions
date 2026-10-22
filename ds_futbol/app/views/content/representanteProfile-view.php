@@ -1,408 +1,225 @@
 <?php
 	use app\controllers\representanteController;
-	$insRepre = new representanteController();	
+	$insRepre = new representanteController();
 
-	$repreid=$insRepre->limpiarCadena($url[1]);
+	$repreid = ds_id_de_url($url, 1, APP_URL . 'representanteList/');
 
-	$repre_sexoM 		= "";
-	$repre_sexoF 		= "";
-	$repre_facturaS		= "";
-	$repre_facturaN		= "";
-	$repre_hermanosSi	= "";
-	$repre_hermanosNo	= "";
-	$conyuge_sexoM		= "";
-	$conyuge_sexoF		= "";
+	$ficha = $insRepre->fichaRepresentante($repreid);
+	if ($ficha === null) {
+		/* No existe: al listado. Antes se pintaba el aviso de error dentro
+		   de una página a medio montar. */
+		header("Location: " . APP_URL . "representanteList/");
+		exit();
+	}
+	$r   = $ficha['representante'];
+	$c   = $ficha['conyuge'];
+	$hijos = $ficha['alumnos'];
 
-	$datosrepresentante=$insRepre->seleccionarDatos("Unico","alumno_representante","repre_id",$repreid);
-	if($datosrepresentante->rowCount()==1){
-		$datosrepresentante=$datosrepresentante->fetch();
-		if ($datosrepresentante['repre_sexo']=='M'){
-			$repre_sexoM = "checked";
-		}else{
-			$repre_sexoF = "checked";
-		}
+	/* Los textos llegan ya sin escapar (fichaRepresentante): aquí se escapan una vez. */
+	$h     = static fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
+	$vacio = '<span class="text-body-secondary">—</span>';
+	$ver   = static fn($v) => trim((string)$v) !== '' ? $h($v) : $vacio;
+	$junta = static fn(...$partes) => preg_replace('/\s+/', ' ', trim(implode(' ', $partes)));
 
-		if ($datosrepresentante['repre_factura']=='S'){
-			$repre_facturaS = "checked";
-		}else{
-			$repre_facturaN = "checked";
-		}
-	
-		$repre_id					= $datosrepresentante['repre_id'];
-		$repre_tipoidentificacion 	= $datosrepresentante['repre_tipoidentificacion'];
-		$repre_identificacion 	  	= $datosrepresentante['repre_identificacion'];
-		$repre_primernombre		  	= $datosrepresentante['repre_primernombre'];
-		$repre_segundonombre 	 	= $datosrepresentante['repre_segundonombre'];
-		$repre_apellidopaterno 	  	= $datosrepresentante['repre_apellidopaterno'];
-		$repre_apellidomaterno 	 	= $datosrepresentante['repre_apellidomaterno'];
-		$repre_direccion 		  	= $datosrepresentante['repre_direccion'];
-		$repre_correo 			  	= $datosrepresentante['repre_correo'];
-		$repre_celular 			  	= $datosrepresentante['repre_celular'];
-		$repre_parentesco 		  	= $datosrepresentante['repre_parentesco'];
-		
-		$datosconyugerep=$insRepre->seleccionarDatos("Unico","alumno_representanteconyuge","conyuge_repid",$repreid);
-		if($datosconyugerep->rowCount()==1){
-			$datosconyugerep=$datosconyugerep->fetch();
-			$conyuge_tipoidentificacion		=$datosconyugerep['conyuge_tipoidentificacion'];
-			$conyuge_identificacion			=$datosconyugerep['conyuge_identificacion'];
-			$conyuge_primernombre			=$datosconyugerep['conyuge_primernombre'];
-			$conyuge_segundonombre			=$datosconyugerep['conyuge_segundonombre'];
-			$conyuge_apellidopaterno		=$datosconyugerep['conyuge_apellidopaterno'];
-			$conyuge_apellidomaterno		=$datosconyugerep['conyuge_apellidomaterno'];
-			$conyuge_direccion				=$datosconyugerep['conyuge_direccion'];
-			$conyuge_correo					=$datosconyugerep['conyuge_correo'];
-			$conyuge_celular				=$datosconyugerep['conyuge_celular'];
-			
-			if ($datosconyugerep['conyuge_sexo']=='M'){
-				$conyuge_sexoM = "checked";
-			}else{
-				$conyuge_sexoF = "checked";
-			}
+	$nombreRepre = $junta($r['repre_primernombre'], $r['repre_segundonombre'], $r['repre_apellidopaterno'], $r['repre_apellidomaterno']);
+	$corto       = $junta($r['repre_primernombre'], $r['repre_apellidopaterno']);
+	$iniciales   = mb_strtoupper(mb_substr($r['repre_primernombre'], 0, 1) . mb_substr($r['repre_apellidopaterno'], 0, 1));
+	$firmado     = $r['repre_firmado'] === 'S';
+	$activos     = count(array_filter($hijos, fn($a) => $a['alumno_estado'] === 'A'));
 
-		}else{
-			$conyuge_tipoidentificacion	="";
-			$conyuge_identificacion		="";
-			$conyuge_primernombre		="";
-			$conyuge_segundonombre		="";
-			$conyuge_apellidopaterno	="";
-			$conyuge_apellidomaterno	="";
-			$conyuge_direccion			="";
-			$conyuge_correo				="";
-			$conyuge_celular			="";
-			$conyuge_sexoM 				="";
-			$conyuge_sexoF 				="";
-		}
-?>
+	$edad = static function ($fecha): string {
+		if (!$fecha || str_starts_with((string)$fecha, '0000')) { return ''; }
+		try { $a = (new DateTime($fecha))->diff(new DateTime('today'))->y; } catch (Exception $e) { return ''; }
+		return $a . ($a === 1 ? ' año' : ' años');
+	};
 
-<?php
-	/* La cabecera es comun a todas las vistas: ds_futbol/app/views/inc/cabecera.php */
-	$tituloVista = 'Ficha representante';
-	$extras      = array (0 => 'swal',);
-	$cabeceraExtra = <<<'CSS'
-	<style>
-		input:invalid {
-		  box-shadow: 0 0 2px 1px red;
-		}
-		input:focus:invalid {
-		  box-shadow: none;
-		}
-		textarea:invalid {
-		  box-shadow: 0 0 2px 1px red;
-		}
-		textarea:focus:invalid {
-		  box-shadow: none;
-		}
-	</style>
-CSS;
+	$puedeEditar = function_exists('puede') ? puede('editar', 'representanteList') : true;
+	$puedeCrear  = function_exists('puede') ? puede('crear', 'representanteList') : true;
+
+	/* La cabecera es común a todas las vistas: ds_futbol/app/views/inc/cabecera.php */
+	$tituloVista = 'Representante ' . $h($corto);
+	$extras      = ['swal'];
 	require_once "app/views/inc/cabecera.php";
 ?>
 
   <body class="layout-fixed sidebar-expand-lg bg-body-tertiary">
     <div class="app-wrapper ds-core">
+      <?php require_once "app/views/inc/navbar.php"; ?>
+      <?php require_once "app/views/inc/main-sidebar.php"; ?>
 
-		<!-- Preloader -->
-		<!--?php require_once "app/views/inc/preloader.php"; ?-->
-		<!-- /.Preloader -->
-
-		<!-- Navbar -->
-		<?php require_once "app/views/inc/navbar.php"; ?>
-		<!-- /.navbar -->
-
-		<!-- Main Sidebar Container -->
-		<?php require_once "app/views/inc/main-sidebar.php"; ?>
-		<!-- /.Main Sidebar Container -->  
-
-		<!-- vista -->
-		<div class="app-main">
-
-			<!-- Content Header (Page header) -->
-			<div class="app-content-header">
-				<div class="container-fluid">
-					<div class="row mb-2">
-						<div class="col-sm-6">
-							<h1 class="m-0">Ficha Representante</h1>
-						</div><!-- /.col -->
-						<div class="col-sm-6">
-							<ol class="breadcrumb float-sm-end">
-								<li class="breadcrumb-item"><a href="#">Inicio</a></li>
-								<li class="breadcrumb-item active">Ficha Representante</li>
-							</ol>
-						</div><!-- /.col -->
-					</div><!-- /.row -->
-				</div><!-- /.container-fluid -->
+      <div class="app-main">
+		<div class="app-content-header">
+			<div class="container-fluid">
+				<div class="row mb-2 g-2 align-items-center">
+					<div class="col-sm-7">
+						<h4 class="m-0">Ficha del representante</h4>
+						<p class="small text-body-secondary mb-0"><?php echo $h($corto); ?></p>
+					</div>
+					<div class="col-sm-5">
+						<ol class="breadcrumb float-sm-end mb-0">
+							<li class="breadcrumb-item"><a href="<?php echo APP_URL; ?>dashboard/">Inicio</a></li>
+							<li class="breadcrumb-item"><a href="<?php echo APP_URL; ?>representanteList/">Representantes</a></li>
+							<li class="breadcrumb-item active" aria-current="page">Ficha</li>
+						</ol>
+					</div>
+				</div>
 			</div>
-			<!-- /.content-header -->
+		</div>
 
-			<!-- Main content -->
-			<section class="app-content">				
-				<!-- /.container-fluid información representante -->
-				<div class="container-fluid">						
-					<div class="card">
-						<div class="card-header p-2">
-							<ul class="nav nav-pills">
-							<li class="nav-item"><a class="nav-link active" href="#informacionp" data-bs-toggle="tab">Información Personal</a></li>
-								<li class="nav-item"><a class="nav-link" href="#conyuge" data-bs-toggle="tab">Cónyuge</a></li>
-							</ul>
-						</div><!-- /.card-header -->
-						<div class="card-body">
-							<div class="tab-content">
-								<!-- Tab información del representante -->
-								<div class="active tab-pane" id="informacionp">																					
-									<div class="row">
-										<div class="col-sm-3">
-											<div class="mb-3">
-												<label for="repre_tipoidentificacion">Tipo identificación</label>
-												<select class="form-select" id="repre_tipoidentificacion" name="repre_tipoidentificacion" disabled="">
-													<?php echo $insRepre->listarOptionTipoIdentificacion($repre_tipoidentificacion); ?>
-												</select>
-											</div>          
+		<section class="app-content">
+			<div class="container-fluid">
+				<div class="row g-3 ds-perfil">
+
+					<!-- ============ Quién es ============ -->
+					<div class="col-12 col-lg-4 col-xl-3">
+						<div class="card ds-perfil__alumno">
+							<div class="card-body">
+								<div class="ds-perfil__identidad">
+									<span class="ds-perfil__foto ds-perfil__foto--iniciales ds-repre__avatar" aria-hidden="true"><?php echo $h($iniciales); ?></span>
+									<div class="ds-perfil__nombre">
+										<strong><?php echo $h($nombreRepre); ?></strong>
+										<span class="text-body-secondary"><?php echo $h($r['repre_identificacion']); ?></span>
+										<div class="ds-perfil__insignias">
+											<?php if (trim($r['parentesco']) !== ''): ?><span class="badge text-bg-secondary"><?php echo $h($r['parentesco']); ?></span><?php endif; ?>
+											<?php if ($r['repre_factura'] === 'S'): ?><span class="badge text-bg-info">Factura</span><?php endif; ?>
 										</div>
-										<div class="col-md-3">
-											<div class="mb-3">
-												<label for="repre_identificacion">Identificación</label>                        
-												<input type="text" class="form-control" id="repre_identificacion" name="repre_identificacion" value="<?php echo $repre_identificacion; ?>" disabled="">
-											</div>
-										</div>                   
-										<div class="col-md-3">                        
-											<div class="mb-3">
-												<label for="repre_apellidopaterno">Apellido paterno</label>
-												<input type="text" class="form-control" id="repre_apellidopaterno" name="repre_apellidopaterno" value="<?php echo $repre_apellidopaterno; ?>" disabled="">
-											</div>
-										</div>
-										<div class="col-md-3">
-											<label for="repre_apellidomaterno">Apellido materno</label>
-											<input type="text" class="form-control" id="repre_apellidomaterno" name="repre_apellidomaterno" value="<?php echo $repre_apellidomaterno; ?>" disabled="">
-										</div>
-										<div class="col-md-3">                        
-											<div class="mb-3">
-												<label for="repre_primernombre">Primer nombre</label>
-												<input type="text" class="form-control" id="repre_primernombre" name="repre_primernombre" value="<?php echo $repre_primernombre; ?>" disabled="">
-											</div>
-										</div>
-										<div class="col-md-3">
-											<label for="repre_segundonombre">Segundo nombre</label>
-											<input type="text" class="form-control" id="repre_segundonombre" name="repre_segundonombre" value="<?php echo $repre_segundonombre; ?>" disabled="">
-										</div>
-										<div class="col-md-3">
-											<div class="mb-3">
-												<label for="repre_parentesco">Parentesco</label>
-												<select class="form-select" style="width: 100%;" id="repre_parentesco" name="repre_parentesco" disabled="">													
-													<?php echo $insRepre->listarCatalogoParentesco($repre_parentesco); ?>
-												</select>
-											</div> 
-										</div>
-										<div class="col-md-3">
-											<div class="mb-3">
-												<label for="repre_sexo">Género</label>
-												<div class="d-flex flex-wrap gap-4">
-												    <div class="form-check">
-												        <input class="form-check-input" type="radio" id="repre_sexoM" name="repre_sexo" value="M" <?php echo $repre_sexoM;?> disabled="">
-												        <label class="form-check-label" for="repre_sexoM" style="font-size: 14px;">Masculino</label>
-												    </div>
-												    <div class="form-check">
-												        <input class="form-check-input" type="radio" id="repre_sexoF" name="repre_sexo" value="F" <?php echo $repre_sexoF;?> disabled="">
-												        <label class="form-check-label" for="repre_sexoF" style="font-size: 14px;">Femenino</label>
-												    </div>
-												</div> 
-											</div>
-										</div>
-										<div class="col-md-4">
-											<div class="mb-3">
-												<label for="repre_direccion">Dirección</label>
-												<input type="text" class="form-control" id="repre_direccion" name="repre_direccion" value="<?php echo $repre_direccion; ?>" disabled="">
-											</div>
-										</div>              
-										<div class="col-md-3">
-											<div class="mb-3">
-												<label for="repre_correo">Correo</label>
-												<input type="text" class="form-control" id="repre_correo" name="repre_correo" value="<?php echo $repre_correo; ?>" disabled="">
-											</div> 
-										</div>
-										<div class="col-md-2">
-											<div class="mb-3">
-												<label for="repre_celular">Celular</label>
-												<input type="text" class="form-control" id="repre_celular" name="repre_celular" value="<?php echo $repre_celular; ?>" disabled="">
-											</div> 
-										</div>
-										<div class="col-md-3">
-											<div class="mb-3">
-												<label for="repre_factura">Requiere factura</label>
-												<div class="d-flex flex-wrap gap-4">
-												    <div class="form-check">
-												        <input class="form-check-input" type="radio" id="repre_facturaS" value="S" name="repre_factura" <?php echo $repre_facturaS;?> disabled="">
-												        <label class="form-check-label" for="repre_facturaS">Si</label>
-												    </div>
-												    <div class="form-check">
-												        <input class="form-check-input" type="radio" id="repre_facturaN" value="N" name="repre_factura" <?php echo $repre_facturaN;?> disabled="">
-												        <label class="form-check-label" for="repre_facturaN">No</label>
-												    </div>
-												</div> 
-											</div>
-										</div>
-									</div>	
-								
-									<div class="card card-default">
-										<div class="card-header">
-											<h4 class="card-title">Representa a:</h4>
-											<div class="card-tools">
-												<button type="button" class="btn btn-tool" data-lte-toggle="card-collapse" title="Plegar o desplegar" aria-label="Plegar o desplegar"><i data-lte-icon="expand" class="fas fa-plus"></i><i data-lte-icon="collapse" class="fas fa-minus"></i></button>
-											</div>
-										</div>										
-										<div class="card-body">
-											<div class="table-responsive">
-											<table id="representados" class="table table-bordered table-striped table-sm">
-												<thead>
-													<tr>
-														<th>Identificación</th>
-														<th>Nombres</th>
-														<th>Apellidos</th>
-														<th>Fecha nacimiento</th>
-														<th>Fecha ingreso</th>									
-														<th>Sede</th>
-													</tr>
-												</thead>
-												<tbody>
-													<?php 
-														echo $insRepre->listarRepresentados($repreid); 
-													?>								
-												</tbody>
-											</table>
-											</div>	
-										</div>	
-									</div>					
+									</div>
 								</div>
 
-								<!-- Tab información del conyuge representante --> 
-								<div class="tab-pane" id="conyuge">
-									<div class="row">
-										<div class="col-md-3">											
-											<div class="mb-3">
-												<label for="TidentificacionCRep">Tipo identificación</label>
-												<select class="form-select" id="conyuge_tipoidentificacion" name="conyuge_tipoidentificacion" disabled="">
-													<?php echo $insRepre->listarOptionTipoIdentificacion($conyuge_tipoidentificacion); ?> 
-												</select>
-											</div>
-										</div>
-										<div class="col-md-3">
-											<div class="mb-3">
-												<label for="conyuge_identificacion">Identificación</label>                        
-												<input type="text" class="form-control" id="conyuge_identificacion" name="conyuge_identificacion" value="<?php echo $conyuge_identificacion;?>" disabled="">
-											</div>
-										</div>                   
-										<div class="col-md-3">                        
-											<div class="mb-3">
-												<label for="conyuge_apellidopaterno">Apellido paterno</label>
-												<input type="text" class="form-control" id="conyuge_apellidopaterno" name="conyuge_apellidopaterno" value="<?php echo $conyuge_apellidopaterno;?>" disabled="">
-											</div>
-										</div>
-										<div class="col-md-3">
-											<label for="conyuge_apellidomaterno">Apellido materno</label>
-											<input type="text" class="form-control" id="conyuge_apellidomaterno" name="conyuge_apellidomaterno" value="<?php echo $conyuge_apellidomaterno;?>" disabled="">
-										</div>
-										<div class="col-md-3">                        
-											<div class="mb-3">
-												<label for="conyuge_primernombre">Primer nombre</label>
-												<input type="text" class="form-control" id="conyuge_primernombre" name="conyuge_primernombre" value="<?php echo $conyuge_primernombre;?>" disabled="">
-											</div>
-										</div>
-										<div class="col-md-3">
-											<label for="conyuge_segundonombre">Segundo nombre</label>
-											<input type="text" class="form-control" id="conyuge_segundonombre" name="conyuge_segundonombre" value="<?php echo $conyuge_segundonombre;?>" disabled="">
-										</div>
-										<div class="col-md-3">
-											<div class="mb-3">
-												<label for="conyuge_celular">Celular</label>
-												<input type="text" class="form-control" id="conyuge_celular" name="conyuge_celular"value="<?php echo $conyuge_celular;?>" disabled="">
-											</div> 
-										</div>
-										<div class="col-md-3">
-											<div class="mb-3">
-												<label for="conyuge_correo">Correo</label>
-												<input type="text" class="form-control" id="conyuge_correo" name="conyuge_correo" value="<?php echo $conyuge_correo;?>" disabled="">
-											</div> 
-										</div>
-										<div class="col-md-4">
-											<div class="mb-3">
-												<label for="conyuge_direccion">Dirección</label>
-												<input type="text" class="form-control" id="conyuge_direccion" name="conyuge_direccion" value="<?php echo $conyuge_direccion;?>" disabled="">	
-											</div>
-										</div>              
-										<div class="col-md-4">
-											<div class="mb-3">
-												<label for="conyuge_sexo">Género</label>
-												<div class="d-flex flex-wrap gap-4">
-												    <div class="form-check">
-												        <input class="form-check-input" type="radio" id="conyuge_sexoM" name="conyuge_sexo" value="M" <?php echo $conyuge_sexoM;?> disabled="">
-												        <label class="form-check-label" for="conyuge_sexoM">Masculino</label>
-												    </div>
-												    <div class="form-check">
-												        <input class="form-check-input" type="radio" id="conyuge_sexoF" name="conyuge_sexo" value="F" <?php echo $conyuge_sexoF;?> disabled="">
-												        <label class="form-check-label" for="conyuge_sexoF">Femenino</label>
-												    </div>
-												</div> 
-											</div>
-										</div>               
-									</div>										
-								</div>								
-								<div class="card-footer">						
-									<?php include "./app/views/inc/btn_back.php";?>					
-								</div>	
+								<?php /* La autorización de datos de los menores (LOPDP): a la
+								         vista, porque es lo que hay que pedirle si falta. */ ?>
+								<div class="ds-repre__lopdp <?php echo $firmado ? 'ds-repre__lopdp--ok' : 'ds-repre__lopdp--pendiente'; ?>">
+									<i class="fas <?php echo $firmado ? 'fa-circle-check' : 'fa-file-signature'; ?>" aria-hidden="true"></i>
+									<span><strong>Protección de datos:</strong> <?php echo $firmado ? 'formulario firmado' : 'pendiente de firma'; ?></span>
+									<a href="<?php echo APP_URL; ?>representanteFLPD/<?php echo (int)$repreid; ?>/" target="_blank" rel="noopener" class="ds-repre__lopdp-enlace">Formulario</a>
+								</div>
+
+								<div class="ds-perfil__acciones">
+									<?php if ($puedeEditar): ?>
+										<a href="<?php echo APP_URL; ?>representanteUpdate/<?php echo (int)$repreid; ?>/" class="btn btn-sm btn-primary"><i class="fas fa-pen me-1" aria-hidden="true"></i>Editar</a>
+									<?php endif; ?>
+									<?php if ($puedeCrear): ?>
+										<a href="<?php echo APP_URL; ?>alumnoNew/<?php echo (int)$repreid; ?>/" class="btn btn-sm btn-secondary"><i class="fas fa-plus me-1" aria-hidden="true"></i>Nuevo alumno</a>
+										<a href="<?php echo APP_URL; ?>representanteVinc/<?php echo (int)$repreid; ?>/" class="btn btn-sm btn-secondary"><i class="fas fa-link me-1" aria-hidden="true"></i>Vincular alumno</a>
+									<?php endif; ?>
+								</div>
 							</div>
-							<!-- /.tab-pane -->
-						</div><!-- /.card-body -->
-					</div><!-- /.card -->
+						</div>
+					</div>
+
+					<!-- ============ El resto ============ -->
+					<div class="col-12 col-lg-8 col-xl-9">
+						<div class="row g-3">
+
+							<!-- Representados: lo que más se viene a mirar -->
+							<div class="col-12">
+								<div class="card">
+									<div class="card-header d-flex align-items-center gap-2">
+										<h3 class="card-title me-auto"><i class="fas fa-children me-2" aria-hidden="true"></i>Representa a</h3>
+										<?php if ($hijos): ?>
+											<span class="small text-body-secondary"><?php echo count($hijos) . (count($hijos) === 1 ? ' alumno' : ' alumnos') . ($activos < count($hijos) ? ' · ' . $activos . ($activos === 1 ? ' activo' : ' activos') : ''); ?></span>
+										<?php endif; ?>
+									</div>
+									<div class="card-body">
+										<?php if (!$hijos): ?>
+											<p class="text-body-secondary mb-2">Todavía no tiene alumnos.</p>
+											<?php if ($puedeCrear): ?>
+												<a href="<?php echo APP_URL; ?>alumnoNew/<?php echo (int)$repreid; ?>/" class="btn btn-sm btn-success"><i class="fas fa-plus me-1" aria-hidden="true"></i>Registrar su primer alumno</a>
+											<?php endif; ?>
+										<?php else: ?>
+											<ul class="ds-repre__alumnos">
+												<?php foreach ($hijos as $a):
+													$nombreA = $junta($a['alumno_primernombre'], $a['alumno_segundonombre'], $a['alumno_apellidopaterno'], $a['alumno_apellidomaterno']);
+													$foto = $a['alumno_imagen'] !== '' ? media_url('alumno', $a['alumno_imagen']) : '';
+													if (str_contains($foto, '/dist/img/foto.jpg')) { $foto = ''; }
+													$inic = mb_strtoupper(mb_substr($a['alumno_primernombre'], 0, 1) . mb_substr($a['alumno_apellidopaterno'], 0, 1));
+													$activo = $a['alumno_estado'] === 'A';
+													$anio = $a['alumno_fechanacimiento'] && !str_starts_with($a['alumno_fechanacimiento'], '0000') ? substr($a['alumno_fechanacimiento'], 0, 4) : '';
+													$meta = array_filter([$edad($a['alumno_fechanacimiento']), $anio !== '' ? 'Cat. ' . $anio : '', $a['sede_nombre']]); ?>
+													<li>
+														<a class="ds-repre__alumno<?php echo $activo ? '' : ' ds-repre__alumno--inactivo'; ?>" href="<?php echo APP_URL; ?>alumnoProfile/<?php echo (int)$a['alumno_id']; ?>/">
+															<?php if ($foto !== ''): ?>
+																<img class="ds-repre__alumno-foto" src="<?php echo $h($foto); ?>" alt="" loading="lazy">
+															<?php else: ?>
+																<span class="ds-repre__alumno-foto" aria-hidden="true"><?php echo $h($inic); ?></span>
+															<?php endif; ?>
+															<span class="ds-repre__alumno-datos">
+																<strong><?php echo $h($nombreA); ?></strong>
+																<span><?php echo $h(implode(' · ', $meta)); ?></span>
+															</span>
+															<span class="badge <?php echo $activo ? 'text-bg-success' : 'text-bg-secondary'; ?>"><?php echo $activo ? 'Activo' : 'Inactivo'; ?></span>
+															<i class="fas fa-chevron-right ds-repre__alumno-ir" aria-hidden="true"></i>
+														</a>
+													</li>
+												<?php endforeach; ?>
+											</ul>
+										<?php endif; ?>
+									</div>
+								</div>
+							</div>
+
+							<!-- Contacto -->
+							<div class="col-12 col-xl-6">
+								<div class="card h-100">
+									<div class="card-header"><h3 class="card-title"><i class="fas fa-address-book me-2" aria-hidden="true"></i>Contacto</h3></div>
+									<div class="card-body">
+										<dl class="ds-perfil__datos">
+											<div><dt>Celular</dt><dd><?php echo $ver($r['repre_celular']); ?></dd></div>
+											<div><dt>Sexo</dt><dd><?php echo $r['repre_sexo'] === 'M' ? 'Masculino' : ($r['repre_sexo'] === 'F' ? 'Femenino' : $vacio); ?></dd></div>
+											<div class="ds-perfil__ancho"><dt>Correo</dt><dd>
+												<?php echo trim($r['repre_correo']) !== '' ? '<a href="mailto:' . $h($r['repre_correo']) . '">' . $h($r['repre_correo']) . '</a>' : $vacio; ?>
+											</dd></div>
+											<div class="ds-perfil__ancho"><dt>Dirección</dt><dd><?php echo $ver($r['repre_direccion']); ?></dd></div>
+											<div><dt>Tipo de identificación</dt><dd><?php echo $ver($r['tipo_identificacion']); ?></dd></div>
+											<div><dt>Requiere factura</dt><dd><?php echo $r['repre_factura'] === 'S' ? 'Sí' : ($r['repre_factura'] === 'N' ? 'No' : $vacio); ?></dd></div>
+										</dl>
+										<?php echo ds_botones_contacto($r['repre_celular']); ?>
+									</div>
+								</div>
+							</div>
+
+							<!-- Cónyuge -->
+							<div class="col-12 col-xl-6">
+								<div class="card h-100">
+									<div class="card-header"><h3 class="card-title"><i class="fas fa-user-group me-2" aria-hidden="true"></i>Cónyuge</h3></div>
+									<div class="card-body">
+										<?php if (!$c || $junta($c['conyuge_primernombre'], $c['conyuge_apellidopaterno']) === ''): ?>
+											<p class="text-body-secondary mb-0">Sin cónyuge registrado.</p>
+										<?php else: ?>
+											<p class="ds-perfil__persona">
+												<strong><?php echo $h($junta($c['conyuge_primernombre'], $c['conyuge_segundonombre'], $c['conyuge_apellidopaterno'], $c['conyuge_apellidomaterno'])); ?></strong>
+												<?php if (trim($c['conyuge_identificacion']) !== ''): ?><span class="text-body-secondary"><?php echo $h($c['conyuge_identificacion']); ?></span><?php endif; ?>
+											</p>
+											<dl class="ds-perfil__datos">
+												<div><dt>Celular</dt><dd><?php echo $ver($c['conyuge_celular']); ?></dd></div>
+												<div><dt>Sexo</dt><dd><?php echo $c['conyuge_sexo'] === 'M' ? 'Masculino' : ($c['conyuge_sexo'] === 'F' ? 'Femenino' : $vacio); ?></dd></div>
+												<div class="ds-perfil__ancho"><dt>Correo</dt><dd>
+													<?php echo trim($c['conyuge_correo']) !== '' ? '<a href="mailto:' . $h($c['conyuge_correo']) . '">' . $h($c['conyuge_correo']) . '</a>' : $vacio; ?>
+												</dd></div>
+												<div class="ds-perfil__ancho"><dt>Dirección</dt><dd><?php echo $ver($c['conyuge_direccion']); ?></dd></div>
+											</dl>
+											<?php echo ds_botones_contacto($c['conyuge_celular']); ?>
+										<?php endif; ?>
+									</div>
+								</div>
+							</div>
+
+						</div>
+					</div>
+
 				</div>
-			</section>
-			<!-- /.content -->    
-			
-			<?php
-				}else{
-					include "./app/views/inc/error_alert.php";
-				}
-			?>
-		</div>
-		<!-- /.vista -->
+			</div>
+		</section>
+      </div>
 
-		<?php require_once "app/views/inc/footer.php"; ?>
-
-		<!-- Control Sidebar -->
-		<aside class="control-sidebar control-sidebar-dark">
-		<!-- Control sidebar content goes here -->
-		</aside>
-      <!-- /.control-sidebar -->
+      <?php require_once "app/views/inc/footer.php"; ?>
     </div>
-    <!-- ./wrapper -->
 
-    
-	<!-- jQuery -->
-	<script src="<?php echo APP_URL; ?>app/views/dist/plugins/jquery/jquery.min.js"></script>
-	<!-- Bootstrap 4 -->
 	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/overlayscrollbars/js/overlayscrollbars.browser.es6.min.js"></script>
 	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/bootstrap5/js/bootstrap.bundle.min.js"></script>
-	
-	<!-- Select2 -->
-	<!-- Bootstrap4 Duallistbox -->
-	<!-- InputMask -->
-	<!-- date-range-picker -->
-	<!-- bootstrap color picker -->
-	<!-- Tempusdominus Bootstrap 4 -->
-	<!-- Bootstrap Switch -->
-	<!-- BS-Stepper -->
-
-	<!-- AdminLTE App -->
 	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/adminlte4/js/adminlte.min.js"></script>
-		
-	<script src="<?php echo ds_recurso('ds_futbol/app/views/dist/js/ajax.js'); ?>" ></script>
-    
-	<!-- Page specific script -->
-	<script>
-		document.addEventListener('DOMContentLoaded', function () {
-			/* Aqui habia una tabla de DataTables sobre #representados, pero la
-			   libreria no se carga en esta vista: cada visita lanzaba
-			   «ReferenceError: DataTable is not defined». La tabla se ve bien
-			   sin ella; traer doce archivos para paginar tres filas no sale a
-			   cuenta. */			    
-		});
-	</script>
+	<?php /* Esta pantalla no envía formularios, pero la barra superior sí:
+	         «Cambiar contraseña» va por ajax.js y avisa con SweetAlert. */ ?>
+	<script src="<?php echo ds_recurso('ds_futbol/app/views/dist/js/ajax.js'); ?>"></script>
   </body>
 </html>

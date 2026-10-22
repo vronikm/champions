@@ -130,8 +130,9 @@
 								<tr>
 									<th>Identificación</th>
 									<th>Nombres</th>
-									<th>Apellidos</th>	
-									<th>Representado</th>		
+									<th>Apellidos</th>
+									<th class="text-center">Alumnos</th>
+									<th>Representado</th>
 									<th style width="140px">Protección de datos</th>								
 									<th style width="160px">Operaciones</th>
 								</tr>
@@ -213,7 +214,9 @@
 			|
 			| columnDefs: las tres últimas columnas son botones, no datos. No
 			| se ordenan porque ordenar por «Operaciones» no significa nada, y
-			| el servidor sólo acepta las tres primeras (lista blanca).
+			| el servidor sólo acepta las cuatro primeras (lista blanca).
+			| «Alumnos» (la 3) sí se ordena; el primer clic, de más a menos
+			| representados.
 			*/
 			"serverSide": true,
 			"processing": true,
@@ -222,7 +225,10 @@
 				"type": "GET"
 			},
 			"order": [[2, "asc"]],
-			"columnDefs": [{ "orderable": false, "targets": [3, 4, 5] }],
+			"columnDefs": [
+				{ "targets": 3, "className": "text-center", "orderSequence": ["desc", "asc"], "responsivePriority": 2 },
+				{ "orderable": false, "targets": [4, 5, 6] }
+			],
 			"responsive": true, "lengthChange": false, "autoWidth": false,
 			"language": {
 				"decimal": "",

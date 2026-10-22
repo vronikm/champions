@@ -16,7 +16,9 @@
 			$equipo_estado		= "A";
 
 			# Verificando campos obligatorios #
-			if($equipo_nombre=="" || $equipo_categoria=="" || $equipo_sedeid==0 || $equipo_profesorid==0){
+			/* (int): en PHP 8, "" == 0 es FALSO, así que una sede o un profesor
+			   sin elegir —valor vacío— pasaba esta comprobación. */
+			if($equipo_nombre=="" || $equipo_categoria=="" || (int)$equipo_sedeid <= 0 || (int)$equipo_profesorid <= 0){
 				$alerta=[
 					"tipo"=>"simple",
 					"titulo"=>"Error",
@@ -176,64 +178,90 @@
         }
 
 		/* Listar los equipos de un torneo*/
+		/*
+		| Los equipos de un torneo, como filas de .ds-crud__tabla (futbol.css):
+		| tabla en escritorio, ficha en el teléfono.
+		|
+		| LEFT JOIN con sede y profesor: antes era un JOIN implícito, y un
+		| equipo cuyo profesor se hubiera dado de baja desaparecía del listado
+		| sin aviso, aunque siguiera inscrito. Ahora sale con «Sin profesor».
+		|
+		| Textos decodificados y vueltos a escapar: limpiarHtml() los guarda
+		| ya escapados y lo heredado está en crudo (ver torneoController).
+		*/
 		public function listarEquiposTorneo($equipo_torneoid){
 			$tabla="";
-			$estado = "";
-			$texto = "";
-			$boton = "";
-			$consulta_datos="SELECT sede_nombre, equipo_id, equipo_nombre, equipo_torneoid, torneo_nombre, equipo_categoria, 
-								empleado_nombre, CASE WHEN equipo_estado='A' THEN 'Activo' 
-													WHEN equipo_estado = 'I' THEN 'Inactivo' 
-													ELSE equipo_estado END AS ESTADO 
-							 FROM torneo_equipo, torneo_torneo, general_sede, sujeto_empleado
-							 WHERE equipo_sedeid = sede_id
-							 	AND equipo_profesorid = empleado_id
-							 	AND equipo_torneoid = :torneo
-							 	AND torneo_id = equipo_torneoid
-							 	AND equipo_estado IN ('A','I')
-							 ORDER BY equipo_fechaactualizado ASC";
+			$torneo = (int)$equipo_torneoid;
+			$consulta_datos="SELECT s.sede_nombre, e.equipo_id, e.equipo_nombre, e.equipo_foto, e.equipo_categoria,
+								emp.empleado_nombre,
+								CASE WHEN e.equipo_estado='A' THEN 'Activo'
+								     WHEN e.equipo_estado='I' THEN 'Inactivo'
+								     ELSE e.equipo_estado END AS ESTADO
+							 FROM torneo_equipo e
+							 LEFT JOIN general_sede s      ON s.sede_id = e.equipo_sedeid
+							 LEFT JOIN sujeto_empleado emp ON emp.empleado_id = e.equipo_profesorid
+							 WHERE e.equipo_torneoid = :torneo
+							   AND e.equipo_estado IN ('A','I')
+							 ORDER BY e.equipo_categoria, e.equipo_nombre";
 
-			$datos = $this->ejecutarConsulta($consulta_datos, [':torneo' => (int)$equipo_torneoid]);
+			$datos = $this->ejecutarConsulta($consulta_datos, [':torneo' => $torneo]);
 			$datos = $datos->fetchAll();
+
+			$h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+			$dirFotos = __DIR__ . '/../views/imagenes/fotos/equipos/';
+
 			foreach($datos as $rows){
+				$id = (int)$rows['equipo_id'];
 				if($rows['ESTADO']=='Activo'){
-					$estado = "Activo";
+					$badge = '<span class="badge text-bg-success">Activo</span>';
 					$texto = "Inactivar";
-					$boton = "btn-secondary";
+					$icono = "fa-toggle-on";
 				}else{
-					$estado = "Inactivo";
+					$badge = '<span class="badge text-bg-secondary">Inactivo</span>';
 					$texto = "Activar";
-					$boton = "btn-info";
+					$icono = "fa-toggle-off";
 				}
 
-				$tabla.='
-					<tr>	
-						<td>'.$rows['sede_nombre'].'</td>					
-						<td>'.$rows['torneo_nombre'].'</td>
-						<td>'.$rows['equipo_nombre'].'</td>
-						<td>'.$rows['equipo_categoria'].'</td>
-						<td>'.$rows['empleado_nombre'].'</td>	
-						<td>'.$estado.'</td>
-						<td>
-							<a href="'.APP_URL.'jugadorNew/'.$equipo_torneoid.'/'.$rows['equipo_id'].'/" class="btn float-end btn-warning btn-sm" style="margin-right: 3px;"><i class="fas fa-link me-1"></i>Asignar</a>							
-							<a href="'.APP_URL.'jugadorLista/'.$equipo_torneoid.'/'.$rows['equipo_id'].'/" class="btn float-end btn-primary btn-sm" style="margin-right: 3px;"><i class="fas fa-list me-1"></i>Ver lista</a>
-						</td>
-						<td>
-							'.$this->siPuede('eliminar','torneoList','<form class="FormularioAjax" action="'.APP_URL.'app/ajax/equipoAjax.php" method="POST" autocomplete="off" >
-								<input type="hidden" name="modulo_equipo" value="eliminar">
-								<input type="hidden" name="equipo_id" value="'.$rows['equipo_id'].'">						
-								<button type="submit" class="btn float-end btn-danger btn-sm" style="margin-right: 3px;" title="Eliminar" aria-label="Eliminar"><i class="fas fa-trash"></i></button>
-							</form>').'
-							
-							'.$this->siPuede('editar','torneoList','<form class="FormularioAjax" action="'.APP_URL.'app/ajax/equipoAjax.php" method="POST" autocomplete="off" >
-								<input type="hidden" name="modulo_equipo" value="actualizarestado">
-								<input type="hidden" name="equipo_id" value="'.$rows['equipo_id'].'">						
-								<button type="submit" class="btn float-end '.$boton.' btn-sm" style="margin-right: 3px;""> '.$texto.' </button>
-							</form>').'
+				/* El escudo sólo si el archivo existe: en una base restaurada
+				   sin la carpeta de imágenes saldría un icono roto. */
+				$foto = (string)$rows['equipo_foto'];
+				$imagen = ($foto !== '' && is_file($dirFotos . basename($foto)))
+					? '<img class="ds-ficha__imagen" src="'.APP_URL.'app/views/imagenes/fotos/equipos/'.rawurlencode(basename($foto)).'" alt="">'
+					: '<span class="ds-ficha__imagen" aria-hidden="true"><i class="fas fa-shield-halved"></i></span>';
 
-							'.$this->siPuede('editar','torneoList','<a href="'.APP_URL.'equipoList/'.$equipo_torneoid.'/'.$rows['equipo_id'].'/" class="btn float-end btn-success btn-sm" style="margin-right: 3px;" title="Editar" aria-label="Editar"><i class="fas fa-pen"></i></a>').'							
+				$profesor = trim((string)$rows['empleado_nombre']) !== ''
+					? $h($rows['empleado_nombre']) : '<span class="text-body-secondary">Sin profesor</span>';
+
+				$tabla.='
+					<tr>
+						<td class="ds-ficha__principal">
+							<div class="ds-ficha__con-imagen">
+								'.$imagen.'
+								<div>
+									<div class="ds-ficha__nombre">'.$h($rows['equipo_nombre']).'</div>
+									<div class="ds-ficha__meta"><i class="fas fa-tag" aria-hidden="true"></i> '.$h($rows['equipo_categoria']).'
+										'.($rows['sede_nombre'] !== null ? ' · '.$h($rows['sede_nombre']) : '').'</div>
+								</div>
+							</div>
 						</td>
-					</tr>';	
+						<td class="ds-ficha__dato" data-etiqueta="Profesor">'.$profesor.'</td>
+						<td class="ds-ficha__estado" data-order="'.$h($rows['ESTADO']).'">'.$badge.'</td>
+						<td class="ds-tabla-acciones ds-ficha__acciones"><div class="ds-ficha__botones">
+							<a href="'.APP_URL.'jugadorLista/'.$torneo.'/'.$id.'/" class="btn btn-primary btn-sm ds-ficha__primario"><i class="fas fa-list me-1" aria-hidden="true"></i>Jugadores</a>
+							<a href="'.APP_URL.'jugadorNew/'.$torneo.'/'.$id.'/" class="btn btn-outline-primary btn-sm" title="Asignar jugadores" aria-label="Asignar jugadores"><i class="fas fa-user-plus"></i></a>
+							'.$this->siPuede('editar','torneoList','<a href="'.APP_URL.'equipoList/'.$torneo.'/'.$id.'/" class="btn btn-outline-success btn-sm" title="Editar" aria-label="Editar"><i class="fas fa-pen"></i></a>').'
+							'.$this->siPuede('editar','torneoList','<form class="FormularioAjax" action="'.APP_URL.'app/ajax/equipoAjax.php" method="POST" autocomplete="off">
+								<input type="hidden" name="modulo_equipo" value="actualizarestado">
+								<input type="hidden" name="equipo_id" value="'.$id.'">
+								<button type="submit" class="btn btn-outline-secondary btn-sm" title="'.$texto.'" aria-label="'.$texto.'"><i class="fas '.$icono.'"></i></button>
+							</form>').'
+							'.$this->siPuede('eliminar','torneoList','<form class="FormularioAjax" action="'.APP_URL.'app/ajax/equipoAjax.php" method="POST" autocomplete="off">
+								<input type="hidden" name="modulo_equipo" value="eliminar">
+								<input type="hidden" name="equipo_id" value="'.$id.'">
+								<button type="submit" class="btn btn-outline-danger btn-sm" title="Eliminar" aria-label="Eliminar"><i class="fas fa-trash"></i></button>
+							</form>').'
+						</div></td>
+					</tr>';
 			}
 			return $tabla;
 		}
@@ -290,7 +318,9 @@
 			$equipo_categoria	= $this->limpiarCadena($_POST['equipo_categoria']);
 						
 			# Verificando campos obligatorios #
-			if($equipo_nombre=="" || $equipo_categoria=="" || $equipo_sedeid==0 || $equipo_profesorid==0){
+			/* (int): en PHP 8, "" == 0 es FALSO, así que una sede o un profesor
+			   sin elegir —valor vacío— pasaba esta comprobación. */
+			if($equipo_nombre=="" || $equipo_categoria=="" || (int)$equipo_sedeid <= 0 || (int)$equipo_profesorid <= 0){
 				$alerta=[
 					"tipo"=>"simple",
 					"titulo"=>"Error",
@@ -565,16 +595,14 @@
 		public function listarOptionSede($sedeid){
 			$option="";
 
-			$consulta_datos="SELECT sede_id, sede_nombre FROM general_sede";	
-					
+			$consulta_datos="SELECT sede_id, sede_nombre FROM general_sede ORDER BY sede_nombre";
+
 			$datos = $this->ejecutarConsulta($consulta_datos);
 			$datos = $datos->fetchAll();
+			$h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
 			foreach($datos as $rows){
-				if($sedeid == $rows['sede_id']){	
-					$option.='<option value='.$rows['sede_id'].' selected="selected">'.$rows['sede_nombre'].'</option>';
-				}else{
-					$option.='<option value='.$rows['sede_id'].'>'.$rows['sede_nombre'].'</option>';
-				}					
+				$sel = ((int)$sedeid === (int)$rows['sede_id']) ? ' selected' : '';
+				$option.='<option value="'.(int)$rows['sede_id'].'"'.$sel.'>'.$h($rows['sede_nombre']).'</option>';
 			}
 			return $option;
 		}
@@ -582,16 +610,20 @@
 		public function listarResponsable($equipo_profesorid){
 			$option="";
 
-			$consulta_datos="SELECT empleado_id, empleado_nombre FROM sujeto_empleado WHERE empleado_tipopersonalid = 'TPP' AND empleado_estado = 'A'";	
-					
-			$datos = $this->ejecutarConsulta($consulta_datos);
+			/* El profesor ya asignado se incluye aunque hoy esté inactivo: si no,
+			   al editar el equipo el desplegable caería en «Seleccionar» y guardar
+			   lo dejaría sin profesor sin que nadie lo hubiera pedido. */
+			$consulta_datos="SELECT empleado_id, empleado_nombre FROM sujeto_empleado
+							  WHERE (empleado_tipopersonalid = 'TPP' AND empleado_estado = 'A')
+							     OR empleado_id = :actual
+							  ORDER BY empleado_nombre";
+
+			$datos = $this->ejecutarConsulta($consulta_datos, [':actual' => (int)$equipo_profesorid]);
 			$datos = $datos->fetchAll();
+			$h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
 			foreach($datos as $rows){
-				if($equipo_profesorid == $rows['empleado_id']){	
-					$option.='<option value='.$rows['empleado_id'].' selected="selected">'.$rows['empleado_nombre'].'</option>';
-				}else{
-					$option.='<option value='.$rows['empleado_id'].'>'.$rows['empleado_nombre'].'</option>';
-				}					
+				$sel = ((int)$equipo_profesorid === (int)$rows['empleado_id']) ? ' selected' : '';
+				$option.='<option value="'.(int)$rows['empleado_id'].'"'.$sel.'>'.$h($rows['empleado_nombre']).'</option>';
 			}
 			return $option;
 		}

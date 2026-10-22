@@ -6,6 +6,34 @@
 	class torneoController extends mainModel{
 
 		/*----------  Controlador registrar usuario  ----------*/
+		/*----------  Fechas del torneo  ----------*/
+		/*
+		| Las dos son NOT NULL en torneo_torneo y no se validaban. Con el MySQL
+		| local en modo permisivo, una fecha vacía entraba como 0000-00-00; en
+		| un servidor en modo estricto —lo normal en un hosting— el alta moría
+		| con un error de SQL en vez de un aviso. Devuelve la alerta en JSON, o
+		| null si las fechas son válidas.
+		*/
+		private function validarFechasTorneo(string $inicio, string $fin): ?string {
+			$valida = static function (string $f): bool {
+				$d = \DateTime::createFromFormat('Y-m-d', $f);
+				return $d !== false && $d->format('Y-m-d') === $f;
+			};
+			if ($inicio === '' || $fin === '') {
+				return json_encode(["tipo"=>"simple", "titulo"=>"Error",
+					"texto"=>"No ha completado todos los campos obligatorios", "icono"=>"error"]);
+			}
+			if (!$valida($inicio) || !$valida($fin)) {
+				return json_encode(["tipo"=>"simple", "titulo"=>"Fecha no válida",
+					"texto"=>"Revise las fechas de inicio y de finalización del torneo.", "icono"=>"error"]);
+			}
+			if ($fin < $inicio) {
+				return json_encode(["tipo"=>"simple", "titulo"=>"Fechas invertidas",
+					"texto"=>"La fecha de finalización no puede ser anterior a la de inicio.", "icono"=>"error"]);
+			}
+			return null;
+		}
+
 		public function registrarTorneoControlador(){
 			# Almacenando datos#
 			$torneo_nombre		= $this->limpiarCadena($_POST['torneo_nombre']);
@@ -26,6 +54,9 @@
 					"icono"=>"error"
 				];
 				return json_encode($alerta);
+			}
+			if(($error = $this->validarFechasTorneo($torneo_fechainicio, $torneo_fechafin)) !== null){
+				return $error;
 			}			
 
 			# Directorio de imagenes #
@@ -191,59 +222,93 @@
 		/* Listar todos los torneos*/
 		public function listarTorneos(){
 			$tabla="";
-			$estado = "";
-			$texto = "";
-			$boton = "";
-			$consulta_datos="SELECT torneo_id, torneo_nombre, torneo_ciudad, torneo_lugar, torneo_foto, torneo_fechainicio,
-									torneo_fechafin, torneo_organizador, torneo_descripcion,
-								CASE WHEN torneo_estado='A' THEN 'Activo' 
-									 WHEN torneo_estado = 'I' THEN 'Inactivo' 
-									 ELSE torneo_estado 
-								END AS ESTADO 
-							 FROM torneo_torneo
-							 WHERE torneo_estado IN ('A','I')
-							 ORDER BY torneo_fechaactualizado asc";	
-					
+			/* Equipos inscritos por torneo: los no eliminados (activos e
+			   inactivos), igual que los que muestra equipoList. Una sola
+			   subconsulta agrupada —usa el índice fk_torneo— en vez de una
+			   consulta por fila; el LEFT JOIN deja a 0 los torneos sin equipos. */
+			$consulta_datos="SELECT t.torneo_id, t.torneo_nombre, t.torneo_ciudad, t.torneo_lugar, t.torneo_foto, t.torneo_fechainicio,
+									t.torneo_fechafin, t.torneo_organizador, t.torneo_descripcion,
+								COALESCE(eq.total, 0) AS EQUIPOS,
+								CASE WHEN t.torneo_estado='A' THEN 'Activo'
+									 WHEN t.torneo_estado = 'I' THEN 'Inactivo'
+									 ELSE t.torneo_estado
+								END AS ESTADO
+							 FROM torneo_torneo t
+							 LEFT JOIN (SELECT equipo_torneoid, COUNT(*) AS total
+							              FROM torneo_equipo
+							             WHERE equipo_estado IN ('A','I')
+							             GROUP BY equipo_torneoid) eq ON eq.equipo_torneoid = t.torneo_id
+							 WHERE t.torneo_estado IN ('A','I')
+							 ORDER BY t.torneo_fechainicio DESC, t.torneo_id DESC";
+
 			$datos = $this->ejecutarConsulta($consulta_datos);
 			$datos = $datos->fetchAll();
+
+			/*
+			| UNA FILA, DOS PRESENTACIONES
+			|
+			| En escritorio es una fila de tabla; en el teléfono, futbol.css la
+			| convierte en ficha (.ds-crud). El marcado es uno solo: los
+			| formularios de eliminar y de cambiar el estado no se duplican.
+			|
+			| Lo que viene de la base se escapa: el nombre o la descripción de un
+			| torneo los escribe un usuario, y antes se imprimían tal cual.
+			|
+			| Se decodifica ANTES de escapar porque la base tiene de los dos:
+			| limpiarHtml() guarda lo escrito en el sistema ya escapado
+			| («WOMEN&quot;S»), y lo heredado de SoccerEasy está en crudo. Escapar
+			| sin más mostraría «&quot;» al pie de la letra en lo primero.
+			*/
+			$h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+			$fecha = static fn($d) => ($d && $d !== '0000-00-00') ? date('d/m/Y', strtotime($d)) : '—';
+
 			foreach($datos as $rows){
+				$id = (int)$rows['torneo_id'];
 				if($rows['ESTADO']=='Activo'){
-					$estado = "Activo";
+					$badge = '<span class="badge text-bg-success">Activo</span>';
 					$texto = "Inactivar";
-					$boton = "btn-secondary";
+					$icono = "fa-toggle-on";
 				}else{
-					$estado = "Inactivo";
+					$badge = '<span class="badge text-bg-secondary">Inactivo</span>';
 					$texto = "Activar";
-					$boton = "btn-info";
+					$icono = "fa-toggle-off";
 				}
 
-				$tabla.='
-					<tr>						
-						<td>'.$rows['torneo_nombre'].'</td>
-						<td>'.$rows['torneo_ciudad'].'</td>
-						<td>'.$rows['torneo_lugar'].'</td>
-						<td>'.$rows['torneo_fechainicio'].'</td>
-						<td>'.$rows['torneo_fechafin'].'</td>
-						<td>'.$rows['torneo_organizador'].'</td>
-						<td>'.$rows['torneo_descripcion'].'</td>
-						<td>'.$estado.'</td>
-						<td class="ds-tabla-acciones">
-							'.$this->siPuede('eliminar','torneoList','<form class="FormularioAjax d-inline-flex" action="'.APP_URL.'app/ajax/torneoAjax.php" method="POST" autocomplete="off" >
-								<input type="hidden" name="modulo_torneo" value="eliminar">
-								<input type="hidden" name="torneo_id" value="'.$rows['torneo_id'].'">						
-								<button type="submit" class="btn btn-danger btn-sm ms-1" title="Eliminar" aria-label="Eliminar"><i class="fas fa-trash"></i></button>
-							</form>').'
-							
-							'.$this->siPuede('editar','torneoList','<form class="FormularioAjax d-inline-flex" action="'.APP_URL.'app/ajax/torneoAjax.php" method="POST" autocomplete="off" >
-								<input type="hidden" name="modulo_torneo" value="actualizarestado">
-								<input type="hidden" name="torneo_id" value="'.$rows['torneo_id'].'">						
-								<button type="submit" class="btn '.$boton.' btn-sm ms-1"> '.$texto.' </button>
-							</form>').'
+				$sitio = implode(' · ', array_filter([$h($rows['torneo_ciudad']), $h($rows['torneo_lugar'])], 'strlen'));
+				$descripcion = trim((string)$rows['torneo_descripcion']) !== ''
+					? '<div class="ds-ficha__desc">'.$h($rows['torneo_descripcion']).'</div>' : '';
 
-							'.$this->siPuede('editar','torneoList','<a href="'.APP_URL.'torneoList/'.$rows['torneo_id'].'/" class="btn btn-success btn-sm ms-1" title="Editar" aria-label="Editar"><i class="fas fa-pen"></i></a>').'
-							<a href="'.APP_URL.'equipoList/'.$rows['torneo_id'].'/" class="btn btn-primary btn-sm ms-1"><i class="fas fa-users me-1"></i>Equipos</a>
+				$tabla.='
+					<tr>
+						<td class="ds-ficha__principal">
+							<div class="ds-ficha__nombre">'.$h($rows['torneo_nombre']).'</div>
+							'.($sitio !== '' ? '<div class="ds-ficha__meta"><i class="fas fa-location-dot" aria-hidden="true"></i> '.$sitio.'</div>' : '').'
+							'.$descripcion.'
 						</td>
-					</tr>';	
+						<td class="ds-ficha__dato ds-ficha__nowrap" data-order="'.$h($rows['torneo_fechainicio']).'">
+							<i class="far fa-calendar" aria-hidden="true"></i>
+							<span>'.$fecha($rows['torneo_fechainicio']).'</span> – <span>'.$fecha($rows['torneo_fechafin']).'</span>
+						</td>
+						<td class="ds-ficha__dato ds-torneo__equipos" data-etiqueta="Equipos" data-order="'.(int)$rows['EQUIPOS'].'">
+							<span class="badge rounded-pill '.((int)$rows['EQUIPOS'] > 0 ? 'text-bg-primary' : 'text-bg-light border').'" title="Equipos inscritos">'.(int)$rows['EQUIPOS'].'</span>
+						</td>
+						<td class="ds-ficha__dato ds-col-opcional" data-etiqueta="Organiza">'.($rows['torneo_organizador'] !== '' ? $h($rows['torneo_organizador']) : '<span class="text-body-secondary">—</span>').'</td>
+						<td class="ds-ficha__estado" data-order="'.$h($rows['ESTADO']).'">'.$badge.'</td>
+						<td class="ds-tabla-acciones ds-ficha__acciones"><div class="ds-ficha__botones">
+							<a href="'.APP_URL.'equipoList/'.$id.'/" class="btn btn-primary btn-sm ds-ficha__primario"><i class="fas fa-users me-1" aria-hidden="true"></i>Equipos</a>
+							'.$this->siPuede('editar','torneoList','<a href="'.APP_URL.'torneoList/'.$id.'/" class="btn btn-outline-success btn-sm" title="Editar" aria-label="Editar"><i class="fas fa-pen"></i></a>').'
+							'.$this->siPuede('editar','torneoList','<form class="FormularioAjax" action="'.APP_URL.'app/ajax/torneoAjax.php" method="POST" autocomplete="off">
+								<input type="hidden" name="modulo_torneo" value="actualizarestado">
+								<input type="hidden" name="torneo_id" value="'.$id.'">
+								<button type="submit" class="btn btn-outline-secondary btn-sm" title="'.$texto.'" aria-label="'.$texto.'"><i class="fas '.$icono.'"></i></button>
+							</form>').'
+							'.$this->siPuede('eliminar','torneoList','<form class="FormularioAjax" action="'.APP_URL.'app/ajax/torneoAjax.php" method="POST" autocomplete="off">
+								<input type="hidden" name="modulo_torneo" value="eliminar">
+								<input type="hidden" name="torneo_id" value="'.$id.'">
+								<button type="submit" class="btn btn-outline-danger btn-sm" title="Eliminar" aria-label="Eliminar"><i class="fas fa-trash"></i></button>
+							</form>').'
+						</div></td>
+					</tr>';
 			}
 			return $tabla;
 		}
@@ -300,6 +365,9 @@
 					"icono"=>"error"
 				];
 				return json_encode($alerta);
+			}
+			if(($error = $this->validarFechasTorneo($torneo_fechainicio, $torneo_fechafin)) !== null){
+				return $error;
 			}
 
 			$torneo_datos_reg=[

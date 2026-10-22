@@ -46,6 +46,7 @@
 				0 => 'repre_identificacion',
 				1 => 'repre_primernombre',
 				2 => 'repre_apellidopaterno',
+				3 => 'alumnos',               // el recuento de representados (alias)
 			];
 		}
 
@@ -65,14 +66,15 @@
 			          ? 'DESC' : 'ASC';
 
 			/*----------  Filtro  ----------*/
-			$base   = "FROM alumno_representante
-			            WHERE repre_estado IN ('A','I') AND repre_primernombre <> ''";
+			/* $donde va aparte de la tabla: la página le une el recuento de
+			   alumnos y los COUNT no lo necesitan. */
+			$donde  = "WHERE repre_estado IN ('A','I') AND repre_primernombre <> ''";
 			$par    = [];
 
 			if ($buscado !== '') {
 				/* Una sola condicion sobre los tres campos que se ven: el
 				   usuario busca «lo que sea que recuerde», no una columna. */
-				$base .= " AND (repre_identificacion LIKE :b
+				$donde .= " AND (repre_identificacion LIKE :b
 				             OR repre_primernombre   LIKE :b
 				             OR repre_segundonombre  LIKE :b
 				             OR repre_apellidopaterno LIKE :b
@@ -87,13 +89,23 @@
 
 			$filtrados = $buscado === ''
 				? $total
-				: (int)$this->ejecutarConsulta("SELECT COUNT(1) " . $base, $par)->fetchColumn();
+				: (int)$this->ejecutarConsulta("SELECT COUNT(1) FROM alumno_representante " . $donde, $par)->fetchColumn();
 
 			/*----------  La pagina  ----------*/
+			/* Cuántos alumnos representa cada uno, y cuántos siguen activos.
+			   Un recuento agrupado y unido, no una subconsulta por fila: así
+			   también se puede ORDENAR por él en la base. Los eliminados ('E')
+			   no cuentan. */
 			$sql = "SELECT repre_id, repre_identificacion, repre_primernombre,
 			               repre_segundonombre, repre_apellidopaterno,
-			               repre_apellidomaterno, repre_firmado
-			        " . $base
+			               repre_apellidomaterno, repre_firmado,
+			               COALESCE(AC.total, 0) AS alumnos, COALESCE(AC.activos, 0) AS activos
+			        FROM alumno_representante
+			        LEFT JOIN (SELECT alumno_repreid, COUNT(*) AS total, SUM(alumno_estado = 'A') AS activos
+			                     FROM sujeto_alumno
+			                    WHERE alumno_estado <> 'E'
+			                    GROUP BY alumno_repreid) AC ON AC.alumno_repreid = repre_id
+			        " . $donde
 			    . " ORDER BY " . $colOrden . " " . $dirOrden . ", repre_id ASC"
 			    . " LIMIT " . (int)$largo . " OFFSET " . (int)$inicio;
 
@@ -107,10 +119,24 @@
 				$texto   = $firmado ? 'Firmado' : 'Pendiente';
 				$boton   = $firmado ? 'btn-secondary' : 'btn-info';
 
+				/* Los alumnos: el total como insignia, que lleva a la ficha del
+				   representante (ahí está la lista). Azul si alguno está activo,
+				   gris si ninguno; y debajo cuántos activos, sólo si no lo están
+				   todos (de 853 alumnos, 630 están inactivos). */
+				$nAlumnos = (int)$r['alumnos'];
+				$nActivos = (int)$r['activos'];
+				$celdaAlumnos = '<a href="' . APP_URL . 'representanteProfile/' . $id . '/" class="badge rounded-pill text-decoration-none '
+				              . ($nActivos > 0 ? 'text-bg-primary' : 'text-bg-secondary') . '"'
+				              . ' title="Ver sus representados" aria-label="' . $nAlumnos . ($nAlumnos === 1 ? ' alumno' : ' alumnos') . '">' . $nAlumnos . '</a>'
+				              . ($nAlumnos > 0 && $nActivos < $nAlumnos
+				                  ? '<span class="d-block small text-body-secondary text-nowrap">' . ($nActivos === 0 ? 'ninguno activo' : $nActivos . ($nActivos === 1 ? ' activo' : ' activos')) . '</span>'
+				                  : '');
+
 				$datos[] = [
 					htmlspecialchars((string)$r['repre_identificacion'], ENT_QUOTES, 'UTF-8'),
 					htmlspecialchars(trim($r['repre_primernombre'] . ' ' . $r['repre_segundonombre']), ENT_QUOTES, 'UTF-8'),
 					htmlspecialchars(trim($r['repre_apellidopaterno'] . ' ' . $r['repre_apellidomaterno']), ENT_QUOTES, 'UTF-8'),
+					$celdaAlumnos,
 
 					$this->siPuede('crear', 'representanteList',
 						'<a href="' . APP_URL . 'alumnoNew/' . $id . '/" class="btn float-end btn-secondary btn-sm ms-1"><i class="fas fa-plus me-1"></i>Nuevo Alumno</a>')
@@ -136,6 +162,33 @@
 				'data'            => $datos,
 			];
 		}
+		/*----------  ¿Ya existe un representante con esta identificación?  ----------*/
+		/*
+		| Para el alta: los padres de un segundo hijo ya están registrados, y
+		| antes se enteraban al guardar («El representante ya se encuentra
+		| creado») después de rellenarlo todo. Ahora se pregunta al salir del
+		| campo y se ofrece ir a él. Sólo lectura: el nombre y cuántos alumnos
+		| tiene, lo mismo que ya muestra el listado a quien puede verlo.
+		*/
+		public function consultarIdentificacion(string $identificacion): array {
+			$identificacion = trim($identificacion);
+			if ($identificacion === '') {
+				return ['existe' => false];
+			}
+			$r = $this->ejecutarConsulta("SELECT repre_id, repre_primernombre, repre_apellidopaterno,
+						(SELECT COUNT(*) FROM sujeto_alumno WHERE alumno_repreid = repre_id AND alumno_estado <> 'E') AS alumnos
+					FROM alumno_representante WHERE repre_identificacion = :ident LIMIT 1", [':ident' => $identificacion])->fetch();
+			if (!$r) {
+				return ['existe' => false];
+			}
+			return [
+				'existe'  => true,
+				'id'      => (int)$r['repre_id'],
+				'nombre'  => html_entity_decode(trim($r['repre_primernombre'] . ' ' . $r['repre_apellidopaterno']), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+				'alumnos' => (int)$r['alumnos'],
+			];
+		}
+
 		public function listarRepresentantes($identificacion, $apellidopaterno, $primernombre){
 			$estado = "";
 			$texto = "";
@@ -499,30 +552,57 @@
 		}
 
 		/*----------  Matriz de representados  ----------*/
-		public function listarRepresentados($repreid){
-			$tabla="";
-			$consulta_datos="SELECT alumno_identificacion, alumno_primernombre, alumno_segundonombre, alumno_apellidopaterno, 
-									alumno_apellidomaterno, alumno_fechanacimiento, alumno_fechaingreso, sede_nombre
-								 FROM sujeto_alumno 
-								 INNER JOIN general_sede on alumno_sedeid = sede_id
-								 WHERE alumno_estado in ('A','I')
-									AND (alumno_repreid = :repre)
-								ORDER BY alumno_fechaingreso";
+		/*----------  La ficha del representante, ya en texto  ----------*/
+		/*
+		| De solo lectura. Antes eran campos deshabilitados y, para mostrar el
+		| parentesco o el tipo de documento, se generaban los <option> de cada
+		| catálogo. Cada catálogo se filtra por SU tabla.
+		|
+		| Los representados van con lo que se busca de un vistazo —edad,
+		| categoría, sede, si está activo— y su id para abrir su ficha. Los
+		| activos primero. Los eliminados ('E') no salen.
+		|
+		| Textos sin escapar: la vista los escapa una vez. Null si no existe.
+		*/
+		public function fichaRepresentante($repreid){
+			$p = [':repre' => (int)$repreid];
+			$catalogo = static fn(string $alias, string $tabla, string $valor): string =>
+				"LEFT JOIN (general_tabla_catalogo $alias
+				            INNER JOIN general_tabla {$alias}T ON {$alias}T.tabla_id = $alias.catalogo_tablaid
+				                                            AND {$alias}T.tabla_nombre = '$tabla')
+				       ON $alias.catalogo_valor = $valor";
 
-			$datos = $this->ejecutarConsulta($consulta_datos, [':repre' => (int)$repreid]);
-			$datos = $datos->fetchAll();
-			foreach($datos as $rows){
-				$tabla.='
-					<tr>
-						<td>'.$rows['alumno_identificacion'].'</td>
-						<td>'.$rows['alumno_primernombre'].' '.$rows['alumno_segundonombre'].'</td>
-						<td>'.$rows['alumno_apellidopaterno'].' '.$rows['alumno_apellidomaterno'].'</td>
-						<td>'.$rows['alumno_fechanacimiento'].'</td>
-						<td>'.$rows['alumno_fechaingreso'].'</td>
-						<td>'.$rows['sede_nombre'].'</td>
-					</tr>';	
+			$repre = $this->ejecutarConsulta("SELECT R.*, PA.catalogo_descripcion AS parentesco, TI.catalogo_descripcion AS tipo_identificacion
+					FROM alumno_representante R
+					" . $catalogo('PA', 'parentesco', 'R.repre_parentesco') . "
+					" . $catalogo('TI', 'tipo_documento', 'R.repre_tipoidentificacion') . "
+					WHERE R.repre_id = :repre", $p)->fetch();
+			if (!$repre) {
+				return null;
 			}
-			return $tabla;			
+
+			$conyuge = $this->ejecutarConsulta("SELECT C.*, TI.catalogo_descripcion AS tipo_identificacion
+					FROM alumno_representanteconyuge C
+					" . $catalogo('TI', 'tipo_documento', 'C.conyuge_tipoidentificacion') . "
+					WHERE C.conyuge_repid = :repre ORDER BY C.conyuge_id DESC LIMIT 1", $p)->fetch();
+
+			$alumnos = $this->ejecutarConsulta("SELECT A.alumno_id, A.alumno_identificacion, A.alumno_primernombre, A.alumno_segundonombre,
+						A.alumno_apellidopaterno, A.alumno_apellidomaterno, A.alumno_fechanacimiento, A.alumno_fechaingreso,
+						A.alumno_estado, A.alumno_imagen, S.sede_nombre
+					FROM sujeto_alumno A
+					LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
+					WHERE A.alumno_repreid = :repre AND A.alumno_estado IN ('A','I')
+					ORDER BY A.alumno_estado = 'A' DESC, A.alumno_fechanacimiento", $p)->fetchAll();
+
+			$texto = static fn($v) => $v === null ? '' : html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+			$limpio = static function (array $fila) use ($texto): array {
+				return array_map($texto, $fila);
+			};
+			return [
+				'representante' => $limpio($repre),
+				'conyuge'       => $conyuge ? $limpio($conyuge) : null,
+				'alumnos'       => array_map($limpio, $alumnos),
+			];
 		}
 
 		/*----------  Controlador actualizar representante  ----------*/

@@ -31,3 +31,834 @@
         font-size: 1.25rem;
     }
 }
+
+/* =========================================================================
+   ALTA + LISTADO (.ds-crud y .ds-ficha): dos secciones, el formulario y la
+   lista; tabla en escritorio y fichas en el teléfono.
+
+   Nació en Torneos (torneoList) y lo usa también Equipos (equipoList): una
+   pantalla nueva de este tipo sólo tiene que poner las clases.
+
+     .ds-crud               contenedor de las dos tarjetas
+     .ds-crud__form         el <form class="card"> de alta / edición
+     .ds-crud__lista        la tarjeta del listado; .ds-crud__tabla su tabla
+     .ds-ficha__principal   celda con .ds-ficha__nombre y .ds-ficha__meta
+     .ds-ficha__estado      la insignia de estado (arriba a la derecha)
+     .ds-ficha__dato        cualquier otro dato; con data-etiqueta="Profesor"
+                            la ficha lo rotula delante
+     .ds-ficha__acciones    celda de botones; dentro, .ds-ficha__botones, y
+                            .ds-ficha__primario en el que ocupa el ancho
+
+   Un solo marcado, dos presentaciones, como .ds-acta en core.css: duplicar
+   la lista (tabla + tarjetas) habría duplicado también los formularios de
+   eliminar y de cambiar el estado de cada fila.
+
+   El corte es el lg de Bootstrap (991.98px), no el md: con seis columnas
+   —Torneos, desde que cuenta los equipos— la tabla ya no cabía en una
+   tableta vertical (820 px) y desbordaba la página. Por debajo de lg, fichas;
+   y a partir de 640 px, en dos columnas, para no desperdiciar el ancho.
+   ========================================================================= */
+.ds-crud__atajos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    margin-top: .5rem;
+}
+/* El gris de btn-outline-secondary daba 4,45 de contraste en claro y 2,84
+   en oscuro (qa_identidad exige 4,5): el texto va con el color de énfasis
+   del tema, que contrasta en los dos. */
+.ds-crud__atajos .btn {
+    color: var(--bs-emphasis-color);
+    background: var(--bs-body-bg);
+    border-color: var(--bs-border-color);
+}
+.ds-crud__atajos .btn:hover { background: var(--bs-tertiary-bg); }
+
+.ds-crud > .card + .card { margin-top: 1.25rem; }
+.ds-crud .card { scroll-margin-top: 4.5rem; }   /* que el atajo no la deje bajo la barra */
+
+.ds-crud .card-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .25rem;
+}
+.ds-crud .card-header .card-tools { margin-left: auto; }
+.ds-crud .card-title { font-size: 1.05rem; font-weight: 600; margin: 0; }
+
+/* En edición, el formulario se distingue del alta a primera vista. */
+.ds-crud__form--edicion { border-top: 3px solid var(--bs-warning); }
+.ds-crud__editando {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* --- Foto -------------------------------------------------------------- */
+.ds-crud__foto .thumbnail {
+    width: 120px;
+    height: 120px;
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    background: var(--bs-tertiary-bg);
+    place-items: center;
+    overflow: hidden;
+    cursor: pointer;
+}
+/* grid sólo en la miniatura del estado activo: digisports.css alterna
+   -new/-exists con display, y un grid suelto aquí —cargado después— dejaría
+   visible el recuadro vacío de la vista previa. */
+.ds-crud__foto.fileinput-new .thumbnail.fileinput-new,
+.ds-crud__foto.fileinput-exists .thumbnail.fileinput-exists { display: grid; }
+.ds-crud__foto .thumbnail img { width: 100%; height: 100%; object-fit: contain; }
+.ds-crud__foto-botones { margin-top: .5rem; min-width: 0; }
+
+/* El <input type=file> nativo va encima del botón, invisible: se pulsa el
+   botón y se abre el selector. Visible, añadía «Ningún archivo
+   seleccionado» al lado y en el teléfono se salía de la pantalla. */
+.ds-crud__foto .bton-file {
+    position: relative;
+    overflow: hidden;
+    display: inline-block;
+    padding: .375rem .75rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    background: var(--bs-body-bg);
+    cursor: pointer;
+    font-size: .875rem;
+}
+.ds-crud__foto .bton-file input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    font-size: 0;
+}
+.ds-crud__foto .bton-file:focus-within { outline: 2px solid var(--bs-primary); outline-offset: 2px; }
+.ds-crud__foto .bton-orange { margin-left: .5rem; font-size: .875rem; }
+
+/* --- Tabla (escritorio) ------------------------------------------------ */
+.ds-crud__tabla { margin-bottom: 0; }
+.ds-ficha__nombre { font-weight: 600; }
+.ds-ficha__meta,
+.ds-ficha__desc { font-size: .825rem; color: var(--bs-secondary-color); }
+.ds-ficha__desc {
+    max-width: 38ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ds-ficha__dato > .fas,
+.ds-ficha__dato > .far { color: var(--bs-secondary-color); margin-right: .25rem; }
+.ds-ficha__nowrap { white-space: nowrap; }
+/* Miniatura opcional junto al nombre (escudo del equipo, foto...). */
+.ds-ficha__con-imagen { display: flex; align-items: center; gap: .65rem; }
+.ds-ficha__imagen {
+    flex: none;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--bs-tertiary-bg);
+    display: grid;
+    place-items: center;
+    color: var(--bs-secondary-color);
+}
+
+/* El flex va en un div dentro de la celda y no en la celda: un <td> con
+   display:flex deja de ser celda y las líneas de la tabla se descuadran. */
+.ds-ficha__botones {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: .35rem;
+}
+.ds-ficha__botones form { display: inline-flex; margin: 0; }
+/* core.css separa botones contiguos con margin-left; aquí ya lo hace gap. */
+.ds-ficha__botones > * { margin-left: 0 !important; }
+
+.ds-crud__lista .dt-search input { min-width: 16rem; }
+
+@media (max-width: 991.98px) {
+    /* Foto en horizontal: miniatura y botones uno al lado del otro, en
+       vez de media pantalla de trofeo antes del primer campo. */
+    .ds-crud__foto { display: flex; align-items: center; gap: .75rem; }
+    .ds-crud__foto .thumbnail { width: 84px; height: 84px; flex: none; }
+    .ds-crud__foto-botones { margin-top: 0; }
+
+    /* El buscador, a todo lo ancho y cómodo de pulsar. */
+    .ds-crud__lista .dt-layout-row { margin: 0 0 .75rem; }
+    .ds-crud__lista .dt-search { width: 100%; }
+    .ds-crud__lista .dt-search input { width: 100% !important; margin-left: 0 !important; min-height: 2.75rem; }
+    .ds-crud__lista .dt-layout-cell { width: 100%; text-align: center; justify-content: center; }
+    /* A partir de md DataTables pone buscador e información en una fila
+       con ms-auto: en tableta el buscador quedaba estrecho a la derecha. */
+    .ds-crud__lista .dt-layout-row > .dt-layout-cell { flex: 1 1 100%; max-width: 100%; margin-left: 0 !important; }
+    .ds-crud__lista .pagination { justify-content: center; flex-wrap: wrap; }
+
+    /* Cada fila, una ficha. */
+    .ds-crud__tabla,
+    .ds-crud__tabla > tbody { display: block; }
+    .ds-crud__tabla > thead { display: none; }
+
+    .ds-crud__tabla > tbody > tr {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: .25rem .75rem;
+        padding: .85rem;
+        margin-bottom: .75rem;
+        border: 1px solid var(--bs-border-color);
+        border-radius: var(--bs-border-radius-lg);
+        background: var(--bs-body-bg);
+    }
+    /* !important en el borde: DataTables pinta el de cada celda con una
+       regla más específica (table.dataTable > tbody > tr > *) y dejaba
+       rayas sueltas dentro de la ficha. */
+    .ds-crud__tabla > tbody > tr > td {
+        display: block;
+        padding: 0;
+        text-align: left;
+        border: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+    }
+
+    /* Nombre arriba a la izquierda, estado arriba a la derecha. */
+    .ds-crud__tabla td.ds-ficha__principal { grid-column: 1; grid-row: 1; min-width: 0; }
+    .ds-crud__tabla td.ds-ficha__estado    { grid-column: 2; grid-row: 1; align-self: start; }
+    .ds-crud__tabla td.ds-ficha__dato { grid-column: 1 / -1; font-size: .875rem; }
+    /* Una columna centrada en la tabla (text-center lleva !important) no se
+       centra dentro de la ficha. */
+    .ds-crud__tabla > tbody > tr > td.text-center { text-align: left !important; }
+    .ds-crud__tabla td.ds-ficha__dato[data-etiqueta]::before {
+        content: attr(data-etiqueta) ": ";
+        color: var(--bs-secondary-color);
+    }
+    .ds-ficha__nombre { font-size: 1rem; line-height: 1.3; }
+    .ds-ficha__desc { max-width: 100%; }
+
+    /* Acciones: Equipos ocupa el ancho libre; el resto, botones de 44 px,
+       el tamaño que se acierta con el dedo. Eliminar queda al final, lejos
+       del pulgar que va a Equipos. */
+    .ds-crud__tabla td.ds-ficha__acciones {
+        grid-column: 1 / -1;
+        margin-top: .5rem;
+        padding-top: .6rem;
+        border-top: 1px solid var(--bs-border-color-translucent);
+    }
+    /* Con cinco botones (Equipos: Jugadores, Asignar, Editar, Estado,
+       Eliminar) el principal quedaba en 79 px a 390 de ancho. Se recupera
+       espacio del relleno de la tarjeta y de la separación, nunca del tamaño
+       de los botones de 44 px. */
+    .ds-crud__lista > .card-body { padding: .75rem; }
+    .ds-crud__tabla > tbody > tr { padding: .75rem; }
+    td.ds-ficha__acciones .ds-ficha__botones { justify-content: stretch; gap: .4rem; }
+    td.ds-ficha__acciones .ds-ficha__primario { padding-inline: .5rem; white-space: nowrap; }
+    .ds-crud__lista .dt-search input { min-width: 0; }
+    td.ds-ficha__acciones .btn {
+        min-width: 2.75rem;
+        min-height: 2.75rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    td.ds-ficha__acciones .ds-ficha__primario { flex: 1; }
+
+    /* Sin datos: el mensaje de DataTables ocupa la ficha entera. */
+    .ds-crud__tabla > tbody > tr > td.dt-empty { grid-column: 1 / -1; text-align: center; }
+}
+
+/* Portátil pequeño con el menú lateral abierto (992-1279 px): la tarjeta
+   del listado mide unos 700 px y la tabla de Torneos pedía 843. Las columnas
+   marcadas .ds-col-opcional (th y td) se ocultan en ese tramo; el dato sigue
+   en la ficha y en pantallas grandes. */
+@media (min-width: 992px) and (max-width: 1279.98px) {
+    .ds-crud__tabla .ds-col-opcional { display: none; }
+    /* Y el rango de fechas puede partirse en dos líneas: sin esto aún
+       faltaban ~25 px a 992. */
+    .ds-crud__tabla .ds-ficha__nowrap { white-space: normal; }
+}
+
+/* Tableta: dos fichas por fila. La ficha mide lo mismo que en un teléfono
+   grande, así que su contenido no cambia; sólo se aprovecha el ancho. */
+@media (min-width: 640px) and (max-width: 991.98px) {
+    .ds-crud__tabla > tbody {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: .75rem;
+    }
+    .ds-crud__tabla > tbody > tr { margin-bottom: 0; }
+    .ds-crud__tabla > tbody > tr:has(> td.dt-empty) { grid-column: 1 / -1; }
+}
+
+/* =========================================================================
+   AGENDA (agenda): calendario + próximos eventos.
+
+   FullCalendar 5 trae sus propios colores y pinta los números de día y los
+   nombres de la semana como enlaces: Bootstrap los subrayaba en azul. Aquí
+   se le dan los tokens del tema, así que también se ve bien en oscuro.
+
+   Esas reglas van bajo .ds-calendario, no bajo .ds-agenda: las comparte
+   toda pantalla con calendario (agenda, asistencia de un alumno). Basta con
+   poner la clase en un contenedor del calendario.
+   ========================================================================= */
+.ds-agenda__cabecera {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+}
+
+.ds-calendario .fc {
+    --fc-border-color: var(--bs-border-color);
+    --fc-page-bg-color: var(--bs-body-bg);
+    --fc-neutral-bg-color: var(--bs-tertiary-bg);
+    --fc-list-event-hover-bg-color: var(--bs-tertiary-bg);
+    --fc-today-bg-color: rgba(var(--bs-warning-rgb), .15);
+    --fc-button-bg-color: var(--bs-secondary-bg);
+    --fc-button-border-color: var(--bs-border-color);
+    --fc-button-text-color: var(--bs-body-color);
+    --fc-button-hover-bg-color: var(--bs-tertiary-bg);
+    --fc-button-hover-border-color: var(--bs-border-color);
+    --fc-button-active-bg-color: var(--bs-primary);
+    --fc-button-active-border-color: var(--bs-primary);
+    font-size: .925rem;
+}
+.ds-calendario .fc a { color: inherit; text-decoration: none; }
+.ds-calendario .fc .fc-button { font-size: .875rem; padding: .375rem .75rem; text-transform: capitalize; }
+.ds-calendario .fc .fc-button-active,
+.ds-calendario .fc .fc-button-primary:not(:disabled).fc-button-active { color: #fff; }
+.ds-calendario .fc .fc-button:focus { box-shadow: 0 0 0 .2rem rgba(var(--bs-primary-rgb), .3); }
+.ds-calendario .fc .fc-toolbar-title { font-size: 1.25rem; font-weight: 600; }
+/* «Octubre de 2026», no «Octubre De 2026»: sólo la primera letra. */
+.ds-calendario .fc .fc-toolbar-title::first-letter { text-transform: uppercase; }
+.ds-calendario .fc .fc-col-header-cell-cushion { font-weight: 600; text-transform: capitalize; padding: .4rem 0; }
+.ds-calendario .fc .fc-daygrid-day-number { padding: .35rem .5rem; font-size: .85rem; }
+.ds-calendario .fc .fc-day-other .fc-daygrid-day-number { opacity: .45; }
+.ds-calendario .fc .fc-daygrid-day:hover { background: var(--bs-tertiary-bg); cursor: pointer; }
+.ds-calendario .fc .fc-event { cursor: pointer; }
+.ds-calendario .fc .fc-list-day-cushion { background: var(--bs-tertiary-bg); }
+
+/* --- Próximos eventos --------------------------------------------------- */
+.ds-agenda__proximos .list-group-item { padding: 0; background: transparent; }
+.ds-agenda__item {
+    display: flex;
+    align-items: flex-start;
+    gap: .65rem;
+    width: 100%;
+    padding: .7rem 1rem;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    color: inherit;
+}
+.ds-agenda__item:hover,
+.ds-agenda__item:focus-visible { background: var(--bs-tertiary-bg); outline: none; }
+.ds-agenda__punto {
+    flex: none;
+    width: .7rem;
+    height: .7rem;
+    margin-top: .35rem;
+    border-radius: 50%;
+}
+.ds-agenda__texto { display: flex; flex-direction: column; min-width: 0; }
+.ds-agenda__titulo { font-weight: 600; overflow-wrap: anywhere; }
+.ds-agenda__cuando { font-size: .825rem; color: var(--bs-secondary-color); }
+
+/* --- Selector de color ---------------------------------------------------- */
+/* El fieldset agrupa los colores para los lectores de pantalla; el recuadro
+   con borde que le pone la hoja heredada sobra a la vista. */
+#modal-agenda fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+#modal-agenda legend { float: none; width: auto; padding: 0; }
+.ds-agenda__colores { display: flex; flex-wrap: wrap; gap: .5rem; }
+.ds-agenda__color { position: relative; cursor: pointer; margin: 0; }
+.ds-agenda__color input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+.ds-agenda__color span {
+    display: block;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 50%;
+    border: 2px solid var(--bs-body-bg);
+    box-shadow: 0 0 0 1px var(--bs-border-color);
+}
+.ds-agenda__color input:checked + span { box-shadow: 0 0 0 3px var(--bs-body-color); }
+.ds-agenda__color input:focus-visible + span { outline: 2px solid var(--bs-primary); outline-offset: 2px; }
+.ds-agenda__color--libre input[type="color"] {
+    width: 2.25rem;
+    height: 2.25rem;
+    padding: 0;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 50%;
+    background: none;
+    cursor: pointer;
+}
+
+@media (max-width: 767.98px) {
+    .ds-agenda__nuevo { width: 100%; min-height: 2.75rem; }
+    .ds-agenda__calendario { padding: .5rem; }
+    .ds-calendario .fc .fc-toolbar { gap: .5rem; }
+    .ds-calendario .fc .fc-toolbar-title { font-size: 1.05rem; }
+    .ds-calendario .fc .fc-button { min-height: 2.5rem; }
+    .ds-calendario .fc .fc-list-event td { padding: .65rem .5rem; }
+}
+
+/* =========================================================================
+   ASISTENCIA DE UN ALUMNO (buscarAsistencia): ficha, resumen del mes y
+   calendario. El calendario usa los colores del tema de .ds-calendario.
+   ========================================================================= */
+.ds-asist__identidad { display: flex; align-items: center; gap: .85rem; margin-bottom: 1rem; }
+.ds-asist__avatar {
+    flex: none;
+    width: 4.5rem;
+    height: 4.5rem;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--bs-border-color);
+}
+.ds-asist__avatar--iniciales {
+    display: grid;
+    place-items: center;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--bs-emphasis-color);
+    background: var(--bs-tertiary-bg);
+}
+.ds-asist__nombre { display: flex; flex-direction: column; min-width: 0; }
+.ds-asist__nombre strong { font-size: 1.1rem; line-height: 1.25; overflow-wrap: anywhere; }
+
+/* Los datos como pares rótulo / valor. Antes eran <a> sin enlace: se veían
+   subrayados en azul, invitando a pulsar algo que no lleva a ningún sitio.
+   La ficha del alumno (.ds-perfil, más abajo) usa los mismos. */
+.ds-asist__datos,
+.ds-perfil__datos {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .75rem 1rem;
+    margin: 0 0 1rem;
+}
+.ds-asist__datos dt,
+.ds-perfil__datos dt { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--bs-secondary-color); }
+.ds-asist__datos dd,
+.ds-perfil__datos dd { margin: 0; font-weight: 500; overflow-wrap: anywhere; }
+.ds-asist__acciones,
+.ds-perfil__acciones { display: flex; flex-wrap: wrap; gap: .5rem; }
+.ds-asist__acciones .btn,
+.ds-perfil__acciones .btn { flex: 1 1 auto; }
+
+/* --- Resumen del mes ----------------------------------------------------- */
+.ds-asist__resumen {
+    display: grid;
+    grid-template-columns: 1.4fr repeat(4, minmax(0, 1fr));
+    gap: .75rem;
+}
+.ds-asist__kpi {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: .15rem;
+    padding: .75rem 1rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius-lg);
+    background: var(--bs-body-bg);
+}
+.ds-asist__kpi-valor { font-size: 1.5rem; font-weight: 700; line-height: 1.1; color: var(--bs-emphasis-color); }
+.ds-asist__kpi--principal .ds-asist__kpi-valor { font-size: 2rem; }
+.ds-asist__kpi-rotulo { font-size: .8rem; color: var(--bs-secondary-color); display: flex; align-items: center; gap: .35rem; }
+
+/* Los mismos colores que el controlador da a cada marca (asistenciaController). */
+.ds-asist__punto { width: .7rem; height: .7rem; border-radius: 50%; display: inline-block; flex: none; }
+.ds-asist__punto--presente    { background: #007bff; }
+.ds-asist__punto--atraso      { background: #ffc107; color: #000; }   /* sin texto; el color calma a qa_css_temas */
+.ds-asist__punto--justificado { background: #6c757d; }
+.ds-asist__punto--falta       { background: #dc3545; }
+
+/* --- Calendario: el día marcado se tiñe entero --------------------------- */
+.ds-asist .fc { --fc-bg-event-opacity: .45; }
+.ds-asist .fc .fc-bg-event .fc-event-title { display: none; }    /* el rótulo va en el title y la leyenda */
+/* Los días de otro mes que asoman en la cuadrícula no cuentan en el
+   resumen: su marca va atenuada para que no parezca del mes. */
+.ds-asist .fc .fc-day-other .fc-bg-event { opacity: .35; }
+.ds-asist .fc .fc-daygrid-day-number { font-weight: 600; position: relative; z-index: 1; }
+.ds-asist .fc .fc-daygrid-day-frame { min-height: 3.5rem; }
+/* Aquí solo hay marcas de fondo: sin la reserva de FullCalendar para eventos
+   en línea (2em + 1em de margen), el mes entero cabe en la pantalla del móvil. */
+.ds-asist .fc .fc-daygrid-day-events,
+.ds-asist .fc .fc-daygrid-body-natural .fc-daygrid-day-events { min-height: 0; margin: 0; }
+
+@media (max-width: 991.98px) {
+    /* Teléfono y tableta: el porcentaje arriba, a todo lo ancho; las cuatro
+       marcas debajo, de dos en dos o en una fila si cabe. */
+    .ds-asist__resumen { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .ds-asist__kpi--principal { grid-column: 1 / -1; flex-direction: row; align-items: baseline; gap: .75rem; }
+}
+@media (max-width: 575.98px) {
+    .ds-asist__resumen { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .ds-asist__kpi { padding: .6rem .75rem; }
+    .ds-asist__kpi-valor { font-size: 1.25rem; }
+    .ds-asist__kpi--principal .ds-asist__kpi-valor { font-size: 1.75rem; }
+    .ds-asist__calendario { padding: .5rem; }
+    .ds-asist .fc .fc-daygrid-day-frame { min-height: 2.75rem; }
+    .ds-asist .fc .fc-toolbar-title { font-size: 1.05rem; }
+    .ds-asist .fc .fc-button { min-height: 2.5rem; }
+}
+
+/* =========================================================================
+   FICHA DEL ALUMNO (alumnoProfile): de solo lectura. Antes eran campos de
+   formulario deshabilitados en seis pestañas; ahora, rótulo y valor en
+   tarjetas que se apilan en el teléfono, con los contactos y la salud
+   primero, que es lo que se busca a pie de cancha.
+   ========================================================================= */
+.ds-perfil__identidad { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+/* La foto es de carnet (vertical): se respeta la proporción, no un círculo. */
+.ds-perfil__foto {
+    flex: none;
+    width: 5.5rem;
+    height: 6.875rem;
+    border-radius: var(--bs-border-radius-lg);
+    object-fit: cover;
+    border: 2px solid var(--bs-border-color);
+}
+.ds-perfil__foto--iniciales {
+    display: grid;
+    place-items: center;
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--bs-emphasis-color);
+    background: var(--bs-tertiary-bg);
+}
+.ds-perfil__nombre { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.ds-perfil__nombre strong { font-size: 1.1rem; line-height: 1.25; overflow-wrap: anywhere; color: var(--bs-emphasis-color); }
+.ds-perfil__insignias { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .35rem; }
+
+.ds-perfil .card-title { font-size: 1rem; font-weight: 600; }
+.ds-perfil__subtitulo { font-size: .95rem; font-weight: 600; margin-bottom: .5rem; color: var(--bs-emphasis-color); }
+.ds-perfil__persona { display: flex; flex-direction: column; margin-bottom: .75rem; }
+.ds-perfil__persona strong { overflow-wrap: anywhere; }
+.ds-perfil__ancho { grid-column: 1 / -1; }
+.ds-perfil__datos--tres   { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ds-perfil__datos--cuatro { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ds-perfil .card-body > .ds-perfil__datos:last-child { margin-bottom: 0; }
+
+/* Llamar y WhatsApp, uno al lado del otro y de la misma altura que Editar,
+   Asistencia y Pagos: en el teléfono, ambos crecen a botón de dedo. */
+.ds-perfil__contactar { display: flex; flex-wrap: wrap; gap: .5rem; }
+.ds-perfil__contactar .btn { flex: 1 1 8rem; }
+
+.ds-perfil__aviso ul { padding-left: 1.1rem; margin-top: .35rem; }
+
+/* El horario, un renglón por día: día | hora | cancha y profesor. */
+.ds-perfil__horario { list-style: none; margin: 0; padding: 0; }
+.ds-perfil__horario li {
+    display: grid;
+    grid-template-columns: 7rem 8rem minmax(0, 1fr);
+    gap: .25rem 1rem;
+    align-items: baseline;
+    padding: .55rem 0;
+    border-top: 1px solid var(--bs-border-color-translucent);
+}
+.ds-perfil__horario li:first-child { border-top: 0; padding-top: 0; }
+.ds-perfil__dia  { font-weight: 600; color: var(--bs-emphasis-color); }
+.ds-perfil__hora { font-variant-numeric: tabular-nums; }
+.ds-perfil__lugar { display: flex; flex-wrap: wrap; gap: .15rem 1rem; color: var(--bs-secondary-color); }
+
+.ds-perfil__cedula a { display: block; }
+.ds-perfil__cedula img,
+.ds-perfil__cedula-vacia {
+    width: 100%;
+    aspect-ratio: 85.6 / 54;            /* la medida de una cédula */
+    border-radius: var(--bs-border-radius-lg);
+    border: 1px solid var(--bs-border-color);
+}
+.ds-perfil__cedula img { object-fit: cover; background: var(--bs-tertiary-bg); }
+.ds-perfil__cedula-vacia { display: flex; align-items: center; justify-content: center; color: var(--bs-secondary-color); background: var(--bs-tertiary-bg); }
+.ds-perfil__cedula figcaption { font-size: .8rem; color: var(--bs-secondary-color); margin-top: .35rem; text-align: center; }
+
+@media (min-width: 576px) {
+    .ds-perfil__cedula { max-width: 22rem; }
+}
+@media (min-width: 992px) {
+    /* En escritorio la ficha acompaña mientras se recorre el resto. */
+    .ds-perfil__alumno { position: sticky; top: 1rem; }
+}
+@media (max-width: 1199.98px) {
+    .ds-perfil__datos--cuatro { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 767.98px) {
+    .ds-perfil__datos--tres,
+    .ds-perfil__datos--cuatro { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .ds-perfil__acciones .btn,
+    .ds-perfil__contactar .btn { min-height: 2.75rem; display: inline-flex; align-items: center; justify-content: center; }
+    /* El día arriba con su hora; cancha y profesor debajo, a todo lo ancho. */
+    .ds-perfil__horario li { grid-template-columns: minmax(0, 1fr) auto; }
+    .ds-perfil__lugar { grid-column: 1 / -1; }
+}
+
+/* =========================================================================
+   EDICIÓN DEL ALUMNO (alumnoUpdate). Antes, cinco pestañas: un obligatorio
+   podía quedar en una que no se veía y el botón de guardar, al fondo de la
+   pestaña abierta. Ahora, secciones en tarjetas, una barra de guardar
+   siempre a la vista y opciones del tamaño del dedo. El horario se pinta
+   con la lista de la ficha (.ds-perfil__horario).
+   ========================================================================= */
+.ds-editar .card-title { font-size: 1rem; font-weight: 600; }
+.ds-editar .form-label { font-weight: 500; margin-bottom: .35rem; }
+.ds-req::after { content: "\00a0*"; color: var(--bs-danger); }   /* sin espacio partible: el asterisco no baja solo */
+
+/* Sí / No, Masculino / Femenino: el rótulo entero es el blanco, no el
+   circulito de 16 px. El elegido se marca con borde y fondo. */
+.ds-opciones { display: flex; flex-wrap: wrap; gap: .5rem; }
+.ds-opcion {
+    flex: 1 1 auto;
+    min-width: 4rem;
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    min-height: calc(1.5em + .75rem + 2px);     /* la altura de un .form-control */
+    padding: .375rem .75rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    background: var(--bs-body-bg);
+    cursor: pointer;
+    margin: 0;
+}
+.ds-opcion input { margin: 0; accent-color: var(--bs-success); }
+.ds-opcion:has(input:checked) { border-color: var(--bs-success); background: var(--bs-success-bg-subtle); color: var(--bs-emphasis-color); font-weight: 500; }
+.ds-opcion:has(input:focus-visible) { outline: 2px solid var(--bs-primary); outline-offset: 2px; }
+.ds-opciones.is-invalid .ds-opcion { border-color: var(--bs-danger); }
+
+.ds-editar__calculo { font-weight: 600; color: var(--bs-emphasis-color); min-width: 4.5rem; justify-content: center; }
+
+/* Foto (vertical, de carnet) y cédula (apaisada). La caja y los botones
+   son los de .ds-crud__foto; aquí sólo cambia la medida. */
+.ds-editar__foto { text-align: center; }
+.ds-editar__foto .thumbnail { width: 9rem; height: 11.25rem; margin: 0 auto; }
+.ds-editar__foto .thumbnail img { object-fit: cover; }
+.ds-editar__cedula .thumbnail { width: 100%; max-width: 22rem; height: auto; aspect-ratio: 85.6 / 54; }
+.ds-editar__cedula .thumbnail img { object-fit: cover; }
+.ds-editar__sin-imagen { display: flex; flex-direction: column; align-items: center; gap: .35rem; color: var(--bs-secondary-color); font-size: .875rem; }
+.ds-editar__sin-imagen i { font-size: 1.75rem; }
+/* Miniatura arriba y botones debajo: al lado, en la cédula (a todo lo
+   ancho) los botones se salían de la pantalla del teléfono. */
+.ds-editar .ds-crud__foto { display: flex; flex-direction: column; align-items: flex-start; gap: .5rem; }
+.ds-editar .ds-editar__foto { align-items: center; }
+.ds-editar .ds-crud__foto-botones { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: 0; }
+.ds-editar .ds-crud__foto .bton-file { min-height: 2.5rem; display: inline-flex; align-items: center; }
+/* «Quitar» sólo con una imagen elegida: el display va atado al estado para
+   no pisar la regla de digisports.css que lo esconde. */
+.ds-editar .ds-crud__foto .bton-orange { margin-left: 0; }
+.ds-editar .ds-crud__foto.fileinput-exists .bton-orange { min-height: 2.5rem; display: inline-flex; align-items: center; }
+.ds-editar__foto + .form-text { text-align: center; margin-top: .5rem; }
+
+.ds-editar__vacio { display: block !important; color: var(--bs-secondary-color); border-top: 0 !important; padding: 0 !important; }
+/* El buscador de horarios, de la misma altura que los demás campos y con
+   el texto centrado. Los colores, para todo el sistema, al final del archivo. */
+.ds-editar .select2-container .select2-selection--single { height: calc(1.5em + .75rem + 2px); }
+.ds-editar .select2-container .select2-selection--single .select2-selection__rendered { line-height: calc(1.5em + .75rem); padding-left: .75rem; }
+.ds-editar .select2-container .select2-selection--single .select2-selection__arrow { height: 100%; }
+
+/* La barra de guardar se queda pegada al pie de la pantalla mientras se
+   recorre el formulario. */
+.ds-editar__barra {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    display: flex;
+    justify-content: flex-end;
+    gap: .5rem;
+    margin-top: 1rem;
+    padding: .75rem;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius-lg);
+    box-shadow: 0 -.25rem .75rem rgba(0, 0, 0, .08);
+}
+@media (min-width: 992px) {
+    .ds-editar__lateral { position: sticky; top: 1rem; }
+}
+@media (max-width: 575.98px) {
+    .ds-editar__barra .btn { min-height: 2.75rem; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; }
+    .ds-editar__barra .btn-success { flex: 1 1 auto; }      /* guardar ocupa lo que deja cancelar */
+    .ds-editar .form-control,
+    .ds-editar .form-select { min-height: 2.75rem; }
+    .ds-opcion { min-height: 2.75rem; }
+}
+
+/* =========================================================================
+   SELECT2 CON LOS COLORES DEL TEMA (alumnoNew, alumnoUpdate, empleadoList,
+   representanteNew). select2 trae sus colores fijos —caja y lista blancas—
+   y en tema oscuro las opciones heredaban el texto claro de la página:
+   gris claro sobre blanco, no se leían. Aquí todo sale de las variables de
+   Bootstrap, que cambian con el tema.
+   ========================================================================= */
+.select2-container--default .select2-selection--single,
+.select2-container--default .select2-selection--multiple,
+.select2-dropdown {
+    background-color: var(--bs-body-bg);
+    border-color: var(--bs-border-color);
+    color: var(--bs-body-color);
+}
+.select2-container--default .select2-selection--single .select2-selection__rendered,
+.select2-results__option { color: var(--bs-body-color); }
+.select2-container--default .select2-selection--single .select2-selection__placeholder { color: var(--bs-secondary-color); }
+.select2-container--default .select2-selection--single .select2-selection__arrow b { border-top-color: var(--bs-secondary-color); }
+.select2-container--default.select2-container--open .select2-selection--single .select2-selection__arrow b { border-bottom-color: var(--bs-secondary-color); }
+.select2-container--default .select2-search--dropdown .select2-search__field {
+    background-color: var(--bs-body-bg);
+    border-color: var(--bs-border-color);
+    color: var(--bs-body-color);
+}
+/* La opción elegida y la que está bajo el dedo o el cursor. El azul fijo de
+   select2 se cambia por los tonos del tema: legibles en claro y en oscuro. */
+.select2-container--default .select2-results__option[aria-selected=true],
+.select2-container--default .select2-results__option--selected {
+    background-color: var(--bs-tertiary-bg);
+    color: var(--bs-emphasis-color);
+    font-weight: 600;
+}
+.select2-container--default .select2-results__option--highlighted[aria-selected],
+.select2-container--default .select2-results__option--highlighted.select2-results__option--selectable {
+    background-color: var(--bs-primary-bg-subtle);
+    color: var(--bs-emphasis-color);
+}
+.select2-container--default .select2-selection--multiple .select2-selection__choice {
+    background-color: var(--bs-tertiary-bg);
+    border-color: var(--bs-border-color);
+    color: var(--bs-body-color);
+}
+.select2-container--default.select2-container--focus .select2-selection--multiple,
+.select2-container--default.select2-container--open .select2-selection--single { border-color: var(--bs-primary-border-subtle); }
+
+/* =========================================================================
+   ALTA DEL ALUMNO (alumnoNew). Usa el formulario de la edición (.ds-editar);
+   aquí sólo lo suyo: la tarjeta del representante al que se le añade.
+   ========================================================================= */
+.ds-alta__repre .card-body { display: flex; align-items: center; gap: .85rem; flex-wrap: wrap; }
+.ds-alta__repre-icono {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 50%;
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-emphasis-color);
+}
+.ds-alta__repre-datos { display: flex; flex-direction: column; min-width: 0; flex: 1 1 12rem; }
+.ds-alta__repre-datos strong { color: var(--bs-emphasis-color); overflow-wrap: anywhere; }
+.ds-alta__repre-rotulo { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--bs-secondary-color); }
+.ds-alta__copiar { text-decoration: none; }
+
+/* =========================================================================
+   ALTA DE REPRESENTANTE (representanteNew). El formulario es el de las
+   secciones (.ds-editar); aquí, el aviso bajo la identificación (cédula
+   que no cuadra, o representante ya registrado) y el cónyuge plegable.
+   ========================================================================= */
+.ds-repre__aviso { font-size: .875rem; margin-top: .35rem; }
+.ds-repre__aviso:empty { display: none; }
+.ds-repre__aviso--existe {
+    padding: .6rem .75rem;
+    border: 1px solid var(--bs-info-border-subtle);
+    border-radius: var(--bs-border-radius);
+    background: var(--bs-info-bg-subtle);
+    color: var(--bs-info-text-emphasis);
+}
+.ds-repre__aviso-acciones { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
+.ds-repre__aviso-acciones .btn { flex: 1 1 auto; }
+
+.ds-repre__conyuge .card-header { padding: 0; }
+.ds-repre__plegable {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 3rem;
+    padding: .75rem 1.25rem;
+    border: 0;
+    background: transparent;
+    color: var(--bs-emphasis-color);
+    font-size: 1rem;
+    font-weight: 600;
+    text-align: left;
+}
+.ds-repre__plegable:focus-visible { outline: 2px solid var(--bs-primary); outline-offset: -2px; }
+.ds-repre__flecha { transition: transform .2s ease; color: var(--bs-secondary-color); }
+.ds-repre__plegable:not(.collapsed) .ds-repre__flecha { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .ds-repre__flecha { transition: none; } }
+/* Plegado, la tarjeta es sólo la cabecera: sin su raya inferior, que
+   cortaba el borde. La raya pasa al cuerpo cuando se despliega. */
+.ds-repre__conyuge .card-header { border-bottom: 0; }
+.ds-repre__conyuge .collapse > .card-body,
+.ds-repre__conyuge .collapsing > .card-body { border-top: 1px solid var(--bs-card-border-color, var(--bs-border-color)); }
+
+/* =========================================================================
+   FICHA DEL REPRESENTANTE (representanteProfile). Usa la de la ficha del
+   alumno (.ds-perfil); aquí, el estado del formulario de protección de
+   datos y la lista de representados, que antes era una tabla de seis
+   columnas que en el teléfono había que recorrer de lado.
+   ========================================================================= */
+.ds-repre__avatar { width: 4.5rem; height: 4.5rem; border-radius: 50%; font-size: 1.5rem; }
+
+.ds-repre__lopdp {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .25rem .5rem;
+    padding: .6rem .75rem;
+    margin-bottom: 1rem;
+    border-radius: var(--bs-border-radius);
+    border: 1px solid;
+    font-size: .875rem;
+}
+.ds-repre__lopdp--ok        { border-color: var(--bs-success-border-subtle); background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
+.ds-repre__lopdp--pendiente { border-color: var(--bs-warning-border-subtle); background: var(--bs-warning-bg-subtle); color: var(--bs-warning-text-emphasis); }
+.ds-repre__lopdp span { flex: 1 1 10rem; }
+.ds-repre__lopdp-enlace { color: inherit; font-weight: 600; }
+
+/* Cada representado, una fila que se toca entera y abre su ficha. */
+.ds-repre__alumnos { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+.ds-repre__alumno {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    min-height: 3.5rem;
+    padding: .55rem .75rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius-lg);
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    text-decoration: none;
+}
+.ds-repre__alumno:hover { border-color: var(--bs-primary-border-subtle); background: var(--bs-tertiary-bg); color: var(--bs-body-color); }
+.ds-repre__alumno:focus-visible { outline: 2px solid var(--bs-primary); outline-offset: 2px; }
+.ds-repre__alumno--inactivo .ds-repre__alumno-datos strong { color: var(--bs-secondary-color); }
+.ds-repre__alumno-foto {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-emphasis-color);
+    font-weight: 700;
+    font-size: .9rem;
+}
+.ds-repre__alumno-datos { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.ds-repre__alumno-datos strong { color: var(--bs-emphasis-color); overflow-wrap: anywhere; }
+.ds-repre__alumno-datos span { font-size: .825rem; color: var(--bs-secondary-color); }
+.ds-repre__alumno-ir { color: var(--bs-secondary-color); flex: none; }
+@media (min-width: 1200px) {
+    .ds-repre__alumnos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* En la edición: la identificación escrita es de OTRO representante. */
+.ds-repre__aviso--otro {
+    padding: .6rem .75rem;
+    border: 1px solid var(--bs-warning-border-subtle);
+    border-radius: var(--bs-border-radius);
+    background: var(--bs-warning-bg-subtle);
+    color: var(--bs-warning-text-emphasis);
+}

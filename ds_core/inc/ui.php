@@ -253,4 +253,27 @@ if (!function_exists('ds_icono')) {
 
         return $valor;
     }
+
+    /**
+     * «Llamar» y «WhatsApp» para un número, como botones de dedo.
+     *
+     * Lo usan las fichas (alumno, representante) para los contactos: en el
+     * teléfono, tocar y llamar en vez de copiar el número a mano. WhatsApp
+     * sólo para celulares de Ecuador (09…, diez cifras): wa.me quiere el
+     * número con el código del país y sin el 0. Devuelve '' si no hay número.
+     * Los estilos son .ds-perfil__contactar (futbol.css).
+     */
+    function ds_botones_contacto(?string $numero): string
+    {
+        $dig = preg_replace('/\D/', '', (string)$numero);
+        if ($dig === '') {
+            return '';
+        }
+        $html = '<a class="btn btn-sm btn-success" href="tel:' . $dig . '"><i class="fas fa-phone me-1" aria-hidden="true"></i>Llamar</a>';
+        if (preg_match('/^09\d{8}$/', $dig)) {
+            $html .= '<a class="btn btn-sm btn-success" href="https://wa.me/593' . substr($dig, 1) . '" target="_blank" rel="noopener">'
+                   . '<i class="fab fa-whatsapp me-1" aria-hidden="true"></i>WhatsApp</a>';
+        }
+        return '<div class="ds-perfil__contactar">' . $html . '</div>';
+    }
 }

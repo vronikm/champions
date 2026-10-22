@@ -119,10 +119,13 @@
     gap: 16px;
 }
 
+/* cover y no contain: logo.png trae margenes transparentes a los lados del
+   escudo (456x271 con el escudo en 182x248). contain los respetaria y el
+   escudo saldria a la mitad; cover los recorta y el escudo cabe entero. */
 .dsl-marca__logo {
     width: 64px;
     height: 64px;
-    object-fit: contain;
+    object-fit: cover;
 }
 
 .dsl-marca__texto {
@@ -241,7 +244,7 @@
     border: 1px solid var(--ds-border-strong);
 }
 
-.dsl-card__emblema img { width: 58px; height: 58px; object-fit: contain; }
+.dsl-card__emblema img { width: 58px; height: 58px; object-fit: cover; }
 
 .dsl-card__titulo {
     margin: 0 0 10px;

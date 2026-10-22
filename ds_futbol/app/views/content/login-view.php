@@ -28,8 +28,14 @@ $avisoLogin = (string)($_SESSION['login_aviso'] ?? '');
 unset($_SESSION['login_aviso']);
 
 /* Desde ds_core y no desde el modulo: es el mismo icono para todo el
-   ecosistema, y una sola copia no se desincroniza. */
-$logo   = ds_recurso('ds_core/assets/img/icon_cz98px.png');
+   ecosistema, y una sola copia no se desincroniza.
+
+   Dos imagenes y no una: el icono de la pestaña tiene que ser cuadrado, y
+   logo.png es el escudo en alta resolucion sobre un lienzo apaisado con
+   margenes transparentes. En pantalla, login.css lo encuadra con
+   object-fit: cover para que esos margenes no encojan el escudo. */
+$icono  = ds_recurso('ds_core/assets/img/icon_cz98px.png');
+$logo   = ds_recurso('ds_core/assets/img/logo.png');
 $vendor = APP_URL . 'app/views/dist/';
 
 /* Fotografia de fondo. Vive en ds_core/assets porque es del ecosistema, no
@@ -71,7 +77,7 @@ $funciones = [
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?php echo APP_NAME; ?> | Iniciar sesión</title>
 
-    <link rel="icon" type="image/png" href="<?php echo $logo; ?>">
+    <link rel="icon" type="image/png" href="<?php echo $icono; ?>">
     <?php /* La tipografia se sirve desde aqui, no desde fonts.googleapis.com:
              con el sistema en internet, aquel enlace enviaba la IP de cada
              visitante a un tercero ANTES de iniciar sesion, y ataba la
@@ -147,8 +153,11 @@ $funciones = [
             |      cambiárselo desde Core → Organización, y esta pantalla se
             |      habría quedado con el viejo sin que nadie lo notara.
             |
-            | Ahora sale de ds_logo_url(), que devuelve la imagen que la
-            | escuela subió en Core. Cambiarla allí cambia el login solo.
+            | Ahora sale de ds_core/assets/img/logo.png, el escudo de la
+            | escuela sobre fondo transparente (el que configura Core venía
+            | sobre un cuadro blanco que en la tarjeta oscura se veía como
+            | una placa). Si ese archivo falta, se usa el de Core,
+            | ds_logo_url(), que devuelve la imagen que la escuela subió allí.
             |
             | SI NO HAY LOGO CONFIGURADO NO SE ROMPE NADA
             |
@@ -159,7 +168,9 @@ $funciones = [
             | sistema: no puede quedarse sin identidad por un archivo que
             | falte.
             */
-            $logoEscuela = function_exists('ds_logo_url') ? ds_logo_url(0) : '';
+            $logoEscuela = is_file(DS_HUB_PATH . 'ds_core/assets/img/logo.png')
+                ? $logo
+                : (function_exists('ds_logo_url') ? ds_logo_url(0) : '');
             $nombreEscuela = function_exists('ds_nombre_organizacion')
                 ? ds_nombre_organizacion(0) : APP_NAME;
             ?>

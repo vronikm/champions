@@ -104,6 +104,8 @@ switch ($_POST['modulo_arena']) {
     case 'eliminarBloqueo':     echo $insArena->eliminarBloqueo();     break;
 
     case 'guardarCliente':      echo $insArena->guardarCliente();      break;
+    case 'consultarCliente':    echo $insArena->consultarCliente();    break;
+    case 'buscarClientes':      echo $insArena->buscarClientes();      break;
     case 'eliminarCliente':     echo $insArena->eliminarCliente();     break;
 
     case 'consultarDisponibilidad': echo $insArena->consultarDisponibilidad(); break;

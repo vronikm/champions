@@ -715,10 +715,202 @@ class arenaController
         return $this->filas($sql, $params);
     }
 
+    /** Cuántos clientes hay (sin los dados de baja): para saber si se puede reservar sin cargarlos todos. */
+    public function totalClientes(): int
+    {
+        return (int)$this->escalar("SELECT COUNT(1) FROM dsa_cliente WHERE cliente_estado <> 'E'");
+    }
+
+    /**
+     * El buscador de clientes de la reserva.
+     *
+     * Antes la reserva cargaba TODOS los clientes en un <select>: con cien
+     * o más, en el teléfono era una lista sin fin y sin forma de buscar, y
+     * pesaba en cada carga. Ahora se pregunta al servidor por lo escrito
+     * —nombre, identificación o celular— y vuelven doce como mucho.
+     *
+     * Sin texto devuelve los recientes: los que reservaron últimamente (y,
+     * si aún no hay reservas, los últimos dados de alta), que suelen ser a
+     * quien se vuelve a reservar.
+     *
+     * Orden: la identificación exacta primero, luego lo que empieza por lo
+     * escrito, los activos antes que los inactivos y por nombre.
+     */
+    public function buscarClientes(): string
+    {
+        if (!puede_crear('reservaList') && !puede_editar('reservaList')) {
+            return json_encode(['error' => 'Acceso denegado'], JSON_UNESCAPED_UNICODE);
+        }
+        $q = trim((string)($_POST['q'] ?? ''));
+        $campos = "c.cliente_id, c.cliente_nombre, c.cliente_identificacion, c.cliente_celular, c.cliente_estado,
+                   COALESCE(m.monedero_saldo, 0) AS saldo";
+
+        if ($q === '') {
+            $filas = $this->filas(
+                "SELECT {$campos}, MAX(r.reserva_fecharegistro) AS ultima
+                   FROM dsa_cliente c
+                   LEFT JOIN dsa_monedero m ON m.monedero_clienteid = c.cliente_id
+                   LEFT JOIN dsa_reserva r  ON r.reserva_clienteid  = c.cliente_id
+                  WHERE c.cliente_estado = 'A'
+                  GROUP BY c.cliente_id, c.cliente_nombre, c.cliente_identificacion, c.cliente_celular, c.cliente_estado, m.monedero_saldo
+                  ORDER BY ultima IS NULL, ultima DESC, c.cliente_fecharegistro DESC
+                  LIMIT 6");
+            $modo = 'recientes';
+        } else {
+            $filas = $this->filas(
+                "SELECT {$campos}
+                   FROM dsa_cliente c
+                   LEFT JOIN dsa_monedero m ON m.monedero_clienteid = c.cliente_id
+                  WHERE c.cliente_estado <> 'E'
+                    AND (c.cliente_nombre LIKE :todo OR c.cliente_identificacion LIKE :inicio OR c.cliente_celular LIKE :inicio2)
+                  ORDER BY c.cliente_identificacion = :exacta DESC,
+                           c.cliente_nombre LIKE :inicio3 DESC,
+                           c.cliente_estado = 'A' DESC,
+                           c.cliente_nombre
+                  LIMIT 12",
+                [':todo' => '%' . $q . '%', ':inicio' => $q . '%', ':inicio2' => $q . '%',
+                 ':exacta' => $q, ':inicio3' => $q . '%']);
+            $modo = 'busqueda';
+        }
+
+        $t = static fn($v) => html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        return json_encode([
+            'modo'     => $modo,
+            'clientes' => array_map(static fn($c) => [
+                'id'             => (int)$c['cliente_id'],
+                'nombre'         => $t($c['cliente_nombre']),
+                'identificacion' => $t($c['cliente_identificacion']),
+                'celular'        => $t($c['cliente_celular']),
+                'activo'         => $c['cliente_estado'] === 'A',
+                'saldo'          => round((float)$c['saldo'], 2),
+            ], $filas),
+        ], JSON_UNESCAPED_UNICODE);
+    }
+
     public function cliente(int $id): ?array
     {
         $r = $this->filas("SELECT * FROM dsa_cliente WHERE cliente_id = :id", [':id' => $id]);
         return $r[0] ?? null;
+    }
+
+    /*----------  Tipo e identificación del cliente  ----------*/
+    /*
+    | El cliente es a quien se le emite el recibo o la factura, así que la
+    | identificación se valida con la MISMA regla que la facturación
+    | electrónica (ds_core/inc/sri.php): cédula con su dígito verificador,
+    | RUC de 13 dígitos sobre una cédula válida y pasaporte libre. Antes se
+    | aceptaba cualquier cadena de 5 a 20 caracteres, y una cédula con un
+    | dígito cambiado sólo se descubría cuando el SRI devolvía el
+    | comprobante.
+    |
+    | Los tipos que se guardan en cliente_tipoid: CED, RUC y PAS. Si no
+    | llega o no es uno de ellos (los clientes antiguos tienen 'TDC'), se
+    | deduce de la longitud, como hace sri_tipo_identificacion().
+    */
+    private function tipoCliente(string $tipo, string $identificacion): string
+    {
+        $tipo = strtoupper(trim($tipo));
+        if (in_array($tipo, ['CED', 'RUC', 'PAS'], true)) {
+            return $tipo;
+        }
+        return ['05' => 'CED', '04' => 'RUC'][sri_tipo_identificacion('', $identificacion)] ?? 'PAS';
+    }
+
+    /** '' si es válida; si no, el motivo, para mostrárselo a quien la escribe. */
+    private function motivoIdentificacionNoValida(string $tipo, string $identificacion): string
+    {
+        if ($tipo === 'CED') {
+            if (!preg_match('/^\d{10}$/', $identificacion)) { return 'La cédula tiene 10 dígitos.'; }
+            return sri_identificacion_valida($identificacion, '05') ? '' : 'No es una cédula ecuatoriana válida: revise los dígitos.';
+        }
+        if ($tipo === 'RUC') {
+            if (!preg_match('/^\d{13}$/', $identificacion)) { return 'El RUC tiene 13 dígitos.'; }
+            return sri_identificacion_valida($identificacion, '04') ? '' : 'No es un RUC válido: revise los dígitos.';
+        }
+        /* Pasaporte: Arena alquila también a extranjeros. */
+        return preg_match('/^[A-Za-z0-9\-]{5,20}$/', $identificacion) ? '' : 'Entre 5 y 20 letras o números, sin espacios.';
+    }
+
+    /**
+     * El representante de la escuela con esa identificación, o null.
+     *
+     * Con un RUC de persona natural (la cédula seguida de 001) se busca por
+     * la cédula: es la misma persona. Los textos salen sin escapar.
+     */
+    private function representantePorIdentificacion(string $identificacion): ?array
+    {
+        $cedula = preg_match('/^(\d{10})001$/', $identificacion, $m) ? $m[1] : $identificacion;
+        $r = $this->filas(
+            "SELECT R.repre_id, R.repre_identificacion, R.repre_primernombre, R.repre_segundonombre,
+                    R.repre_apellidopaterno, R.repre_apellidomaterno, R.repre_correo, R.repre_celular,
+                    R.repre_direccion,
+                    (SELECT COUNT(1) FROM sujeto_alumno A WHERE A.alumno_repreid = R.repre_id AND A.alumno_estado = 'A') AS alumnos
+               FROM alumno_representante R
+              WHERE R.repre_identificacion IN (:i, :c) AND R.repre_estado <> 'E'
+              ORDER BY R.repre_identificacion = :i2 DESC LIMIT 1",
+            [':i' => $identificacion, ':c' => $cedula, ':i2' => $identificacion]);
+        if (!$r) {
+            return null;
+        }
+        $t = static fn($v) => trim(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        $correo = $t($r[0]['repre_correo']);
+        return [
+            'id'        => (int)$r[0]['repre_id'],
+            'nombre'    => preg_replace('/\s+/', ' ', $t($r[0]['repre_primernombre'] . ' ' . $r[0]['repre_segundonombre'] . ' '
+                                                      . $r[0]['repre_apellidopaterno'] . ' ' . $r[0]['repre_apellidomaterno'])),
+            /* «S/N» es como la escuela registra a quien no tiene correo: aquí
+               no sirve para enviar recibos, así que no se copia. */
+            'correo'    => filter_var($correo, FILTER_VALIDATE_EMAIL) ? $correo : '',
+            'celular'   => preg_match('/^0\d{9}$/', $t($r[0]['repre_celular'])) ? $t($r[0]['repre_celular']) : '',
+            'direccion' => $t($r[0]['repre_direccion']),
+            'alumnos'   => (int)$r[0]['alumnos'],
+        ];
+    }
+
+    /**
+     * Lo que el formulario pregunta al salir del campo de identificación:
+     * si es válida, si ya es cliente y, si no lo es, si es representante
+     * de la escuela, para cargar sus datos. Sólo lectura.
+     */
+    public function consultarCliente(): string
+    {
+        if (!puede_crear('clienteList') && !puede_editar('clienteList')) {
+            return json_encode(['error' => 'Acceso denegado'], JSON_UNESCAPED_UNICODE);
+        }
+        $identificacion = strtoupper(trim((string)($_POST['cliente_identificacion'] ?? '')));
+        $propio = (int)($_POST['cliente_id'] ?? 0);
+        if ($identificacion === '') {
+            return json_encode(['valida' => false, 'motivo' => ''], JSON_UNESCAPED_UNICODE);
+        }
+        $tipo   = $this->tipoCliente((string)($_POST['cliente_tipoid'] ?? ''), $identificacion);
+        $motivo = $this->motivoIdentificacionNoValida($tipo, $identificacion);
+
+        $cli = $this->filas(
+            "SELECT cliente_id, cliente_nombre, cliente_estado, cliente_correo, cliente_celular, cliente_direccion
+               FROM dsa_cliente
+              WHERE cliente_identificacion = :i AND cliente_id <> :id LIMIT 1",
+            [':i' => $identificacion, ':id' => $propio]);
+
+        $t = static fn($v) => html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $cliente = null;
+        if ($cli) {
+            $baja = $cli[0]['cliente_estado'] === 'E';
+            $cliente = ['id' => (int)$cli[0]['cliente_id'], 'nombre' => $t($cli[0]['cliente_nombre']), 'baja' => $baja];
+            /* Dado de baja, el alta lo reactiva: se devuelven sus datos para
+               no volver a escribirlos. De uno activo basta el nombre. */
+            if ($baja) {
+                $cliente += ['correo' => $t($cli[0]['cliente_correo']), 'celular' => $t($cli[0]['cliente_celular']),
+                             'direccion' => $t($cli[0]['cliente_direccion'])];
+            }
+        }
+
+        return json_encode([
+            'tipo'          => $tipo,
+            'valida'        => $motivo === '',
+            'motivo'        => $motivo,
+            'cliente'       => $cliente,
+            'representante' => $cli ? null : $this->representantePorIdentificacion($identificacion),
+        ], JSON_UNESCAPED_UNICODE);
     }
 
     public function guardarCliente(): string
@@ -732,7 +924,7 @@ class arenaController
             return $this->alerta('simple', 'Acceso denegado', 'Su rol no puede crear clientes.', 'error');
         }
 
-        $identificacion = trim((string)($_POST['cliente_identificacion'] ?? ''));
+        $identificacion = strtoupper(trim((string)($_POST['cliente_identificacion'] ?? '')));
         $nombre         = trim((string)($_POST['cliente_nombre'] ?? ''));
         $correo         = trim((string)($_POST['cliente_correo'] ?? ''));
         $celular        = trim((string)($_POST['cliente_celular'] ?? ''));
@@ -743,28 +935,47 @@ class arenaController
             return $this->alerta('simple', 'Faltan datos', 'Identificación y nombre son obligatorios.', 'error');
         }
 
-        /* Arena alquila también a extranjeros: se admite cédula, RUC o
-           pasaporte, por eso no se exige el dígito verificador ecuatoriano. */
-        if (!preg_match('/^[A-Za-z0-9\-]{5,20}$/', $identificacion)) {
-            return $this->alerta('simple', 'Identificación no válida',
-                'Entre 5 y 20 caracteres, sin espacios ni símbolos.', 'error');
+        $tipo   = $this->tipoCliente((string)($_POST['cliente_tipoid'] ?? ''), $identificacion);
+        $motivo = $this->motivoIdentificacionNoValida($tipo, $identificacion);
+        if ($motivo !== '') {
+            return $this->alerta('simple', 'Identificación no válida', $motivo, 'error');
         }
 
         if ($correo !== '' && !filter_var($correo, FILTER_VALIDATE_EMAIL)) {
             return $this->alerta('simple', 'Correo no válido', 'Revise la dirección de correo.', 'error');
         }
-
-        $duplicado = (int)$this->escalar(
-            "SELECT COUNT(1) FROM dsa_cliente
-              WHERE cliente_identificacion = :i AND cliente_id <> :id",
-            [':i' => $identificacion, ':id' => $id]
-        );
-        if ($duplicado > 0) {
-            return $this->alerta('simple', 'Cliente repetido',
-                "Ya existe un cliente con la identificación {$identificacion}.", 'error');
+        if ($celular !== '' && !preg_match('/^0\d{9}$/', $celular)) {
+            return $this->alerta('simple', 'Celular no válido', 'Diez cifras empezando por 0, por ejemplo 0991234567.', 'error');
         }
 
-        $params = [':i' => $identificacion, ':n' => $nombre,
+        /* El representante sólo se enlaza si de verdad es la misma persona:
+           el id llega del navegador y no se le cree sin comprobarlo. */
+        $repre = null;
+        $repreid = (int)($_POST['cliente_repreid'] ?? 0);
+        if ($repreid > 0) {
+            $r = $this->representantePorIdentificacion($identificacion);
+            $repre = ($r && $r['id'] === $repreid) ? $repreid : null;
+        }
+
+        /* Un cliente dado de baja no desaparece (sigue en sus reservas), y
+           su identificación bloqueaba para siempre volver a darlo de alta:
+           «Cliente repetido», sin salida. Ahora el alta lo reactiva. */
+        $existente = $this->filas(
+            "SELECT cliente_id, cliente_estado FROM dsa_cliente
+              WHERE cliente_identificacion = :i AND cliente_id <> :id LIMIT 1",
+            [':i' => $identificacion, ':id' => $id]);
+        $reactiva = false;
+        if ($existente) {
+            if ($id === 0 && $existente[0]['cliente_estado'] === 'E') {
+                $id = (int)$existente[0]['cliente_id'];
+                $reactiva = true;
+            } else {
+                return $this->alerta('simple', 'Cliente repetido',
+                    "Ya existe un cliente con la identificación {$identificacion}.", 'error');
+            }
+        }
+
+        $params = [':i' => $identificacion, ':n' => $nombre, ':t' => $tipo, ':r' => $repre,
                    ':c' => $correo !== '' ? $correo : null,
                    ':ce' => $celular !== '' ? $celular : null,
                    ':d' => $direccion !== '' ? $direccion : null,
@@ -774,27 +985,47 @@ class arenaController
             $params[':id'] = $id;
             $n = $this->escribir(
                 "UPDATE dsa_cliente
-                    SET cliente_identificacion = :i, cliente_nombre = :n,
-                        cliente_correo = :c, cliente_celular = :ce,
+                    SET cliente_identificacion = :i, cliente_tipoid = :t, cliente_repreid = :r,
+                        cliente_nombre = :n, cliente_correo = :c, cliente_celular = :ce,
                         cliente_direccion = :d, cliente_estado = :e
                   WHERE cliente_id = :id", $params);
 
-            return $n >= 0
-                ? $this->alerta('redireccionar', 'Cliente actualizado',
-                    "{$nombre} se actualizó correctamente.", 'success', APP_URL . 'clienteList/')
-                : $this->alerta('simple', 'Error', 'No fue posible actualizar el cliente.', 'error');
+            if ($n < 0) {
+                return $this->alerta('simple', 'Error', 'No fue posible guardar el cliente.', 'error');
+            }
+            return $reactiva
+                ? $this->alerta('redireccionar', 'Cliente reactivado',
+                    "{$nombre} estaba dado de baja y se volvió a activar con estos datos.", 'success', $this->destinoCliente($id))
+                : $this->alerta('redireccionar', 'Cliente actualizado',
+                    "{$nombre} se actualizó correctamente.", 'success', APP_URL . 'clienteList/');
         }
 
         $n = $this->escribir(
             "INSERT INTO dsa_cliente
-                (cliente_identificacion, cliente_nombre, cliente_correo,
-                 cliente_celular, cliente_direccion, cliente_estado)
-             VALUES (:i, :n, :c, :ce, :d, :e)", $params);
+                (cliente_identificacion, cliente_tipoid, cliente_repreid, cliente_nombre,
+                 cliente_correo, cliente_celular, cliente_direccion, cliente_estado)
+             VALUES (:i, :t, :r, :n, :c, :ce, :d, :e)", $params);
+        if ($n <= 0) {
+            return $this->alerta('simple', 'Error', 'No fue posible crear el cliente.', 'error');
+        }
+        $nuevo = (int)$this->escalar("SELECT cliente_id FROM dsa_cliente WHERE cliente_identificacion = :i", [':i' => $identificacion]);
 
-        return $n > 0
-            ? $this->alerta('redireccionar', 'Cliente creado',
-                "{$nombre} quedó registrado.", 'success', APP_URL . 'clienteList/')
-            : $this->alerta('simple', 'Error', 'No fue posible crear el cliente.', 'error');
+        return $this->alerta('redireccionar', 'Cliente creado',
+            "{$nombre} quedó registrado.", 'success', $this->destinoCliente($nuevo));
+    }
+
+    /*
+    | A dónde ir tras dar de alta un cliente. Si se vino desde una reserva
+    | («Crear cliente» del buscador), de vuelta a ella con el cliente ya
+    | elegido; si no, al listado. El destino sale de una lista cerrada, no
+    | de una URL que mande el navegador.
+    */
+    private function destinoCliente(int $clienteId): string
+    {
+        if (($_POST['volver'] ?? '') === 'reservaForm' && $clienteId > 0) {
+            return APP_URL . 'reservaForm/?cliente=' . $clienteId;
+        }
+        return APP_URL . 'clienteList/';
     }
 
     public function eliminarCliente(): string

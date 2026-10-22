@@ -4,6 +4,9 @@
 | El importe se calcula por horas × tarifa; el servidor vuelve a calcularlo
 | y a comprobar disponibilidad al guardar, así que lo que se muestra aquí
 | es una previsualización, no la fuente de verdad.
+|
+| Va en pasos —cliente, instalación y fecha, horario— y la barra de abajo
+| lleva siempre a la vista el importe y «Guardar».
 */
 
 use arena\controllers\arenaController;
@@ -20,7 +23,13 @@ if (!$esAlta && !puede_editar('reservaList')) { require_once __DIR__ . "/accesoD
 $tituloVista = $esAlta ? 'Nueva reserva' : 'Editar reserva ' . $reserva['reserva_codigo'];
 $vistaActual = 'reservaList';
 
-$clientes      = $insArena->clientes();
+/* Los clientes ya NO se cargan todos: se buscan (buscarClientes). Aquí sólo
+   cuántos hay, y el elegido: el de la reserva al editar, o el que llega
+   recién creado desde «Crear cliente» (?cliente=). */
+$totalClientes = $insArena->totalClientes();
+$clienteId     = (int)($reserva['reserva_clienteid'] ?? ($_GET['cliente'] ?? 0));
+$clienteSel    = $clienteId > 0 ? $insArena->cliente($clienteId) : null;
+if ($clienteSel && $clienteSel['cliente_estado'] === 'E' && $esAlta) { $clienteSel = null; }
 $instalaciones = $insArena->instalaciones();
 $dias          = $insArena->dias();
 
@@ -40,10 +49,12 @@ foreach ($instalaciones as $i) {
     ];
 }
 
+$h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+
 require_once __DIR__ . "/inc/layout-top.php";
 ?>
 
-<?php if (!$clientes || !$instalaciones): ?>
+<?php if (!$totalClientes || !$instalaciones): ?>
 
     <div class="aviso-superadmin">
         <i class="fas fa-info-circle fa-lg mt-1"></i>
@@ -52,8 +63,8 @@ require_once __DIR__ . "/inc/layout-top.php";
             <?php if (!$instalaciones): ?>
                 No hay instalaciones registradas. <a href="<?php echo APP_URL; ?>instalacionList/">Crear una →</a><br>
             <?php endif; ?>
-            <?php if (!$clientes): ?>
-                No hay clientes registrados. <a href="<?php echo APP_URL; ?>clienteForm/">Crear uno →</a>
+            <?php if (!$totalClientes): ?>
+                No hay clientes registrados. <a href="<?php echo APP_URL; ?>clienteForm/?volver=reservaForm">Crear uno →</a>
             <?php endif; ?>
         </div>
     </div>
@@ -61,43 +72,73 @@ require_once __DIR__ . "/inc/layout-top.php";
 <?php else: ?>
 
 <div class="row justify-content-center">
-    <div class="col-lg-9">
-        <div class="card">
-            <div class="card-header"><h3 class="card-title"><?php echo $tituloVista; ?></h3></div>
+    <div class="col-12 col-lg-10 col-xl-9">
+        <form class="FormularioAjax ar-reserva" method="POST" action="<?php echo APP_URL; ?>ajax/arenaAjax.php" autocomplete="off">
+            <input type="hidden" name="modulo_arena" value="guardarReserva">
+            <input type="hidden" name="reserva_id" value="<?php echo $id; ?>">
 
-            <form class="FormularioAjax" method="POST" action="<?php echo APP_URL; ?>ajax/arenaAjax.php">
-                <input type="hidden" name="modulo_arena" value="guardarReserva">
-                <input type="hidden" name="reserva_id" value="<?php echo $id; ?>">
-
+            <!-- ============ 1. Cliente ============ -->
+            <div class="card mb-3">
+                <div class="card-header"><h3 class="card-title"><span class="ar-paso">1</span>Cliente</h3></div>
                 <div class="card-body">
-                    <div class="row g-2">
-                        <div class="mb-3 col-md-6">
-                            <label for="reserva_clienteid">Cliente <span class="text-danger">*</span></label>
-                            <select class="form-select" id="reserva_clienteid" name="reserva_clienteid" required>
-                                <option value="">Seleccione…</option>
-                                <?php foreach ($clientes as $c): ?>
-                                    <option value="<?php echo (int)$c['cliente_id']; ?>"
-                                        <?php echo (int)($reserva['reserva_clienteid'] ?? 0) === (int)$c['cliente_id'] ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($c['cliente_nombre'] . ' · ' . $c['cliente_identificacion'], ENT_QUOTES, 'UTF-8'); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
+                    <?php /*
+                    | EL CLIENTE SE BUSCA, NO SE ELIGE DE UNA LISTA
+                    |
+                    | Era un <select> con todos los clientes. Ahora se escribe parte
+                    | del nombre, la cédula o el celular y el servidor devuelve los
+                    | que coinciden. Con la caja vacía salen los recientes. Si no
+                    | está, «Crear cliente» lo da de alta y vuelve aquí con él
+                    | elegido. El id viaja en el campo oculto reserva_clienteid.
+                    */ ?>
+                    <input type="hidden" name="reserva_clienteid" id="reserva_clienteid" value="<?php echo $clienteSel ? (int)$clienteSel['cliente_id'] : ''; ?>">
 
-                        <div class="mb-3 col-md-6">
-                            <label for="reserva_instalacionid">Instalación <span class="text-danger">*</span></label>
-                            <select class="form-select" id="reserva_instalacionid" name="reserva_instalacionid" required>
-                                <option value="">Seleccione…</option>
-                                <?php foreach ($instalaciones as $i): ?>
-                                    <option value="<?php echo (int)$i['instalacion_id']; ?>"
-                                        <?php echo (int)($reserva['reserva_instalacionid'] ?? 0) === (int)$i['instalacion_id'] ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($i['instalacion_codigo'] . ' · ' . $i['instalacion_nombre'], ENT_QUOTES, 'UTF-8'); ?>
-                                        — $<?php echo number_format((float)$i['instalacion_valorhora'], 2); ?>/h
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                            <small class="text-muted" id="avisoFranjas"></small>
+                    <div class="ar-cli__elegido" id="cliElegido"<?php echo $clienteSel ? '' : ' hidden'; ?>>
+                        <span class="ar-cli__avatar" id="cliAvatar" aria-hidden="true"><?php
+                            echo $clienteSel ? $h(mb_strtoupper(mb_substr(trim(html_entity_decode($clienteSel['cliente_nombre'])), 0, 1))) : ''; ?></span>
+                        <span class="ar-cli__datos">
+                            <strong id="cliNombre"><?php echo $clienteSel ? $h($clienteSel['cliente_nombre']) : ''; ?></strong>
+                            <span id="cliDetalle"><?php echo $clienteSel ? $h(trim($clienteSel['cliente_identificacion'] . ($clienteSel['cliente_celular'] ? ' · ' . $clienteSel['cliente_celular'] : ''))) : ''; ?></span>
+                        </span>
+                        <button type="button" class="btn btn-sm btn-secondary" id="cliCambiar"><i class="fas fa-arrow-right-arrow-left me-1" aria-hidden="true"></i>Cambiar</button>
+                    </div>
+
+                    <div class="ar-cli__buscar" id="cliBuscar"<?php echo $clienteSel ? ' hidden' : ''; ?>>
+                        <label for="cliQ" class="form-label fw-medium">Buscar cliente <span class="text-danger" aria-hidden="true">*</span></label>
+                        <div class="input-group">
+                            <span class="input-group-text" aria-hidden="true"><i class="fas fa-magnifying-glass"></i></span>
+                            <input type="search" class="form-control" id="cliQ" placeholder="Nombre, cédula o celular"
+                                   role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="cliLista"
+                                   autocomplete="off" spellcheck="false" enterkeyhint="search">
                         </div>
+                        <div class="ar-cli__panel" id="cliPanel" hidden>
+                            <div class="ar-cli__cabecera" id="cliCabecera"></div>
+                            <ul class="ar-cli__lista" id="cliLista" role="listbox" aria-label="Clientes"></ul>
+                            <a class="ar-cli__crear" id="cliCrear" href="<?php echo APP_URL; ?>clienteForm/?volver=reservaForm">
+                                <i class="fas fa-user-plus me-2" aria-hidden="true"></i><span>Crear cliente nuevo</span>
+                            </a>
+                        </div>
+                        <div class="form-text"><?php echo number_format($totalClientes, 0, ',', '.'); ?> clientes. Escriba al menos dos letras o números.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============ 2. Instalación y fecha ============ -->
+            <div class="card mb-3">
+                <div class="card-header"><h3 class="card-title"><span class="ar-paso">2</span>Instalación y fecha</h3></div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="reserva_instalacionid" class="form-label fw-medium">Instalación <span class="text-danger" aria-hidden="true">*</span></label>
+                        <select class="form-select" id="reserva_instalacionid" name="reserva_instalacionid" required>
+                            <option value="">Seleccione…</option>
+                            <?php foreach ($instalaciones as $i): ?>
+                                <option value="<?php echo (int)$i['instalacion_id']; ?>"
+                                    <?php echo (int)($reserva['reserva_instalacionid'] ?? 0) === (int)$i['instalacion_id'] || (count($instalaciones) === 1 && $esAlta) ? 'selected' : ''; ?>>
+                                    <?php echo $h($i['instalacion_codigo'] . ' · ' . $i['instalacion_nombre']); ?>
+                                    — $<?php echo number_format((float)$i['instalacion_valorhora'], 2); ?>/h
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <small class="text-muted" id="avisoFranjas"></small>
                     </div>
 
                     <?php
@@ -113,55 +154,44 @@ require_once __DIR__ . "/inc/layout-top.php";
                     | que rellena la selección.
                     */
                     ?>
-                    <div class="mb-3">
-                        <label for="reserva_fecha">Fecha <span class="text-danger">*</span></label>
-                        <div class="d-flex flex-wrap align-items-start gap-2">
-                            <input type="date" class="form-control" id="reserva_fecha" name="reserva_fecha" required
-                                   style="max-width:190px;"
-                                   <?php if ($esAlta): ?>min="<?php echo date('Y-m-d'); ?>"<?php endif; ?>
-                                   value="<?php echo htmlspecialchars((string)($reserva['reserva_fecha'] ?? date('Y-m-d')), ENT_QUOTES, 'UTF-8'); ?>">
-                            <div class="ar-dias" id="tiraDias" role="group" aria-label="Próximos días"></div>
-                        </div>
+                    <label for="reserva_fecha" class="form-label fw-medium">Fecha <span class="text-danger" aria-hidden="true">*</span></label>
+                    <div class="ar-fecha">
+                        <input type="date" class="form-control" id="reserva_fecha" name="reserva_fecha" required
+                               <?php if ($esAlta): ?>min="<?php echo date('Y-m-d'); ?>"<?php endif; ?>
+                               value="<?php echo $h($reserva['reserva_fecha'] ?? date('Y-m-d')); ?>">
+                        <div class="ar-dias" id="tiraDias" role="group" aria-label="Próximos días"></div>
                     </div>
+                </div>
+            </div>
 
-                    <input type="hidden" id="reserva_horainicio" name="reserva_horainicio"
-                           value="<?php echo substr((string)($reserva['reserva_horainicio'] ?? ''), 0, 5); ?>">
-                    <input type="hidden" id="reserva_horafin" name="reserva_horafin"
-                           value="<?php echo substr((string)($reserva['reserva_horafin'] ?? ''), 0, 5); ?>">
+            <input type="hidden" id="reserva_horainicio" name="reserva_horainicio"
+                   value="<?php echo substr((string)($reserva['reserva_horainicio'] ?? ''), 0, 5); ?>">
+            <input type="hidden" id="reserva_horafin" name="reserva_horafin"
+                   value="<?php echo substr((string)($reserva['reserva_horafin'] ?? ''), 0, 5); ?>">
 
-                    <div class="mb-3">
-                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
-                            <span class="fw-semibold" id="agendaTitulo">Horario <span class="text-danger">*</span></span>
-                            <div class="ar-leyenda" aria-hidden="true">
-                                <span><i class="ar-muestra ar-bloque--libre"></i>Libre</span>
-                                <span><i class="ar-muestra ar-bloque--sel"></i>Elegido</span>
-                                <span><i class="ar-muestra ar-bloque--ocupado"></i>Ocupado</span>
-                                <span><i class="ar-muestra ar-bloque--bloqueado"></i>Bloqueado</span>
-                                <span><i class="ar-muestra ar-bloque--pasado"></i>Ya pasó</span>
-                            </div>
-                        </div>
-                        <p class="small text-muted mb-2" id="agendaAyuda">
-                            Toque la hora de inicio. Para reservar más de una hora, toque después la última hora que necesita.
-                        </p>
-                        <div class="ar-vacio" id="agendaEstado" role="status" aria-live="polite"></div>
-                        <div id="agendaBloques" role="group" aria-labelledby="agendaTitulo"></div>
-                        <div class="ar-resumen" id="agendaResumen" aria-live="polite" hidden></div>
+            <!-- ============ 3. Horario ============ -->
+            <div class="card mb-3">
+                <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <h3 class="card-title" id="agendaTitulo"><span class="ar-paso">3</span>Horario</h3>
+                    <div class="ar-leyenda" aria-hidden="true">
+                        <span><i class="ar-muestra ar-bloque--libre"></i>Libre</span>
+                        <span><i class="ar-muestra ar-bloque--sel"></i>Elegido</span>
+                        <span><i class="ar-muestra ar-bloque--ocupado"></i>Ocupado</span>
+                        <span><i class="ar-muestra ar-bloque--bloqueado"></i>Bloqueado</span>
+                        <span><i class="ar-muestra ar-bloque--pasado"></i>Ya pasó</span>
                     </div>
+                </div>
+                <div class="card-body">
+                    <p class="small text-muted mb-2" id="agendaAyuda">
+                        Toque la hora de inicio. Para reservar más de una hora, toque después la última hora que necesita.
+                    </p>
+                    <div class="ar-vacio" id="agendaEstado" role="status" aria-live="polite"></div>
+                    <div id="agendaBloques" role="group" aria-labelledby="agendaTitulo"></div>
+                    <div class="ar-resumen" id="agendaResumen" aria-live="polite" hidden></div>
 
-                    <!-- Previsualización del importe -->
-                    <div class="info-box mb-3" id="cajaImporte" style="display:none;">
-                        <span class="info-box-icon bg-info shadow-sm"><i class="fas fa-calculator" aria-hidden="true"></i></span>
-                        <div class="info-box-content">
-                            <span class="info-box-text" id="importeDetalle"></span>
-                            <span class="info-box-number" id="importeTotal">$0.00</span>
-                        </div>
-                    </div>
-
-                    <div class="mb-3 mb-0">
-                        <label for="reserva_observacion">Observación</label>
-                        <textarea class="form-control" id="reserva_observacion" name="reserva_observacion"
-                                  rows="2" maxlength="250"><?php echo htmlspecialchars((string)($reserva['reserva_observacion'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></textarea>
-                    </div>
+                    <label for="reserva_observacion" class="form-label fw-medium mt-3">Observación</label>
+                    <textarea class="form-control" id="reserva_observacion" name="reserva_observacion"
+                              rows="2" maxlength="250" placeholder="Opcional"><?php echo $h($reserva['reserva_observacion'] ?? ''); ?></textarea>
 
                     <?php if (!$esAlta && (float)$reserva['reserva_abonado'] > 0): ?>
                         <div class="aviso-superadmin mt-3">
@@ -173,10 +203,19 @@ require_once __DIR__ . "/inc/layout-top.php";
                         </div>
                     <?php endif; ?>
                 </div>
+            </div>
 
-                <?php echo ds_acciones_form(APP_URL . 'reservaList/'); ?>
-            </form>
-        </div>
+            <!-- Importe y guardar, siempre a la vista -->
+            <div class="ar-barra">
+                <span class="ar-barra__pista" id="barraPista">Elija un horario</span>
+                <div class="ar-barra__importe" id="cajaImporte" style="display:none;" aria-live="polite">
+                    <span class="ar-barra__total" id="importeTotal">$0.00</span>
+                    <span class="ar-barra__detalle" id="importeDetalle"></span>
+                </div>
+                <a href="<?php echo APP_URL; ?>reservaList/" class="btn btn-secondary" aria-label="Cancelar"><i class="fas fa-xmark me-1" aria-hidden="true"></i><span class="ar-barra__txt">Cancelar</span></a>
+                <button type="submit" class="btn btn-success"><i class="fas fa-floppy-disk me-1" aria-hidden="true"></i><?php echo $esAlta ? 'Reservar' : 'Guardar'; ?></button>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -193,6 +232,7 @@ require_once __DIR__ . "/inc/layout-top.php";
     var total  = document.getElementById('importeTotal');
     var detalle= document.getElementById('importeDetalle');
     var aviso  = document.getElementById('avisoFranjas');
+    var pista  = document.getElementById('barraPista');   /* «Elija un horario», mientras no hay importe */
 
     var URL_AJAX  = '<?php echo APP_URL; ?>ajax/arenaAjax.php';
     var HOY       = '<?php echo date('Y-m-d'); ?>';
@@ -411,7 +451,7 @@ require_once __DIR__ . "/inc/layout-top.php";
     function actualizarResumen() {
         if (!desde.value || !hasta.value) {
             resumen.hidden = true;
-            caja.style.display = 'none';
+            caja.style.display = 'none'; pista.hidden = false;
             if (guardar) { guardar.disabled = true; guardar.title = 'Elija un horario disponible'; }
             return;
         }
@@ -428,7 +468,7 @@ require_once __DIR__ . "/inc/layout-top.php";
             horas.toFixed(2).replace(/\.?0+$/, '') + (horas === 1 ? ' hora' : ' horas') +
             (fuera ? '<br><small class="text-muted">Es el horario actual de la reserva. Toque un horario libre para cambiarlo.</small>' : '');
 
-        caja.style.display = '';
+        caja.style.display = ''; pista.hidden = true;
         total.textContent = '$' + (horas * tarifa).toFixed(2);
         detalle.textContent = horas.toFixed(2).replace(/\.?0+$/, '') + ' h × $' + tarifa.toFixed(2) + ' por hora';
         if (guardar) { guardar.disabled = false; guardar.title = ''; }
@@ -456,6 +496,159 @@ require_once __DIR__ . "/inc/layout-top.php";
     pintarTira();
     cargar();
     actualizarResumen();
+})();
+</script>
+
+<script>
+/*----------  El buscador de clientes  ----------*/
+/*
+| Un combobox: se escribe, el servidor responde (buscarClientes) y se elige
+| con el dedo, el ratón o el teclado (flechas, Intro, Escape). Las
+| respuestas que llegan tarde se descartan: con una conexión lenta, la de
+| «ga» podría llegar después de la de «garcía» y pisarla.
+*/
+(function () {
+    var URL_AJAX = '<?php echo APP_URL; ?>ajax/arenaAjax.php';
+    var URL_CREAR = '<?php echo APP_URL; ?>clienteForm/?volver=reservaForm';
+    var campo    = document.getElementById('reserva_clienteid');
+    var q        = document.getElementById('cliQ');
+    var panel    = document.getElementById('cliPanel');
+    var lista    = document.getElementById('cliLista');
+    var cabecera = document.getElementById('cliCabecera');
+    var crear    = document.getElementById('cliCrear');
+    var buscar   = document.getElementById('cliBuscar');
+    var elegido  = document.getElementById('cliElegido');
+    var form     = q.form;
+
+    var resultados = [], activo = -1, peticion = 0, espera = null;
+
+    function esc(s) {
+        return String(s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+    /* Resalta lo escrito dentro del nombre (sin distinguir tildes ni mayúsculas). */
+    function resaltar(texto, buscado) {
+        var plano = function (s) { return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); };
+        var i = buscado ? plano(texto).indexOf(plano(buscado)) : -1;
+        if (i < 0) { return esc(texto); }
+        return esc(texto.slice(0, i)) + '<mark>' + esc(texto.slice(i, i + buscado.length)) + '</mark>' + esc(texto.slice(i + buscado.length));
+    }
+
+    function abrir(si) {
+        panel.hidden = !si;
+        q.setAttribute('aria-expanded', si ? 'true' : 'false');
+        if (!si) { q.removeAttribute('aria-activedescendant'); activo = -1; }
+    }
+
+    function pintar(modo, texto) {
+        activo = -1;
+        cabecera.textContent = modo === 'recientes'
+            ? (resultados.length ? 'Recientes' : '')
+            : (resultados.length ? resultados.length + (resultados.length === 12 ? '+ coincidencias: afine la búsqueda' : (resultados.length === 1 ? ' coincidencia' : ' coincidencias')) : 'No hay clientes con «' + texto + '».');
+        lista.innerHTML = resultados.map(function (c, i) {
+            var detalle = [c.identificacion, c.celular].filter(Boolean).join(' · ');
+            return '<li role="option" id="cliOpt' + i + '" data-i="' + i + '" aria-selected="false" class="ar-cli__opcion' + (c.activo ? '' : ' ar-cli__opcion--inactivo') + '">' +
+                   '<span class="ar-cli__avatar" aria-hidden="true">' + esc(c.nombre.trim().charAt(0).toUpperCase()) + '</span>' +
+                   '<span class="ar-cli__datos"><strong>' + resaltar(c.nombre, texto) + '</strong><span>' + resaltar(detalle, texto) + '</span></span>' +
+                   (c.activo ? '' : '<span class="badge text-bg-secondary">Inactivo</span>') +
+                   (c.saldo > 0 ? '<span class="badge text-bg-success" title="Saldo a favor en su monedero">$' + c.saldo.toFixed(2) + '</span>' : '') +
+                   '</li>';
+        }).join('');
+        /* «Crear cliente» trae lo buscado si parece una identificación. */
+        var esId = /^[0-9A-Za-z-]{5,20}$/.test(texto) && /\d{5}/.test(texto);
+        crear.href = URL_CREAR + (esId ? '&identificacion=' + encodeURIComponent(texto) : '');
+        crear.querySelector('span').textContent = esId ? 'Crear cliente con ' + texto : 'Crear cliente nuevo';
+        abrir(true);
+    }
+
+    function consultar() {
+        var texto = q.value.trim();
+        if (texto.length === 1) { return; }            /* una letra coincide con casi todos */
+        var n = ++peticion;
+        var datos = new FormData();
+        datos.append('modulo_arena', 'buscarClientes');
+        datos.append('q', texto);
+        fetch(URL_AJAX, { method: 'POST', body: datos, credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (r) {
+                if (n !== peticion || !r || !r.clientes) { return; }
+                resultados = r.clientes;
+                pintar(r.modo, texto);
+            })
+            .catch(function () {
+                if (n !== peticion) { return; }
+                resultados = []; lista.innerHTML = '';
+                cabecera.textContent = 'No se pudo buscar. Revise la conexión.';
+                abrir(true);
+            });
+    }
+
+    function marcar(i) {
+        var opciones = lista.querySelectorAll('.ar-cli__opcion');
+        if (!opciones.length) { return; }
+        activo = (i + opciones.length) % opciones.length;
+        opciones.forEach(function (o, k) { o.setAttribute('aria-selected', k === activo ? 'true' : 'false'); });
+        q.setAttribute('aria-activedescendant', 'cliOpt' + activo);
+        opciones[activo].scrollIntoView({ block: 'nearest' });
+    }
+
+    function elegir(c) {
+        campo.value = c.id;
+        document.getElementById('cliAvatar').textContent = c.nombre.trim().charAt(0).toUpperCase();
+        document.getElementById('cliNombre').textContent = c.nombre;
+        document.getElementById('cliDetalle').textContent = [c.identificacion, c.celular].filter(Boolean).join(' · ')
+            + (c.saldo > 0 ? ' · saldo $' + c.saldo.toFixed(2) : '');
+        abrir(false);
+        buscar.hidden = true;
+        elegido.hidden = false;
+        buscar.classList.remove('is-invalid');
+        /* Siguiente paso: la instalación, o el horario si ya está. */
+        var inst = document.getElementById('reserva_instalacionid');
+        (inst.value ? document.getElementById('agendaBloques') : inst).scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    q.addEventListener('input', function () {
+        clearTimeout(espera);
+        espera = setTimeout(consultar, 250);
+    });
+    q.addEventListener('focus', function () { if (!panel.hidden || q.value.trim().length !== 1) { consultar(); } });
+    q.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowDown') { e.preventDefault(); if (panel.hidden) { consultar(); } else { marcar(activo + 1); } }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); marcar(activo - 1); }
+        else if (e.key === 'Enter') {
+            /* Intro elige, no envía el formulario. */
+            if (!panel.hidden && resultados.length) { e.preventDefault(); elegir(resultados[activo >= 0 ? activo : 0]); }
+            else { e.preventDefault(); }
+        }
+        else if (e.key === 'Escape') { abrir(false); }
+    });
+    /* mousedown y no click: el click llega después del blur y la lista ya se habría cerrado. */
+    lista.addEventListener('mousedown', function (e) {
+        var o = e.target.closest('.ar-cli__opcion');
+        if (!o) { return; }
+        e.preventDefault();
+        elegir(resultados[+o.getAttribute('data-i')]);
+    });
+    q.addEventListener('blur', function () { setTimeout(function () { abrir(false); }, 150); });
+
+    document.getElementById('cliCambiar').addEventListener('click', function () {
+        elegido.hidden = true;
+        buscar.hidden = false;
+        q.value = '';
+        q.focus();
+    });
+
+    /* Sin cliente no se envía: se lleva al buscador (antes que core.js). */
+    document.addEventListener('submit', function (e) {
+        if (e.target !== form || campo.value) { return; }
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        buscar.classList.add('is-invalid');
+        buscar.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setTimeout(function () { q.focus({ preventScroll: true }); }, 300);
+        Swal.fire({ icon: 'warning', title: 'Falta el cliente', text: 'Busque y elija a quién se le hace la reserva.', confirmButtonText: 'Entendido' });
+    }, true);
 })();
 </script>
 
@@ -515,6 +708,70 @@ require_once __DIR__ . "/inc/layout-top.php";
         margin-top: 10px; padding: 10px 14px; border-radius: var(--ds-radius-sm, 10px);
         background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis);
         border: 1px solid var(--bs-success-border-subtle);
+    }
+
+    /* Pasos */
+    .ar-reserva .card-title { font-size: 1rem; font-weight: 600; display: flex; align-items: center; }
+    .ar-paso {
+        display: inline-grid; place-items: center; width: 1.6rem; height: 1.6rem; margin-right: .6rem;
+        border-radius: 50%; background: var(--ds-acento, #0e7490); color: #fff; font-size: .85rem; font-weight: 700;
+    }
+    .ar-fecha { display: flex; flex-wrap: wrap; align-items: flex-start; gap: .5rem; }
+    .ar-fecha input[type="date"] { max-width: 190px; }
+
+    /* Buscador de clientes */
+    .ar-cli__buscar { position: relative; }
+    .ar-cli__buscar.is-invalid .form-control, .ar-cli__buscar.is-invalid .input-group-text { border-color: var(--bs-danger); }
+    .ar-cli__buscar input[type="search"] { min-height: 2.75rem; }
+    .ar-cli__panel {
+        position: absolute; left: 0; right: 0; z-index: 20; margin-top: .25rem;
+        border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius-lg);
+        background: var(--bs-body-bg); box-shadow: 0 .5rem 1.25rem rgba(0, 0, 0, .15); overflow: hidden;
+    }
+    .ar-cli__cabecera { padding: .4rem .85rem; font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--bs-secondary-color); }
+    .ar-cli__cabecera:empty { display: none; }
+    .ar-cli__lista { list-style: none; margin: 0; padding: 0; max-height: min(22rem, 50vh); overflow-y: auto; }
+    .ar-cli__opcion, .ar-cli__elegido { display: flex; align-items: center; gap: .65rem; }
+    .ar-cli__opcion { min-height: 3.25rem; padding: .45rem .85rem; cursor: pointer; border-top: 1px solid var(--bs-border-color-translucent); }
+    .ar-cli__opcion:hover, .ar-cli__opcion[aria-selected="true"] { background: var(--bs-tertiary-bg); }
+    .ar-cli__opcion--inactivo .ar-cli__datos strong { color: var(--bs-secondary-color); }
+    .ar-cli__avatar {
+        flex: none; display: grid; place-items: center; width: 2.25rem; height: 2.25rem; border-radius: 50%;
+        background: var(--bs-tertiary-bg); color: var(--bs-emphasis-color); font-weight: 700;
+    }
+    .ar-cli__datos { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+    .ar-cli__datos strong { color: var(--bs-emphasis-color); overflow-wrap: anywhere; }
+    .ar-cli__datos span { font-size: .825rem; color: var(--bs-secondary-color); overflow-wrap: anywhere; }
+    .ar-cli__datos mark { padding: 0; background: var(--bs-warning-bg-subtle); color: inherit; }
+    .ar-cli__crear {
+        display: flex; align-items: center; min-height: 3rem; padding: .5rem .85rem;
+        border-top: 1px solid var(--bs-border-color); font-weight: 600; text-decoration: none;
+    }
+    .ar-cli__crear:hover { background: var(--bs-tertiary-bg); }
+    .ar-cli__elegido {
+        padding: .6rem .75rem; border: 1px solid var(--bs-success-border-subtle);
+        border-radius: var(--bs-border-radius-lg); background: var(--bs-success-bg-subtle);
+    }
+    .ar-cli__elegido .ar-cli__avatar { background: var(--bs-body-bg); }
+    .ar-cli__elegido[hidden], .ar-cli__buscar[hidden] { display: none; }
+
+    /* Barra de abajo: importe y guardar, siempre a la vista */
+    .ar-barra {
+        position: sticky; bottom: 0; z-index: 10; display: flex; align-items: center; justify-content: flex-end; gap: .5rem;
+        padding: .65rem .75rem; margin-bottom: 1rem; background: var(--bs-body-bg);
+        border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius-lg);
+        box-shadow: 0 -.25rem .75rem rgba(0, 0, 0, .08);
+    }
+    .ar-barra__importe { display: flex; flex-direction: column; margin-right: auto; line-height: 1.15; min-width: 0; }
+    .ar-barra__pista   { margin-right: auto; font-size: .875rem; color: var(--bs-secondary-color); }
+    .ar-barra__pista[hidden] { display: none; }
+    .ar-barra__total   { font-size: 1.35rem; font-weight: 700; color: var(--bs-emphasis-color); }
+    .ar-barra__detalle { font-size: .78rem; color: var(--bs-secondary-color); }
+    .ar-barra .btn { min-height: 2.75rem; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; }
+    @media (max-width: 575.98px) {
+        .ar-barra__txt { display: none; }          /* en el teléfono, Cancelar sólo con la X */
+        .ar-barra .btn-secondary .fas { margin-right: 0 !important; }
+        .ar-fecha input[type="date"] { max-width: none; }
     }
 </style>
 

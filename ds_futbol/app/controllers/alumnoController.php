@@ -698,8 +698,7 @@
 						.'<i class="fas '.($activo ? 'fa-user-slash' : 'fa-user-check').'" aria-hidden="true"></i></button>';
 				}
 				if ($puedeEliminar) {
-					$botones .= '<button type="button" class="btn btn-danger btn-sm js-alumno" data-accion="eliminar" data-id="'.$id.'"'
-						.' title="Eliminar" aria-label="Eliminar a '.$h($nombre).'"><i class="fas fa-trash" aria-hidden="true"></i></button>';
+					$botones .= ds_boton_eliminar('a '.$nombre, ['type' => 'button', 'class' => 'js-alumno', 'data' => ['accion' => 'eliminar', 'id' => $id]]);
 				}
 
 				$tabla .= '

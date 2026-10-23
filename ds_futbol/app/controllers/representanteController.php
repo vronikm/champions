@@ -201,7 +201,7 @@
 					$botones .= '<a href="' . APP_URL . 'representanteUpdate/' . $id . '/" class="btn btn-info btn-sm" title="Editar" aria-label="Editar a ' . $h($nombre) . '"><i class="fas fa-pen" aria-hidden="true"></i></a>';
 				}
 				if ($puedeEliminar) {
-					$botones .= '<button type="button" class="btn btn-danger btn-sm js-repre" data-accion="eliminar" data-id="' . $id . '" title="Eliminar" aria-label="Eliminar a ' . $h($nombre) . '"><i class="fas fa-trash" aria-hidden="true"></i></button>';
+					$botones .= ds_boton_eliminar('a ' . $nombre, ['type' => 'button', 'class' => 'js-repre', 'data' => ['accion' => 'eliminar', 'id' => $id]]);
 				}
 
 				$datos[] = [

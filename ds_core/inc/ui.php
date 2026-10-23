@@ -213,6 +213,44 @@ if (!function_exists('ds_icono')) {
         return '<button type="submit" class="btn btn-sm btn-' . $estilo . '"' . $attr . '>' . $icono . '</button>';
     }
 
+    /**
+     * Botón «Eliminar» de una fila: el ESTÁNDAR de los listados.
+     *
+     * Rojo relleno (btn-danger), pequeño, sólo el icono de la papelera,
+     * con title «Eliminar» y un aria-label que dice qué se elimina. Es el
+     * de alumnoList; antes convivían el relleno, el contorneado
+     * (btn-outline-danger) y variantes con float-end según la pantalla.
+     *
+     * $quien    lo que se elimina, en texto (se escapa aquí): «a Ana Pérez»,
+     *           «la hora 14:00 – 15:00». Va tras «Eliminar» en el aria-label.
+     * $opciones type ('submit' por omisión; 'button' para los js-*), class
+     *           (clases extra, p. ej. 'js-alumno'), data (atributos data-*),
+     *           disabled y title (el motivo, cuando está deshabilitado).
+     */
+    function ds_boton_eliminar(string $quien = '', array $opciones = []): string
+    {
+        $e = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+
+        $titulo = $opciones['title'] ?? 'Eliminar';
+        $etiqueta = !empty($opciones['disabled']) && isset($opciones['title'])
+            ? $opciones['title']
+            : trim('Eliminar ' . $quien);
+
+        $attr = ' title="' . $e($titulo) . '" aria-label="' . $e($etiqueta) . '"';
+        foreach ($opciones['data'] ?? [] as $clave => $valor) {
+            $attr .= ' data-' . $clave . '="' . $e($valor) . '"';
+        }
+        if (!empty($opciones['disabled'])) {
+            $attr .= ' disabled';
+        }
+
+        $tipo   = ($opciones['type'] ?? 'submit') === 'button' ? 'button' : 'submit';
+        $clases = trim('btn btn-danger btn-sm ' . ($opciones['class'] ?? ''));
+
+        return '<button type="' . $tipo . '" class="' . $clases . '"' . $attr . '>'
+             . '<i class="' . ds_icono('eliminar') . '" aria-hidden="true"></i></button>';
+    }
+
     /** Hueco del ancho de un botón, para que las filas no se descuadren. */
     function ds_hueco(string $titulo = ''): string
     {

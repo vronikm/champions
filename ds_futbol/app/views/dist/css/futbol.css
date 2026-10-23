@@ -921,6 +921,10 @@
    ========================================================================= */
 .ds-toma__resumen { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
 .ds-toma__resumen .badge { font-size: .85rem; font-weight: 600; }
+/* Como los atajos de .ds-crud: el gris de btn-outline-secondary no llega
+   al contraste de 4,5 (qa_identidad); el color de énfasis del tema, sí. */
+.ds-toma__actualizar { color: var(--bs-emphasis-color); background: var(--bs-body-bg); border-color: var(--bs-border-color); }
+.ds-toma__actualizar:hover { background: var(--bs-tertiary-bg); color: var(--bs-emphasis-color); }
 .ds-toma__hoy { font-weight: 600; margin-right: .25rem; }
 .ds-toma__estado { font-size: .8rem; }
 .ds-toma__dias { display: inline-flex; gap: .2rem; }

@@ -20,8 +20,11 @@
 					"texto"=>"No ha completado todos los campos obligatorios",
 					"icono"=>"error"
 				];
-				return json_encode($alerta);       
-		    }		
+				return json_encode($alerta);
+		    }
+			if (($error = $this->validarRangoHora($hora_inicio, $hora_fin)) !== '') {
+				return $error;
+			}
 
 			$hora_datos_reg=[
 				[
@@ -68,36 +71,85 @@
 			return json_encode($alerta);
 		}
 
-		public function listarHoras(){ 			
-			$tabla="";		
-			$consulta_datos="SELECT ROW_NUMBER() OVER (ORDER BY hora_id) AS fila_numero
-								,CASE WHEN H.hora_estado = 'A' THEN 'Activo' ELSE 'Inactivo' END ESTADO 
-								,H.* 
-				FROM asistencia_hora H  
-				where H.hora_estado != 'E'
-				ORDER BY hora_id ASC";		
+		/*----------  Horas de entrenamiento (vista asistenciaHora)  ----------*/
+		/*
+		| Una fila por hora: el rango y su duración, el detalle, cuántos
+		| horarios la usan y el estado. Marcado de fichas (.ds-crud): tabla en
+		| escritorio y ficha por debajo de 992 px.
+		|
+		| «Horarios» cuenta los horarios no eliminados que la usan: es lo que
+		| impide eliminarla (eliminarHoraControlador) y lo que avisa de que
+		| cambiarla cambia esos horarios.
+		|
+		| ANTES: número de fila, horas con segundos, el detalle sin escapar y
+		| ordenadas por id, no por la hora.
+		*/
+		public function listarHoras(){
+			$datos = $this->ejecutarConsulta("SELECT H.hora_id, H.hora_inicio, H.hora_fin, H.hora_detalle, H.hora_estado,
+						(SELECT COUNT(DISTINCT D.detalle_horarioid)
+						   FROM asistencia_horario_detalle D
+						   INNER JOIN asistencia_horario AH ON AH.horario_id = D.detalle_horarioid AND AH.horario_estado <> 'E'
+						  WHERE D.detalle_horaid = H.hora_id) AS horarios
+					FROM asistencia_hora H
+					WHERE H.hora_estado <> 'E'
+					ORDER BY H.hora_inicio, H.hora_fin, H.hora_detalle")->fetchAll();
 
-			$datos = $this->ejecutarConsulta($consulta_datos);
-			$datos = $datos->fetchAll();
-			foreach($datos as $rows){			
-				$tabla.='
+			$h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+
+			$tabla = "";
+			foreach ($datos as $rows) {
+				$id       = (int)$rows['hora_id'];
+				$inicio   = substr((string)$rows['hora_inicio'], 0, 5);
+				$fin      = substr((string)$rows['hora_fin'], 0, 5);
+				$minutos  = intdiv(strtotime('1970-01-01 ' . $rows['hora_fin'] . ' UTC') - strtotime('1970-01-01 ' . $rows['hora_inicio'] . ' UTC'), 60);
+				$duracion = $minutos > 0
+					? trim((intdiv($minutos, 60) ? intdiv($minutos, 60) . ' h ' : '') . ($minutos % 60 ? ($minutos % 60) . ' min' : ''))
+					: '';
+				$usos     = (int)$rows['horarios'];
+				$activo   = $rows['hora_estado'] === 'A';
+				$detalle  = trim((string)$rows['hora_detalle']);
+
+				$tabla .= '
 					<tr>
-						<td>'.$rows['fila_numero'].'</td>
-						<td>'.$rows['hora_inicio'].'</td>
-						<td>'.$rows['hora_fin'].'</td>
-						<td>'.$rows['hora_detalle'].'</td>
-						<td>'.$rows['ESTADO'].'</td>
-						<td>
-							'.$this->siPuede('eliminar','asistenciaHora','<form class="FormularioAjax" action="'.APP_URL.'app/ajax/asistenciaAjax.php" method="POST" autocomplete="off" >
-								<input type="hidden" name="modulo_asistencia" value="eliminar">
-								<input type="hidden" name="hora_id" value="'.$rows['hora_id'].'">						
-								<button type="submit" class="btn float-end btn-danger btn-sm" style="margin-right: 5px;" title="Eliminar" aria-label="Eliminar"><i class="fas fa-trash"></i></button>
-							</form>').'	
-							<a href="'.APP_URL.'asistenciaHora/'.$rows['hora_id'].'/" class="btn float-end btn-actualizar btn-sm" style="margin-right: 5px;"  title="Editar" aria-label="Editar"><i class="fas fa-pen"></i></a>							
+						<td class="ds-ficha__principal" data-order="' . $h($rows['hora_inicio'] . ' ' . $rows['hora_fin']) . '">
+							<div class="ds-ficha__nombre"><i class="far fa-clock me-1 text-body-secondary" aria-hidden="true"></i>' . $inicio . ' – ' . $fin . '</div>
+							' . ($duracion !== '' ? '<div class="ds-ficha__meta">' . $duracion . '</div>' : '') . '
 						</td>
-					</tr>';	
+						<td class="ds-ficha__dato" data-etiqueta="Detalle">' . ($detalle !== '' ? $h($detalle) : '<span class="text-body-secondary">—</span>') . '</td>
+						<td class="ds-ficha__dato" data-etiqueta="Horarios" data-order="' . $usos . '">'
+							. '<span class="badge rounded-pill ' . ($usos > 0 ? 'text-bg-primary' : 'text-bg-light border') . '" title="Horarios que usan esta hora">' . $usos . '</span></td>
+						<td class="ds-ficha__estado" data-order="' . ($activo ? 'Activo' : 'Inactivo') . '"><span class="badge ' . ($activo ? 'text-bg-success' : 'text-bg-secondary') . '">' . ($activo ? 'Activo' : 'Inactivo') . '</span></td>
+						<td class="ds-tabla-acciones ds-ficha__acciones"><div class="ds-ficha__botones">
+							' . $this->siPuede('editar', 'asistenciaHora', '<a href="' . APP_URL . 'asistenciaHora/' . $id . '/#hora-form" class="btn btn-primary btn-sm ds-ficha__primario" aria-label="Editar la hora ' . $inicio . ' – ' . $fin . '"><i class="fas fa-pen me-1" aria-hidden="true"></i>Editar</a>') . '
+							' . $this->siPuede('eliminar', 'asistenciaHora', $usos > 0
+								? ds_boton_eliminar('', ['type' => 'button', 'disabled' => true,
+									'title' => 'No se puede eliminar: la usa' . ($usos === 1 ? ' 1 horario' : "n $usos horarios")])
+								: '<form class="FormularioAjax" action="' . APP_URL . 'app/ajax/asistenciaAjax.php" method="POST" autocomplete="off">
+								<input type="hidden" name="modulo_asistencia" value="eliminar">
+								<input type="hidden" name="hora_id" value="' . $id . '">
+								' . ds_boton_eliminar('la hora ' . $inicio . ' – ' . $fin) . '
+							</form>') . '
+						</div></td>
+					</tr>';
 			}
-			return $tabla;			
+			return $tabla;
+		}
+
+		/*
+		| Las dos horas, en formato HH:MM (o HH:MM:SS) y la final después de la
+		| inicial. Devuelve la alerta en JSON si algo falla, o '' si está bien.
+		| Antes se aceptaba cualquier texto y una hora 18:00 – 14:00.
+		*/
+		private function validarRangoHora(string $inicio, string $fin): string {
+			$valida = static fn($t) => (bool)preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $t);
+			if (!$valida($inicio) || !$valida($fin)) {
+				$texto = "Las horas deben tener el formato HH:MM, por ejemplo 16:30";
+			} elseif (substr($inicio . ':00', 0, 8) >= substr($fin . ':00', 0, 8)) {   /* HH:MM:SS se compara como texto */
+				$texto = "La hora fin debe ser posterior a la hora de inicio";
+			} else {
+				return '';
+			}
+			return json_encode(["tipo" => "simple", "titulo" => "Revise las horas", "texto" => $texto, "icono" => "error"]);
 		}
 
 		public function actualizarHoraControlador(){			
@@ -131,8 +183,15 @@
 					"texto"=>"No ha completado todos los campos obligatorios",
 					"icono"=>"error"
 				];
-				return json_encode($alerta);		        
+				return json_encode($alerta);
 		    }
+			if (($error = $this->validarRangoHora($hora_inicio, $hora_fin)) !== '') {
+				return $error;
+			}
+			/* Sólo Activo o Inactivo: «E» es eliminar, y va por su propia acción. */
+			if (!in_array($estado, ['A', 'I'], true)) {
+				$estado = 'A';
+			}
 			$hora_datos_reg=[
 				[
 					"campo_nombre"=>"hora_inicio",
@@ -192,8 +251,25 @@
 			return $datos;
 		}
 
-		public function eliminarHoraControlador(){			
+		public function eliminarHoraControlador(){
 			$horaid=$this->limpiarCadena($_POST['hora_id']);
+
+			/* Una hora que usa algún horario no se elimina: el horario se
+			   quedaría sin hora y desaparecería de los listados que la cruzan.
+			   La lista ya deshabilita el botón; esto decide de verdad. */
+			$usos = (int)$this->ejecutarConsulta("SELECT COUNT(DISTINCT D.detalle_horarioid)
+					FROM asistencia_horario_detalle D
+					INNER JOIN asistencia_horario AH ON AH.horario_id = D.detalle_horarioid AND AH.horario_estado <> 'E'
+					WHERE D.detalle_horaid = :hora", [':hora' => (int)$horaid])->fetchColumn();
+			if ($usos > 0) {
+				return json_encode([
+					"tipo"   => "simple",
+					"titulo" => "No se puede eliminar",
+					"texto"  => "Esta hora la usa" . ($usos === 1 ? " 1 horario" : "n $usos horarios") . ". Quítela de ellos o inactívela.",
+					"icono"  => "warning"
+				]);
+			}
+
 			$hora_datos=[
 				[
 					"campo_nombre"=>"hora_estado",

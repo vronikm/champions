@@ -258,7 +258,7 @@
 							'.$this->siPuede('eliminar','torneoList','<form class="FormularioAjax" action="'.APP_URL.'app/ajax/equipoAjax.php" method="POST" autocomplete="off">
 								<input type="hidden" name="modulo_equipo" value="eliminar">
 								<input type="hidden" name="equipo_id" value="'.$id.'">
-								<button type="submit" class="btn btn-outline-danger btn-sm" title="Eliminar" aria-label="Eliminar"><i class="fas fa-trash"></i></button>
+								'.ds_boton_eliminar('el equipo '.$rows['equipo_nombre']).'
 							</form>').'
 						</div></td>
 					</tr>';

@@ -53,7 +53,7 @@
 					<span class="badge text-bg-warning" title="Horarios con parte de la lista marcada"><?php echo $resumen['curso']; ?> en curso</span>
 					<span class="badge text-bg-danger" title="Horarios con clase hoy y sin ninguna marca"><?php echo $resumen['pendiente'] . ($resumen['pendiente'] === 1 ? ' pendiente' : ' pendientes'); ?></span>
 					<span class="badge text-bg-success" title="Horarios con toda la lista marcada"><?php echo $resumen['tomada'] . ($resumen['tomada'] === 1 ? ' tomada' : ' tomadas'); ?></span>
-					<a href="<?php echo APP_URL; ?>asistencia/" class="btn btn-outline-secondary btn-sm ms-auto" title="Volver a consultar el estado (actualizado a las <?php echo date('H:i'); ?>)"><i class="fas fa-rotate me-1" aria-hidden="true"></i>Actualizar <span class="text-body-secondary small"><?php echo date('H:i'); ?></span></a>
+					<a href="<?php echo APP_URL; ?>asistencia/" class="btn btn-sm ms-auto ds-toma__actualizar" title="Volver a consultar el estado (actualizado a las <?php echo date('H:i'); ?>)"><i class="fas fa-rotate me-1" aria-hidden="true"></i>Actualizar <span class="small"><?php echo date('H:i'); ?></span></a>
 				</div>
 
 				<!-- =================== Horarios =================== -->

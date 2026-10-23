@@ -1143,90 +1143,140 @@
 			return $tabla;		
 		}
 
-		/*----------  Matriz de alumnos con opciones Ver, Actualizar, Eliminar  ----------*/
-		public function listarAlumnos($apellidopaterno, $primernombre, $anio, $sede){
-			if($primernombre!=""){
-				$primernombre .= '%';
-			} 
-			if($apellidopaterno!=""){
-				$apellidopaterno .= '%';
-			} 					
+		/*----------  Reporte de asistencia (reporteAsistencia)  ----------*/
+		/*
+		| Una fila por alumno: cuándo ingresó y qué porcentaje de asistencia
+		| tiene, con el acceso a su calendario (buscarAsistencia). Marcado de
+		| fichas (.ds-crud): tabla en escritorio y ficha por debajo de 992 px.
+		|
+		| PORCENTAJE = (presentes + atrasos) / días marcados, la fórmula de la
+		| ficha de asistencia y de Insights (el justificado no suma), sobre
+		| todo lo registrado: la asistencia no se registra desde hace meses y
+		| un periodo corto dejaría a todos en blanco.
+		|
+		| ANTES: sólo salían los alumnos con alguna marca (INNER JOIN), al
+		| abrir no salía ninguno hasta pulsar Buscar, y «Todas» las sedes era
+		| «alumno_sedeid <> 0» para cualquier usuario. Ahora salen todos los
+		| del estado pedido (quien no tiene marcas, «Sin registros») y la sede
+		| se acota siempre a las del usuario (condicionSede).
+		|
+		| $estado: A (por defecto), I o T. $anio: categoría (año de nacimiento).
+		*/
+		public function listarAlumnos($identificacion, $apellidopaterno, $primernombre, $anio, $estado, $sede){
+			$condiciones = [];
+			$parametros  = [];
+			$busqueda    = [];
 
-			$tabla="";
-
-			/* El array se arma a la par que la consulta.
-			   Las ramas que REEMPLAZAN $consulta_datos lo vacian: pasar un
-			   parametro que la consulta ya no usa es SQLSTATE[HY093], y es
-			   el descuido que mas veces se ha colado en este proyecto. */
-			$parametros = [];
-
-			$consulta_datos="SELECT distinct alumno_id, alumno_identificacion, alumno_primernombre, alumno_segundonombre,
-									alumno_apellidopaterno, alumno_apellidomaterno, alumno_fechanacimiento
-								FROM sujeto_alumno
-								INNER JOIN asistencia_asistencia ON asistencia_alumnoid = alumno_id
-								WHERE (alumno_primernombre LIKE :nombre
-										OR alumno_apellidopaterno LIKE :apellido) ";
-			$parametros[':nombre']   = $primernombre;
-			$parametros[':apellido'] = $apellidopaterno;
-
-			if($anio!=""){
-				$consulta_datos .= " and YEAR(alumno_fechanacimiento) = :anio";
-				$parametros[':anio'] = $anio;
+			if ($identificacion != "") {
+				$busqueda[] = "A.alumno_identificacion LIKE :identificacion";
+				$parametros[':identificacion'] = $identificacion.'%';
 			}
-
-			if($primernombre=="" && $apellidopaterno==""){
-				$consulta_datos="SELECT distinct alumno_id, alumno_identificacion, alumno_primernombre, alumno_segundonombre,
-										alumno_apellidopaterno, alumno_apellidomaterno, alumno_fechanacimiento
-									FROM sujeto_alumno
-									INNER JOIN asistencia_asistencia ON asistencia_alumnoid = alumno_id
-									WHERE YEAR(alumno_fechanacimiento) = :anio";
-				/* Consulta nueva: solo sobrevive el año. */
-				$parametros = [':anio' => $anio];
+			if ($primernombre != "") {
+				$busqueda[] = "A.alumno_primernombre LIKE :primernombre";
+				$parametros[':primernombre'] = $primernombre.'%';
 			}
-
-			if($primernombre=="" && $apellidopaterno=="" && $anio == ""){
-				$consulta_datos = "SELECT distinct alumno_id, alumno_identificacion, alumno_primernombre, alumno_segundonombre,
-											alumno_apellidopaterno, alumno_apellidomaterno, alumno_fechanacimiento
-										FROM sujeto_alumno
-										INNER JOIN asistencia_asistencia ON asistencia_alumnoid = alumno_id
-										WHERE alumno_primernombre <> '' ";
-				$parametros = [];
+			if ($apellidopaterno != "") {
+				$busqueda[] = "A.alumno_apellidopaterno LIKE :apellidopaterno";
+				$parametros[':apellidopaterno'] = $apellidopaterno.'%';
 			}
+			if ($busqueda) {
+				$condiciones[] = "(" . implode(" OR ", $busqueda) . ")";
+			}
+			if ((int)$anio > 0) {
+				$condiciones[] = "YEAR(A.alumno_fechanacimiento) = :anio";
+				$parametros[':anio'] = (int)$anio;
+			}
+			$condiciones[] = $this->condicionEstadoAlumno('A.alumno_estado', $estado);
+			$condiciones[] = $this->condicionSede('A.alumno_sedeid', $sede, $parametros);
 
-			if($sede!=""){
-				if($sede == 0){
-					$consulta_datos .= " and alumno_sedeid <> :sede";
-				}else{
-					$consulta_datos .= " and alumno_sedeid = :sede";
+			$filas = $this->ejecutarConsulta("SELECT A.alumno_id, A.alumno_identificacion, A.alumno_primernombre, A.alumno_segundonombre,
+						A.alumno_apellidopaterno, A.alumno_apellidomaterno, A.alumno_estado,
+						A.alumno_fechanacimiento, A.alumno_fechaingreso, S.sede_nombre,
+						COALESCE(AS1.dias, 0) AS dias, COALESCE(AS1.asistidos, 0) AS asistidos,
+						COALESCE(AS1.justificados, 0) AS justificados, AS1.ultimo
+					FROM sujeto_alumno A
+					LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
+					LEFT JOIN (SELECT dia_alumnoid, COUNT(*) AS dias, SUM(dia_marca IN ('P','A')) AS asistidos,
+					                  SUM(dia_marca = 'J') AS justificados, MAX(dia_fecha) AS ultimo
+					             FROM insights_v_asistencia_dia GROUP BY dia_alumnoid) AS1 ON AS1.dia_alumnoid = A.alumno_id
+					WHERE " . implode(" AND ", $condiciones) . "
+					ORDER BY A.alumno_apellidopaterno, A.alumno_apellidomaterno, A.alumno_primernombre", $parametros)->fetchAll();
+
+			$h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+			$junta = static fn(...$p) => preg_replace('/\s+/', ' ', trim(implode(' ', $p)));
+			$fecha = static fn($f) => $f && !str_starts_with((string)$f, '0000') ? (string)$f : '';
+
+			$tabla = "";
+			foreach ($filas as $al) {
+				$id      = (int)$al['alumno_id'];
+				$activo  = $al['alumno_estado'] === 'A';
+				$nombre  = $junta($al['alumno_primernombre'], $al['alumno_segundonombre'], $al['alumno_apellidopaterno'], $al['alumno_apellidomaterno']);
+				$orden   = $junta($al['alumno_apellidopaterno'], $al['alumno_apellidomaterno'], $al['alumno_primernombre']);
+				$inicial = mb_strtoupper(mb_substr(html_entity_decode((string)$al['alumno_primernombre']), 0, 1) . mb_substr(html_entity_decode((string)$al['alumno_apellidopaterno']), 0, 1));
+
+				/* Edad, tras la cédula. */
+				$nacimiento = $fecha($al['alumno_fechanacimiento']);
+				$edad = $nacimiento !== '' ? (new \DateTime($nacimiento))->diff(new \DateTime('today'))->y : null;
+
+				/* Fecha de ingreso, con la antigüedad. */
+				$ingreso = $fecha($al['alumno_fechaingreso']);
+				if ($ingreso !== '') {
+					$antig = (new \DateTime($ingreso))->diff(new \DateTime('today'));
+					$tiempo = $antig->y > 0 ? $antig->y . ($antig->y === 1 ? ' año' : ' años')
+						: ($antig->m > 0 ? $antig->m . ($antig->m === 1 ? ' mes' : ' meses') : 'Este mes');
+					$celdaIngreso = date('d/m/Y', strtotime($ingreso)) . '<span class="d-block small text-body-secondary">' . $tiempo . '</span>';
+				} else {
+					$celdaIngreso = '<span class="text-body-secondary">Sin fecha</span>';
 				}
-				$parametros[':sede'] = $sede;
-			}else{
-				$consulta_datos = "SELECT distinct alumno_id, alumno_identificacion, alumno_primernombre, alumno_segundonombre,
-											alumno_apellidopaterno, alumno_apellidomaterno, alumno_fechanacimiento
-										FROM sujeto_alumno
-										INNER JOIN asistencia_asistencia ON asistencia_alumnoid = alumno_id
-										WHERE alumno_primernombre = ''";
-				$parametros = [];
-			}
 
-			$consulta_datos .= " AND alumno_estado = 'A' ORDER BY alumno_apellidopaterno, alumno_apellidomaterno, alumno_primernombre";
+				/* Porcentaje de asistencia, con cuántos días lo sustentan y el último. */
+				$dias = (int)$al['dias'];
+				$pct  = $dias > 0 ? round((int)$al['asistidos'] / $dias * 100) : null;
+				$ultimo = $fecha($al['ultimo']);
+				$celdaAsis = $pct === null
+					? '<span class="text-body-secondary">Sin registros</span>'
+					: '<span class="ds-pagos__asis" title="' . (int)$al['asistidos'] . ' asistidos, ' . (int)$al['justificados'] . ' justificados y ' . ($dias - (int)$al['asistidos'] - (int)$al['justificados']) . ' faltas">'
+					  . '<span class="ds-pagos__barra" aria-hidden="true"><span style="width:' . $pct . '%" class="' . ($pct >= 75 ? 'bg-success' : ($pct >= 50 ? 'bg-warning' : 'bg-danger')) . '"></span></span>'
+					  . '<strong>' . $pct . ' %</strong></span><span class="d-block small text-body-secondary">de ' . $dias . ($dias === 1 ? ' día' : ' días')
+					  . ($ultimo !== '' ? ' · hasta ' . date('m/Y', strtotime($ultimo)) : '') . '</span>';
 
-			$datos = $this->ejecutarConsulta($consulta_datos, $parametros);
-			$datos = $datos->fetchAll();
-			foreach($datos as $rows){
-				$tabla.='
+				$tabla .= '
 					<tr>
-						<td>'.$rows['alumno_identificacion'].'</td>
-						<td>'.$rows['alumno_primernombre'].' '.$rows['alumno_segundonombre'].'</td>
-						<td>'.$rows['alumno_apellidopaterno'].' '.$rows['alumno_apellidomaterno'].'</td>
-						<td>'.$rows['alumno_fechanacimiento'].'</td>
-						<td>
-							<a href="'.APP_URL.'buscarAsistencia/'.$rows['alumno_id'].'/" target="_blank" class="btn float-start btn-ver btn-sm">Ver</a>
+						<td class="ds-ficha__principal" data-order="' . $h($orden) . '">
+							<div class="ds-ficha__con-imagen">
+								<span class="ds-ficha__imagen ds-alumnos__inicial" aria-hidden="true">' . $h($inicial) . '</span>
+								<div class="min-w-0">
+									<div class="ds-ficha__nombre">' . $h($nombre) . '</div>
+									<div class="ds-ficha__meta"><i class="fas fa-id-card" aria-hidden="true"></i> ' . $h($al['alumno_identificacion'])
+										. ($edad !== null ? ' · ' . $edad . ($edad === 1 ? ' año' : ' años') : '')
+										. ($activo ? '' : ' · <span class="badge text-bg-secondary">Inactivo</span>') . '</div>
+								</div>
+							</div>
 						</td>
-					</tr>';	
+						<td class="ds-ficha__dato ds-col-opcional" data-etiqueta="Sede" data-order="' . $h($al['sede_nombre']) . '">' . $h($al['sede_nombre']) . '</td>
+						<td class="ds-ficha__dato" data-etiqueta="Fecha de ingreso" data-order="' . $h($ingreso) . '">' . $celdaIngreso . '</td>
+						<td class="ds-ficha__dato" data-etiqueta="Porcentaje de asistencia" data-order="' . ($pct ?? -1) . '">' . $celdaAsis . '</td>
+						<td class="ds-tabla-acciones ds-ficha__acciones"><div class="ds-ficha__botones">
+							<a href="' . APP_URL . 'buscarAsistencia/' . $id . '/" class="btn btn-primary btn-sm ds-ficha__primario" aria-label="Ver la asistencia de ' . $h($nombre) . '"><i class="fas fa-calendar-check me-1" aria-hidden="true"></i>Ver asistencia</a>
+						</div></td>
+					</tr>';
 			}
-			return $tabla;			
+			return $tabla;
 		}
+
+		/** Sedes del filtro: las que el usuario puede ver (sedesDeLaSesion), no todas. */
+		public function opcionesSedeAsistencia($sedeid): string{
+			$permitidas = $this->sedesDeLaSesion();
+			$sedes = $this->ejecutarConsulta("SELECT sede_id, sede_nombre FROM general_sede ORDER BY sede_nombre")->fetchAll();
+			$option = "";
+			foreach ($sedes as $s) {
+				if ($permitidas !== null && !in_array((int)$s['sede_id'], $permitidas, true)) { continue; }
+				$option .= '<option value="' . (int)$s['sede_id'] . '"' . ((int)$sedeid === (int)$s['sede_id'] ? ' selected' : '') . '>'
+					. htmlspecialchars(html_entity_decode((string)$s['sede_nombre'], ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8') . '</option>';
+			}
+			return $option;
+		}
+
 		public function listarEmpleados($empleado_nombre, $fecha_inicio, $fecha_fin){
 			$tabla="";
 			$consulta_datos="SELECT distinct empleado_id, empleado_identificacion, empleado_nombre

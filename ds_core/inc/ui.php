@@ -84,6 +84,13 @@ if (!function_exists('ds_icono')) {
             }
         }
         foreach ($opciones['data'] ?? [] as $clave => $valor) {
+            /* toggle, target y dismiss son de Bootstrap: en el 5 se llaman
+               bs-toggle, bs-target y bs-dismiss. Escritos a la manera del 4,
+               el botón no hacía nada («Registrar egreso» del monedero no
+               abría su modal), así que se traducen aquí. */
+            if (in_array($clave, ['toggle', 'target', 'dismiss'], true)) {
+                $clave = 'bs-' . $clave;
+            }
             $attr .= ' data-' . $clave . '="' . htmlspecialchars((string)$valor, ENT_QUOTES, 'UTF-8') . '"';
         }
         if (!empty($opciones['disabled'])) {

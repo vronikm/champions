@@ -1768,7 +1768,12 @@ class arenaController
     public function movimientos(int $clienteid): array
     {
         return $this->filas(
-            "SELECT mv.*, r.reserva_codigo
+            /* registro_ts: el instante del registro como número. Un TIMESTAMP
+               se lee en la zona horaria de la sesión de MySQL, que en un
+               hosting suele ser UTC: la hora saldría cinco horas adelantada.
+               El número no depende de esa zona y PHP lo pinta en la de
+               Ecuador (config/app.php). */
+            "SELECT mv.*, r.reserva_codigo, UNIX_TIMESTAMP(mv.movimiento_fecharegistro) AS registro_ts
                FROM dsa_monedero_movimiento mv
                JOIN dsa_monedero m ON m.monedero_id = mv.movimiento_monederoid
                LEFT JOIN dsa_reserva r ON r.reserva_id = mv.movimiento_reservaid

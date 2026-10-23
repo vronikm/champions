@@ -61,7 +61,9 @@ require_once __DIR__ . "/inc/layout-top.php";
                     <?php echo ds_boton('quitar', 'Registrar egreso', [
                         'type'   => 'button',
                         'estilo' => 'outline-danger',
-                        'data'   => ['toggle' => 'modal', 'target' => '#modalEgreso'],
+                        /* bs-: Bootstrap 5. Con «toggle»/«target» a secas
+                           (Bootstrap 4) el botón no abría el modal. */
+                        'data'   => ['bs-toggle' => 'modal', 'bs-target' => '#modalEgreso'],
                     ]); ?>
                 <?php endif; ?>
             </div>
@@ -79,7 +81,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                     <table class="table mb-0">
                         <thead>
                             <tr>
-                                <th>Fecha</th>
+                                <th>Fecha y hora</th>
                                 <th>Concepto</th>
                                 <th class="text-end">Entrada</th>
                                 <th class="text-end">Salida</th>
@@ -93,9 +95,21 @@ require_once __DIR__ . "/inc/layout-top.php";
 
                         <?php foreach ($movimientos as $mv):
                             $esIngreso = $mv['movimiento_tipo'] === 'I';
+                            /* movimiento_fecha es la fecha contable (DATE, sin hora); la
+                               hora es la del registro (movimiento_fecharegistro). Si se
+                               registró otro día, se muestra completo para no confundir. */
+                            $registro = (int)($mv['registro_ts'] ?? 0);
+                            $mismoDia = $registro && date('Y-m-d', $registro) === $mv['movimiento_fecha'];
                         ?>
                             <tr>
-                                <td><?php echo $mv['movimiento_fecha']; ?></td>
+                                <td class="text-nowrap">
+                                    <?php echo date('d/m/Y', strtotime($mv['movimiento_fecha'])); ?>
+                                    <?php if ($registro): ?>
+                                        <small class="d-block text-muted">
+                                            <i class="far fa-clock me-1" aria-hidden="true"></i><?php echo $mismoDia ? date('H:i', $registro) : 'registrado ' . date('d/m/Y H:i', $registro); ?>
+                                        </small>
+                                    <?php endif; ?>
+                                </td>
                                 <td>
                                     <strong><?php echo $origenes[$mv['movimiento_origen']] ?? $mv['movimiento_origen']; ?></strong>
                                     <?php if ($mv['reserva_codigo']): ?>

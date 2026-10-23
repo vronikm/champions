@@ -718,72 +718,137 @@
 			return $tabla;			
 		}
 
-		public function listarHorariosProfesor($profesor_id){					
-			$tabla="";
-			/* La rama del administrador no usa :profesor, asi que el
-			   parametro solo acompana a la que si lo lleva. */
-			$parametros=[];
-			if ($_SESSION['rol'] <> 1 && $_SESSION['rol'] <> 2){
-				$consulta_datos="SELECT distinct AH.*, IFNULL(TOTAL.TOTAL,0) ALUMNOS, sede_nombre, lugar_nombre
-									FROM asistencia_horario AH
-											LEFT JOIN(
-													SELECT asignahorario_horarioid HORARIOID, count(1) TOTAL
-													FROM asistencia_asignahorario 
-														INNER JOIN sujeto_alumno A ON A.alumno_id = asignahorario_alumnoid	
-													WHERE A.alumno_estado = 'A'
-													GROUP BY asignahorario_horarioid
-											)TOTAL ON TOTAL.HORARIOID = AH.horario_id
-									INNER JOIN general_sede on AH.horario_sedeid = sede_id
-									INNER JOIN asistencia_lugar on AH.horario_sedeid = lugar_sedeid
-									INNER JOIN asistencia_horario_detalle on detalle_horarioid = AH.horario_id
-									WHERE AH.horario_estado <> 'E'
-										AND detalle_lugarid = lugar_id
-										AND detalle_profesorid = :profesor";	
+		/*----------  Horarios para tomar asistencia (vista asistencia)  ----------*/
+		/*
+		| Una fila por horario: dónde y cuándo entrena, quién lo dicta, cuántos
+		| alumnos tiene y si HOY se está tomando la asistencia. Marcado de
+		| fichas (.ds-crud): tabla en escritorio y ficha por debajo de 992 px.
+		|
+		| TOMA DE ASISTENCIA. La asistencia se guarda por alumno y día
+		| (asistencia_asistencia, columna asistencia_Dnn del mes), no por
+		| horario: el estado sale de cuántos alumnos ACTIVOS de la lista tienen
+		| marca hoy.
+		|   Tomada       todos marcados
+		|   En curso     algunos marcados (X de N)
+		|   Pendiente    hoy tiene clase (detalle_dia = día ISO de la semana) y nadie marcado
+		|   Sin clase    hoy no le toca
+		|   Sin alumnos  la lista está vacía
+		| Y la última fecha con marcas, para ver si el horario se lleva al día.
+		|
+		| ANTES: una fila por cada lugar del horario (DISTINCT sobre el JOIN),
+		| sin días ni hora, y sin forma de saber si la asistencia se tomaba.
+		|
+		| Rol distinto de 1 y 2: sólo los horarios que dicta $profesor_id.
+		*/
+		public function listarHorariosProfesor($profesor_id){
+			$parametros = [];
+			$soloProfesor = "";
+			if ($_SESSION['rol'] <> 1 && $_SESSION['rol'] <> 2) {
+				$soloProfesor = " AND H.horario_id IN (SELECT detalle_horarioid FROM asistencia_horario_detalle WHERE detalle_profesorid = :profesor)";
 				$parametros[':profesor'] = (int)$profesor_id;
-			} else{
-				$consulta_datos="SELECT distinct AH.*, IFNULL(TOTAL.TOTAL,0) ALUMNOS, sede_nombre, lugar_nombre
-									FROM asistencia_horario AH
-											LEFT JOIN(
-													SELECT asignahorario_horarioid HORARIOID, count(1) TOTAL
-													FROM asistencia_asignahorario
-														INNER JOIN sujeto_alumno A ON A.alumno_id = asignahorario_alumnoid	
-													WHERE A.alumno_estado = 'A'
-													GROUP BY asignahorario_horarioid
-											)TOTAL ON TOTAL.HORARIOID = AH.horario_id
-									INNER JOIN general_sede on AH.horario_sedeid = sede_id
-									INNER JOIN asistencia_lugar on AH.horario_sedeid = lugar_sedeid
-									INNER JOIN asistencia_horario_detalle on detalle_horarioid = AH.horario_id
-									WHERE AH.horario_estado <> 'E'
-										AND detalle_lugarid = lugar_id";	
 			}
 
-			$datos = $this->ejecutarConsulta($consulta_datos, $parametros);
-			$datos = $datos->fetchAll();
-			foreach($datos as $rows){
-				if ($rows['horario_estado'] == 'A'){
-					$estado = 'Activo';
-					$class = '';
-				}elseif($rows['horario_estado'] == 'E'){
-					$estado = '<span class="badge bg-danger">ELIMINADO';
-					$class = 'class="text-danger"';
-				}elseif($rows['horario_estado'] == 'I'){
-					$estado = 'Inactivo';
-					$class = 'class="text-primary"';
-				}				
-				$tabla.='
-					<tr '.$class.'>
-						<td>'.$rows['sede_nombre'].'</td>
-						<td>'.$rows['lugar_nombre'].'</td>
-						<td>'.$rows['horario_nombre'].'</td>
-						<td>'.$rows['horario_detalle'].'</td>						
-						<td>'.$rows['ALUMNOS'].'</td>						
-						<td>
-							<a href="'.APP_URL.'asistenciaAlumno/'.$rows['horario_id'].'/" target="_blank" class="btn float-end btn-warning btn-sm"><i class="fas fa-list me-1"></i>Listado de alumnos</a>
-						</td>
-					</tr>';	
+			$horarios = $this->ejecutarConsulta("SELECT H.horario_id, H.horario_nombre, H.horario_detalle, S.sede_nombre,
+						GROUP_CONCAT(DISTINCT L.lugar_nombre ORDER BY L.lugar_nombre SEPARATOR ', ') AS lugares,
+						GROUP_CONCAT(DISTINCT D.detalle_dia ORDER BY D.detalle_dia) AS dias,
+						MIN(HR.hora_inicio) AS inicio, MAX(HR.hora_fin) AS fin,
+						GROUP_CONCAT(DISTINCT E.empleado_nombre ORDER BY E.empleado_nombre SEPARATOR ', ') AS profesores
+					FROM asistencia_horario H
+					INNER JOIN general_sede S ON S.sede_id = H.horario_sedeid
+					INNER JOIN asistencia_horario_detalle D ON D.detalle_horarioid = H.horario_id
+					LEFT JOIN asistencia_lugar L ON L.lugar_id = D.detalle_lugarid
+					LEFT JOIN asistencia_hora HR ON HR.hora_id = D.detalle_horaid
+					LEFT JOIN sujeto_empleado E ON E.empleado_id = D.detalle_profesorid
+					WHERE H.horario_estado <> 'E'" . $soloProfesor . "
+					GROUP BY H.horario_id, H.horario_nombre, H.horario_detalle, S.sede_nombre
+					ORDER BY S.sede_nombre, inicio, H.horario_nombre", $parametros)->fetchAll();
+
+			/* Alumnos activos de cada lista, cuántos tienen marca hoy y la última fecha marcada.
+			   La columna del día sale de date('d'): un entero, no del usuario. */
+			$columnaHoy = 'asistencia_D' . date('d');
+			$toma = [];
+			foreach ($this->ejecutarConsulta("SELECT AH.asignahorario_horarioid AS horario, COUNT(DISTINCT A.alumno_id) AS alumnos,
+						COUNT(DISTINCT CASE WHEN AA.$columnaHoy IS NOT NULL THEN A.alumno_id END) AS hoy
+					FROM asistencia_asignahorario AH
+					INNER JOIN sujeto_alumno A ON A.alumno_id = AH.asignahorario_alumnoid AND A.alumno_estado = 'A'
+					LEFT JOIN asistencia_asistencia AA ON AA.asistencia_alumnoid = A.alumno_id AND AA.asistencia_aniomes = :aniomes
+					GROUP BY AH.asignahorario_horarioid", [':aniomes' => (int)date('Ym')])->fetchAll() as $t) {
+				$toma[(int)$t['horario']] = ['alumnos' => (int)$t['alumnos'], 'hoy' => (int)$t['hoy'], 'ultima' => ''];
 			}
-			return $tabla;			
+			foreach ($this->ejecutarConsulta("SELECT AH.asignahorario_horarioid AS horario, MAX(V.dia_fecha) AS ultima
+					FROM asistencia_asignahorario AH
+					INNER JOIN sujeto_alumno A ON A.alumno_id = AH.asignahorario_alumnoid AND A.alumno_estado = 'A'
+					INNER JOIN insights_v_asistencia_dia V ON V.dia_alumnoid = A.alumno_id
+					GROUP BY AH.asignahorario_horarioid")->fetchAll() as $u) {
+				if (isset($toma[(int)$u['horario']])) { $toma[(int)$u['horario']]['ultima'] = (string)$u['ultima']; }
+			}
+
+			$h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+			$hora = static fn($t) => $t ? substr((string)$t, 0, 5) : '';
+			$LETRAS = [1 => ['L', 'Lunes'], 2 => ['M', 'Martes'], 3 => ['X', 'Miércoles'], 4 => ['J', 'Jueves'], 5 => ['V', 'Viernes'], 6 => ['S', 'Sábado'], 7 => ['D', 'Domingo']];
+			$hoyIso = (int)date('N');
+
+			$this->resumenToma = ['tomada' => 0, 'curso' => 0, 'pendiente' => 0];
+			$tabla = "";
+			foreach ($horarios as $r) {
+				$id   = (int)$r['horario_id'];
+				$dias = array_map('intval', array_filter(explode(',', (string)$r['dias']), 'strlen'));
+				$t    = $toma[$id] ?? ['alumnos' => 0, 'hoy' => 0, 'ultima' => ''];
+				$claseHoy = in_array($hoyIso, $dias, true);
+
+				/* Estado de la toma de hoy y su prioridad para ordenar (lo que hay que atender, primero). */
+				if ($t['alumnos'] === 0) {
+					[$clave, $texto, $color, $prioridad] = ['sin-alumnos', 'Sin alumnos', 'text-bg-light', 5];
+				} elseif ($t['hoy'] >= $t['alumnos']) {
+					[$clave, $texto, $color, $prioridad] = ['tomada', 'Tomada hoy', 'text-bg-success', 3];
+				} elseif ($t['hoy'] > 0) {
+					[$clave, $texto, $color, $prioridad] = ['curso', 'En curso', 'text-bg-warning', 1];
+				} elseif ($claseHoy) {
+					[$clave, $texto, $color, $prioridad] = ['pendiente', 'Pendiente', 'text-bg-danger', 2];
+				} else {
+					[$clave, $texto, $color, $prioridad] = ['sin-clase', 'Sin clase hoy', 'text-bg-secondary', 4];
+				}
+				if (isset($this->resumenToma[$clave])) { $this->resumenToma[$clave]++; }
+
+				$detalleToma = $t['hoy'] > 0
+					? $t['hoy'] . ' de ' . $t['alumnos'] . ' marcados'
+					: ($t['ultima'] !== '' ? 'Última: ' . date('d/m/Y', strtotime($t['ultima'])) : ($t['alumnos'] > 0 ? 'Nunca se ha tomado' : ''));
+				$barra = $t['hoy'] > 0
+					? '<span class="ds-pagos__barra ms-1" aria-hidden="true"><span style="width:' . min(100, round($t['hoy'] / $t['alumnos'] * 100)) . '%" class="' . ($clave === 'tomada' ? 'bg-success' : 'bg-warning') . '"></span></span>'
+					: '';
+				$celdaToma = '<span class="badge ' . $color . ' ds-toma__estado" data-toma="' . $clave . '">' . $texto . '</span>' . $barra
+					. ($detalleToma !== '' ? '<span class="d-block small text-body-secondary">' . $detalleToma . '</span>' : '');
+
+				/* Días (hoy resaltado) y hora. */
+				$chips = '';
+				foreach ($dias as $d) {
+					if (!isset($LETRAS[$d])) { continue; }
+					$chips .= '<abbr title="' . $LETRAS[$d][1] . '" class="ds-toma__dia' . ($d === $hoyIso ? ' ds-toma__dia--hoy' : '') . '">' . $LETRAS[$d][0] . '</abbr>';
+				}
+				$rango = $hora($r['inicio']) !== '' ? $hora($r['inicio']) . ' – ' . $hora($r['fin']) : '';
+
+				$tabla .= '
+					<tr>
+						<td class="ds-ficha__principal" data-order="' . $h($r['sede_nombre'] . ' ' . $r['inicio'] . ' ' . $r['horario_nombre']) . '">
+							<div class="ds-ficha__nombre">' . $h($r['horario_nombre']) . ' <span class="fw-normal text-body-secondary">· ' . $h($r['horario_detalle']) . '</span></div>
+							<div class="ds-ficha__meta"><i class="fas fa-location-dot" aria-hidden="true"></i> ' . $h($r['sede_nombre']) . ($r['lugares'] ? ' · ' . $h($r['lugares']) : '') . '</div>
+						</td>
+						<td class="ds-ficha__dato" data-etiqueta="Días y hora" data-order="' . ($claseHoy ? '0' : '1') . $h($r['inicio']) . '"><span class="ds-toma__dias">' . $chips . '</span>'
+							. ($rango !== '' ? '<span class="d-block small text-body-secondary">' . $rango . '</span>' : '') . '</td>
+						<td class="ds-ficha__dato ds-col-opcional" data-etiqueta="Profesor">' . ($r['profesores'] ? $h($r['profesores']) : '<span class="text-body-secondary">Sin asignar</span>') . '</td>
+						<td class="ds-ficha__dato" data-etiqueta="Alumnos en lista" data-order="' . $t['alumnos'] . '">' . $t['alumnos'] . '</td>
+						<td class="ds-ficha__dato" data-etiqueta="Toma de asistencia" data-order="' . $prioridad . $h($r['inicio']) . '">' . $celdaToma . '</td>
+						<td class="ds-tabla-acciones ds-ficha__acciones"><div class="ds-ficha__botones">
+							<a href="' . APP_URL . 'asistenciaAlumno/' . $id . '/" class="btn btn-primary btn-sm ds-ficha__primario"><i class="fas fa-clipboard-check me-1" aria-hidden="true"></i>' . ($clave === 'tomada' ? 'Revisar asistencia' : 'Tomar asistencia') . '</a>
+						</div></td>
+					</tr>';
+			}
+			return $tabla;
 		}
+
+		/** Cuántos horarios están Tomada / En curso / Pendiente hoy, del último listarHorariosProfesor(). */
+		public array $resumenToma = ['tomada' => 0, 'curso' => 0, 'pendiente' => 0];
+
 		public function actualizarLugarControlador(){			
 			$lugarid =$this->limpiarCadena($_POST['lugar_id']);
 

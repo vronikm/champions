@@ -914,3 +914,24 @@
     /* En la ficha, el detalle de la deuda y los días, en la misma línea. */
     .ds-crud__tabla td.ds-ficha__dato .d-block.small { display: inline !important; margin-left: .35rem; }
 }
+
+/* =========================================================================
+   REGISTRAR ASISTENCIA (asistencia). Resumen del día y estado de la toma
+   de asistencia por horario; las filas son fichas de .ds-crud.
+   ========================================================================= */
+.ds-toma__resumen { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.ds-toma__resumen .badge { font-size: .85rem; font-weight: 600; }
+.ds-toma__hoy { font-weight: 600; margin-right: .25rem; }
+.ds-toma__estado { font-size: .8rem; }
+.ds-toma__dias { display: inline-flex; gap: .2rem; }
+.ds-toma__dias .ds-toma__dia {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 1.5rem; height: 1.5rem; border-radius: 50%;
+    font-size: .75rem; font-weight: 600; text-decoration: none; cursor: help;
+    background: var(--bs-secondary-bg); color: var(--bs-secondary-color);
+}
+.ds-toma__dias .ds-toma__dia--hoy { background: var(--bs-primary); color: #fff; }
+@media (max-width: 575.98px) {
+    .ds-toma__resumen .btn { width: 100%; min-height: 2.75rem; display: inline-flex; align-items: center; justify-content: center; gap: .25rem; }
+    .ds-toma__hoy { width: 100%; }
+}

@@ -1,308 +1,238 @@
 <?php
-	use app\controllers\representanteController;
-	$insRepre = new representanteController();	
-
-	$repreid=$insRepre->limpiarCadena($url[1]);
-
-	if(isset($_POST['repre_identificacion'])){
-		$repre_identificacion = $insRepre->limpiarCadena($_POST['repre_identificacion']);
-	} ELSE{
-		$repre_identificacion = "";
-	}
-
-	if(isset($_POST['repre_nombre1'])){
-		$repre_primernombre = $insRepre->limpiarCadena($_POST['repre_nombre1']);
-	} ELSE{
-		$repre_primernombre = "";
-	}
-
-	if(isset($_POST['repre_apellido1'])){
-		$repre_apellidopaterno = $insRepre->limpiarCadena($_POST['repre_apellido1']);
-	} ELSE{
-		$repre_apellidopaterno = "";
-	}
-
-?>
-
-<?php
 	/* La cabecera es comun a todas las vistas: ds_futbol/app/views/inc/cabecera.php */
 	$tituloVista = 'Representantes';
 	$extras      = array (0 => 'datatables',1 => 'swal',);
 	require_once "app/views/inc/cabecera.php";
+
+	/* Estado: el de sus alumnos (ver condicionEstadoRepresentante). */
+	$ESTADOS = ['A' => 'Con alumnos activos', 'I' => 'Con alumnos inactivos', 'S' => 'Sin alumnos', 'T' => 'Todos'];
 ?>
   <body class="layout-fixed sidebar-expand-lg bg-body-tertiary">
     <div class="app-wrapper ds-core">
-
-      <!-- Preloader -->
-      <!--?php require_once "app/views/inc/preloader.php"; ?-->
-      <!-- /.Preloader -->
-
-      <!-- Navbar -->
       <?php require_once "app/views/inc/navbar.php"; ?>
-      <!-- /.navbar -->
-
-      <!-- Main Sidebar Container -->
       <?php require_once "app/views/inc/main-sidebar.php"; ?>
-      <!-- /.Main Sidebar Container -->  
 
-      <!-- vista -->
       <div class="app-main">
 
-		<!-- Content Header (Page header) -->
 		<div class="app-content-header">
 			<div class="container-fluid">
-			<div class="row mb-2">
-				<div class="col-sm-6">
-				<h1 class="m-0">Representantes</h1>
-				</div><!-- /.col -->
-				<div class="col-sm-6">
-				<ol class="breadcrumb float-sm-end">
-					<li class="breadcrumb-item"><a href="#">Nuevo</a></li>
-					<li class="breadcrumb-item active">Dashboard v1</li>
-				</ol>
-				</div><!-- /.col -->
-			</div><!-- /.row -->
-			</div><!-- /.container-fluid -->
-		</div>
-		<!-- /.content-header -->
-
-		<!-- Section listado de representados -->
-		<section class="app-content">
-			<form action="<?php echo APP_URL."representanteList/" ?>" method="POST" autocomplete="off" enctype="multipart/form-data" >
-			
-				<div class="container-fluid">
-					<div class="card card-default">
-						<div class="card-header">
-							<h3 class="card-title">Búsqueda de representantes</h3>
-							<div class="card-tools">
-								<button type="button" class="btn btn-tool" data-lte-toggle="card-collapse" title="Plegar o desplegar" aria-label="Plegar o desplegar"><i data-lte-icon="expand" class="fas fa-plus"></i><i data-lte-icon="collapse" class="fas fa-minus"></i></button>
-							</div>
-						</div>  
-
-						<!-- card-body -->                
-						<div class="card-body">
-							<div class="row">
-								<div class="col-sm-3">
-									<div class="mb-3">
-										<label for="repre_identificacion">Identificación</label>                        
-										<input type="text" class="form-control" id="repre_identificacion" name="repre_identificacion" placeholder="Identificación" value="<?php echo $repre_identificacion; ?>">
-									</div>        
-								</div>
-								<div class="col-sm-3">
-									<div class="mb-3">
-										<label for="repre_apellido1">Apellido paterno</label>
-										<input type="text" class="form-control" id="repre_apellido1" name="repre_apellido1" placeholder="Primer apellido" value="<?php echo $repre_apellidopaterno; ?>">
-									</div>         
-								</div>
-								<div class="col-md-3">
-									<div class="mb-3">
-										<label for="repre_nombre1">Primer nombre</label>
-										<input type="text" class="form-control" id="repre_nombre1" name="repre_nombre1" placeholder="Primer nombre" value="<?php echo $repre_primernombre; ?>">
-									</div>
-								</div>								
-								<div class="col-md-2 d-flex align-items-end">
-									<div class="mb-3 w-100">
-																				<?php echo ds_boton_buscar(); ?>
-									</div>
-								</div>	
-							</div>					
-						</div>
+				<div class="row mb-2 g-2 align-items-center">
+					<div class="col-sm-7">
+						<h4 class="m-0">Representantes</h4>
 					</div>
-				</div>  
-			</form>
+					<div class="col-sm-5">
+						<ol class="breadcrumb float-sm-end mb-0">
+							<li class="breadcrumb-item"><a href="<?php echo APP_URL; ?>dashboard/">Inicio</a></li>
+							<li class="breadcrumb-item active" aria-current="page">Representantes</li>
+						</ol>
+					</div>
+				</div>
+			</div>
+		</div>
 
-			<div class="container-fluid">
-			<!-- Small boxes (Stat box) -->
-				<div class="card card-default">
+		<section class="app-content">
+			<div class="container-fluid ds-crud">
+
+				<?php
+				/*
+				| LOS CRITERIOS VIAJAN CON CADA PETICIÓN DE LA TABLA
+				|
+				| Antes este formulario se enviaba a la página, pero la tabla pide
+				| sus filas por AJAX (representanteTablaAjax.php) y esos campos no
+				| llegaban: buscar por aquí no filtraba nada. Ahora «Buscar» recarga
+				| la tabla con los criterios, sin recargar la página.
+				*/
+				?>
+				<form id="filtroRepre" class="card ds-alumnos__filtros" autocomplete="off">
 					<div class="card-header">
-						<h3 class="card-title">Resultado de la búsqueda</h3>
+						<h3 class="card-title"><i class="fas fa-filter me-2" aria-hidden="true"></i>Búsqueda de representantes</h3>
 						<div class="card-tools">
-							<a href="<?php echo APP_URL; ?>representanteNew/" class="btn btn-primary btn-sm" >Nuevo Representante</a>
 							<button type="button" class="btn btn-tool" data-lte-toggle="card-collapse" title="Plegar o desplegar" aria-label="Plegar o desplegar"><i data-lte-icon="expand" class="fas fa-plus"></i><i data-lte-icon="collapse" class="fas fa-minus"></i></button>
 						</div>
 					</div>
-					
 					<div class="card-body">
-						
-						<div class="table-responsive">
-						<table id="example1" class="table table-bordered table-striped table-sm">
+						<div class="row g-3">
+							<div class="col-12 col-sm-6 col-lg-3 col-xl">
+								<label for="repre_identificacion" class="form-label">Identificación</label>
+								<input type="text" class="form-control" id="repre_identificacion" name="identificacion" inputmode="numeric" placeholder="Cédula">
+							</div>
+							<div class="col-6 col-sm-6 col-lg-3 col-xl">
+								<label for="repre_apellido1" class="form-label">Apellido</label>
+								<input type="text" class="form-control" id="repre_apellido1" name="apellido" placeholder="Apellido">
+							</div>
+							<div class="col-6 col-sm-6 col-lg-3 col-xl">
+								<label for="repre_nombre1" class="form-label">Nombre</label>
+								<input type="text" class="form-control" id="repre_nombre1" name="nombre" placeholder="Nombre">
+							</div>
+							<div class="col-12 col-sm-6 col-lg-3 col-xl">
+								<label for="repre_estado" class="form-label">Estado</label>
+								<select class="form-select" id="repre_estado" name="estado">
+									<?php foreach ($ESTADOS as $valor => $texto): ?>
+										<option value="<?php echo $valor; ?>"<?php echo $valor === 'A' ? ' selected' : ''; ?>><?php echo $texto; ?></option>
+									<?php endforeach; ?>
+								</select>
+							</div>
+							<div class="col-12 col-xl-auto d-flex align-items-end gap-2">
+								<?php echo ds_boton_buscar(); ?>
+								<button type="reset" class="btn btn-secondary" title="Quitar los criterios"><i class="fas fa-eraser me-1" aria-hidden="true"></i>Limpiar</button>
+							</div>
+						</div>
+					</div>
+				</form>
+
+				<div class="card ds-crud__lista" id="representantes-resultado">
+					<div class="card-header d-flex flex-wrap align-items-center gap-2">
+						<h3 class="card-title me-auto">
+							<i class="fas fa-user-group me-2" aria-hidden="true"></i>Resultado de la búsqueda
+							<span class="badge text-bg-secondary ms-1" id="repreTotal" aria-live="polite">…</span>
+						</h3>
+						<div class="ds-alumnos__herramientas">
+							<a href="<?php echo APP_URL; ?>representanteNew/" class="btn btn-primary btn-sm"><i class="fas fa-plus me-1" aria-hidden="true"></i>Nuevo representante</a>
+							<button type="button" class="btn btn-tool" data-lte-toggle="card-collapse" title="Plegar o desplegar" aria-label="Plegar o desplegar"><i data-lte-icon="expand" class="fas fa-plus"></i><i data-lte-icon="collapse" class="fas fa-minus"></i></button>
+						</div>
+					</div>
+					<div class="card-body">
+						<?php
+						/*
+						| EL CUERPO LLEGA DEL SERVIDOR, PAGINA A PAGINA
+						|
+						| Antes se pintaban aqui las 265 filas y la pantalla pesaba
+						| 410 KB. Ahora lo sirve representanteTablaAjax.php: la busqueda
+						| y el orden alcanzan a TODAS las filas, porque los resuelve la
+						| base. Las celdas traen el marcado de fichas (.ds-crud): tabla en
+						| escritorio y una ficha por representante en el teléfono.
+						*/
+						?>
+						<table id="example1" class="table table-hover align-middle ds-crud__tabla" style="width:100%">
 							<thead>
 								<tr>
-									<th>Identificación</th>
-									<th>Nombres</th>
-									<th>Apellidos</th>
+									<th>Representante</th>
 									<th class="text-center">Alumnos</th>
-									<th>Representado</th>
-									<th style width="140px">Protección de datos</th>								
-									<th style width="160px">Operaciones</th>
+									<th>Protección de datos</th>
+									<th class="text-end"><span class="visually-hidden">Acciones</span></th>
 								</tr>
 							</thead>
-							<?php
-							/*
-							| EL CUERPO LLEGA DEL SERVIDOR, PAGINA A PAGINA
-							|
-							| Antes se pintaban aqui las 265 filas y la pantalla pesaba
-							| 410 KB, de los cuales 377 eran este <tbody>. DataTables
-							| paginaba despues, en el navegador: se pagaba el peso entero
-							| para enseñar veinticinco.
-							|
-							| Ahora lo sirve representanteTablaAjax.php. La busqueda y el
-							| orden siguen alcanzando a TODAS las filas, porque los
-							| resuelve la base; no se pierde nada y la pagina baja a
-							| decenas de KB.
-							|
-							| El <tbody> se deja vacio a proposito: DataTables lo rellena.
-							*/
-							?>
 							<tbody></tbody>
 						</table>
-						</div>					
 					</div>
 				</div>
-			<!-- /.row -->
-			</div><!-- /.container-fluid -->
 
+			</div>
 		</section>
-		<!-- /.section -->
-      
+
+		<?php
+		/*
+		| UN SOLO FORMULARIO PARA TODAS LAS FILAS
+		|
+		| Las filas llevan un boton con data-accion y data-id, y este formulario
+		| unico se rellena al pulsarlo. Al llamar a requestSubmit() pasa por el
+		| MISMO manejador de ajax.js: la confirmacion, el envio y el tratamiento
+		| de la respuesta son los de siempre.
+		*/
+		?>
+		<form class="FormularioAjax d-none" id="formAccionRepre"
+		      action="<?php echo APP_URL; ?>app/ajax/representanteAjax.php"
+		      method="POST" autocomplete="off">
+			<input type="hidden" name="modulo_repre" id="accionRepre" value="">
+			<input type="hidden" name="repre_id"     id="idRepre"     value="">
+		</form>
+
       </div>
-      <!-- /.vista -->
 
       <?php require_once "app/views/inc/footer.php"; ?>
-
-      <!-- Control Sidebar -->
-      <aside class="control-sidebar control-sidebar-dark">
-        <!-- Control sidebar content goes here -->
-      </aside>
-      <!-- /.control-sidebar -->
     </div>
-    <!-- ./wrapper -->
 
-    
 	<!-- jQuery -->
 	<script src="<?php echo APP_URL; ?>app/views/dist/plugins/jquery/jquery.min.js"></script>
-	<!-- Bootstrap 4 -->
 	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/overlayscrollbars/js/overlayscrollbars.browser.es6.min.js"></script>
 	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/bootstrap5/js/bootstrap.bundle.min.js"></script>
-	<!-- DataTables  & Plugins -->
+	<!-- DataTables: sin Responsive ni botones de exportar -->
 	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/dataTables.min.js"></script>
 	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/dataTables.bootstrap5.min.js"></script>
-	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/dataTables.responsive.min.js"></script>
-	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/responsive.bootstrap5.min.js"></script>
-	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/dataTables.buttons.min.js"></script>
-	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/buttons.bootstrap5.min.js"></script>
-	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/buttons.html5.min.js"></script>
-	<?php /* pdfmake y jszip pesan 2,2 MB y sirven a dos botones: se traen
-			 al pulsarlos, no en cada carga. Va DESPUES de buttons.html5, que es
-			 quien define esos botones. */ ?>
-	<script src="<?php echo ds_recurso('ds_core/assets/js/exportar.js'); ?>"></script>
-	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/buttons.print.min.js"></script>
-	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/buttons.colVis.min.js"></script>
-	<!-- AdminLTE App -->
 	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/adminlte4/js/adminlte.min.js"></script>
-	
-	<!-- Page specific script -->
-	<script>
-		document.addEventListener('DOMContentLoaded', function () {
-			new DataTable("#example1", {
-			/*
-			| serverSide: la base pagina, busca y ordena. El navegador sólo
-			| pinta lo que le llega.
-			|
-			| processing muestra «Procesando…» mientras viaja la petición: sin
-			| eso, en una conexión lenta la tabla parece congelada.
-			|
-			| columnDefs: las tres últimas columnas son botones, no datos. No
-			| se ordenan porque ordenar por «Operaciones» no significa nada, y
-			| el servidor sólo acepta las cuatro primeras (lista blanca).
-			| «Alumnos» (la 3) sí se ordena; el primer clic, de más a menos
-			| representados.
-			*/
-			"serverSide": true,
-			"processing": true,
-			"ajax": {
-				"url": "<?php echo APP_URL; ?>app/ajax/representanteTablaAjax.php",
-				"type": "GET"
-			},
-			"order": [[2, "asc"]],
-			"columnDefs": [
-				{ "targets": 3, "className": "text-center", "orderSequence": ["desc", "asc"], "responsivePriority": 2 },
-				{ "orderable": false, "targets": [4, 5, 6] }
-			],
-			"responsive": true, "lengthChange": false, "autoWidth": false,
-			"language": {
-				"decimal": "",
-				"emptyTable": "No hay datos disponibles en la tabla",
-				"info": "Mostrando _START_ a _END_ de _TOTAL_ entradas",
-				"infoEmpty": "Mostrando 0 a 0 de 0 entradas",
-				"infoFiltered": "(filtrado de _MAX_ entradas totales)",
-				"infoPostFix": "",
-				"thousands": ",",
-				"lengthMenu": "Mostrar _MENU_ entradas",
-				"loadingRecords": "Cargando...",
-				"processing": "Procesando...",
-				"search": "Buscar:",
-				"zeroRecords": "No se encontraron registros coincidentes",
-				"paginate": {
-					"first": "Primero",
-					"last": "Último",
-					"next": "Siguiente",
-					"previous": "Anterior"
-				},
-				"aria": {
-					"sortAscending": ": activar para ordenar la columna ascendente",
-					"sortDescending": ": activar para ordenar la columna descendente"
-				}
-			},
-			});			    
-		});
-	</script>
-
-	<?php
-	/*
-	| UN SOLO FORMULARIO PARA TODAS LAS FILAS
-	|
-	| Antes cada representante traia DOS formularios completos —marcar firmado
-	| y eliminar—, cada uno con sus campos ocultos. Con 264 registros eso son
-	| 528 formularios y 1.056 campos: 228 KB de los 580 que pesaba la pagina,
-	| el 39 %. Y crece con cada representante que se da de alta.
-	|
-	| Ahora las filas llevan un boton con data-accion y data-id, y este
-	| formulario unico se rellena al pulsarlo. No es una reimplementacion: al
-	| llamar a requestSubmit() pasa por el MISMO manejador de ajax.js que
-	| antes, asi que la confirmacion, el envio y el tratamiento de la
-	| respuesta siguen siendo exactamente los de siempre.
-	*/
-	?>
-	<form class="FormularioAjax d-none" id="formAccionRepre"
-	      action="<?php echo APP_URL; ?>app/ajax/representanteAjax.php"
-	      method="POST" autocomplete="off">
-		<input type="hidden" name="modulo_repre" id="accionRepre" value="">
-		<input type="hidden" name="repre_id"     id="idRepre"     value="">
-	</form>
-
 	<script src="<?php echo ds_recurso('ds_futbol/app/views/dist/js/ajax.js'); ?>" ></script>
 	<script src="<?php echo ds_recurso('ds_futbol/app/views/dist/js/main.js'); ?>" ></script>
 
 	<script>
-	/* Delegado en el documento y no en cada boton: DataTables rehace las filas
-	   al paginar y ordenar, y los oyentes puestos fila a fila se pierden ahi. */
-	document.addEventListener('click', function (e) {
-		var b = e.target.closest('.js-repre');
-		if (!b) { return; }
-		document.getElementById('accionRepre').value = b.dataset.accion || '';
-		document.getElementById('idRepre').value     = b.dataset.id     || '';
-		document.getElementById('formAccionRepre').requestSubmit();
+	document.addEventListener('DOMContentLoaded', function () {
+		var filtro = document.getElementById('filtroRepre');
+		var CLAVE = 'ds-representantes-por-pagina', LARGOS = [10, 25, 50, 100], largo = 25;
+		try { var g = parseInt(localStorage.getItem(CLAVE), 10); if (LARGOS.indexOf(g) !== -1) { largo = g; } } catch (e) {}
+
+		/*
+		| serverSide: la base pagina, busca y ordena. Cada petición lleva los
+		| criterios del formulario (estado, identificación, apellido, nombre).
+		| Las celdas son fichas; className pone a cada <td> su papel en ellas.
+		| «Mostrar N» hasta 100: el servidor no sirve más de 200 por página.
+		*/
+		var tabla = new DataTable("#example1", {
+			serverSide: true,
+			processing: true,
+			ajax: {
+				url: "<?php echo APP_URL; ?>app/ajax/representanteTablaAjax.php",
+				type: "GET",
+				data: function (d) {
+					new FormData(filtro).forEach(function (v, k) { d[k] = v; });
+				}
+			},
+			autoWidth: false,
+			pageLength: largo,
+			lengthMenu: LARGOS,
+			order: [[0, "asc"]],
+			columnDefs: [
+				{ targets: 0, className: "ds-ficha__principal" },
+				{ targets: 1, className: "ds-ficha__dato text-center", createdCell: function (td) { td.setAttribute('data-etiqueta', 'Alumnos'); } },
+				{ targets: 2, className: "ds-ficha__dato", createdCell: function (td) { td.setAttribute('data-etiqueta', 'Protección de datos'); } },
+				{ targets: 3, className: "ds-tabla-acciones ds-ficha__acciones", orderable: false }
+			],
+			layout: {
+				topStart: 'pageLength',
+				topEnd: null,
+				bottomStart: 'info',
+				bottomEnd: { paging: { firstLast: false } }
+			},
+			language: {
+				emptyTable: "No hay representantes con estos criterios",
+				info: "_START_ a _END_ de _TOTAL_ representantes",
+				infoEmpty: "Sin representantes",
+				infoFiltered: "(de _MAX_)",
+				lengthMenu: "Mostrar _MENU_",
+				loadingRecords: "Cargando...",
+				processing: "Buscando…",
+				zeroRecords: "Ningún representante coincide con la búsqueda",
+				paginate: { next: "Siguiente", previous: "Anterior" },
+				aria: {
+					sortAscending: ": ordenar de forma ascendente",
+					sortDescending: ": ordenar de forma descendente"
+				}
+			}
+		});
+
+		/* El contador de la cabecera: cuántos trae la búsqueda. */
+		tabla.on('xhr', function () {
+			var j = tabla.ajax.json();
+			if (j) { document.getElementById('repreTotal').textContent = j.recordsFiltered; }
+		});
+		tabla.on('length', function (e, s, nuevo) {
+			try { localStorage.setItem(CLAVE, String(nuevo)); } catch (err) {}
+		});
+
+		/* Buscar y Limpiar recargan la tabla, no la página. */
+		filtro.addEventListener('submit', function (e) { e.preventDefault(); tabla.ajax.reload(); });
+		filtro.addEventListener('reset', function () { setTimeout(function () { tabla.ajax.reload(); }, 0); });
+		document.getElementById('repre_estado').addEventListener('change', function () { tabla.ajax.reload(); });
+
+		/* Delegado en el documento y no en cada boton: DataTables rehace las
+		   filas al paginar y ordenar, y los oyentes puestos fila a fila se pierden. */
+		document.addEventListener('click', function (e) {
+			var b = e.target.closest('.js-repre');
+			if (!b) { return; }
+			document.getElementById('accionRepre').value = b.dataset.accion || '';
+			document.getElementById('idRepre').value     = b.dataset.id     || '';
+			document.getElementById('formAccionRepre').requestSubmit();
+		});
 	});
 	</script>
 
   </body>
 </html>
-
-
-
-
-
-
-
-

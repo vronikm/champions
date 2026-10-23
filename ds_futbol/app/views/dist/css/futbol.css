@@ -862,3 +862,36 @@
     background: var(--bs-warning-bg-subtle);
     color: var(--bs-warning-text-emphasis);
 }
+
+/* =========================================================================
+   LISTADO DE ALUMNOS (alumnoList). Usa las fichas de .ds-crud; aquí, la
+   inicial del alumno junto al nombre y las herramientas de la cabecera.
+   ========================================================================= */
+.ds-alumnos__inicial { font-weight: 700; font-size: .85rem; color: var(--bs-emphasis-color); }
+.ds-alumnos__herramientas { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+.ds-crud__lista .dt-length select { min-height: 2.25rem; }
+@media (max-width: 575.98px) {
+    .ds-alumnos__herramientas { width: 100%; }
+    .ds-alumnos__herramientas .btn:not(.btn-tool) { flex: 1 1 auto; min-height: 2.75rem; display: inline-flex; align-items: center; justify-content: center; }
+}
+@media (max-width: 991.98px) {
+    /* «Mostrar N» y el filtro, uno debajo del otro y a todo lo ancho. */
+    .ds-crud__lista .dt-length { display: flex; align-items: center; justify-content: center; gap: .5rem; }
+}
+
+/* =========================================================================
+   LISTADO DE REPRESENTANTES (representanteList). Fichas de .ds-crud; aquí,
+   la celda de protección de datos: el botón del formulario (antes un icono
+   suelto de 12 px) y el estado firmado / pendiente.
+   ========================================================================= */
+.ds-repres__datos { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+.ds-repres__datos .btn { white-space: nowrap; }
+#filtroRepre .btn { white-space: nowrap; }
+@media (max-width: 991.98px) {
+    /* En la ficha, la etiqueta arriba y los dos botones debajo, de dedo. */
+    .ds-crud__tabla td.ds-ficha__dato[data-etiqueta="Protección de datos"]::before { display: block; margin-bottom: .3rem; }
+    .ds-repres__datos .btn { min-height: 2.75rem; flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: center; }
+}
+/* «Mostrar N»: la palabra y el selector, separados (DataTables los pega). */
+.ds-crud__lista .dt-length { display: flex; align-items: center; gap: .5rem; }
+.ds-crud__lista .dt-length label { margin: 0; }

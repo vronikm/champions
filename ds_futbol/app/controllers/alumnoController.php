@@ -615,74 +615,62 @@
 			return json_encode($alerta);
 		}
 
-		/*----------  Matriz de alumnos con opciones Ver, Actualizar, Eliminar  ----------*/
-		public function listarAlumnos($identificacion, $apellidopaterno, $primernombre, $anio, $sede){
-			$tabla="";
+		/** Estado del filtro: A (activos, por defecto), I (inactivos) o T (todos). */
+		private function condicionEstado(string $columna, $estado): string{
+			return match ((string)$estado) {
+				'I'     => "$columna = 'I'",
+				'T'     => "$columna IN ('A','I')",
+				default => "$columna = 'A'",
+			};
+		}
+
+		/*----------  Listado de alumnos (alumnoList)  ----------*/
+		/*
+		| Una fila por alumno con el marcado de fichas (.ds-crud, futbol.css):
+		| tabla en escritorio, ficha por debajo de 992 px.
+		|
+		| $estado: A por defecto —el listado muestra los activos—, I o T.
+		| La búsqueda por identificación, apellido y nombre se combina con O,
+		| como antes; el año, la sede y el estado, con Y.
+		*/
+		public function listarAlumnos($identificacion, $apellidopaterno, $primernombre, $anio, $sede, $estado = 'A'){
 			$condiciones = [];
 			$busqueda = [];
-			/* Se llena a la par que las condiciones. Las ramas que
-			   reemplazan la consulta entera lo vacian. */
 			$parametros = [];
 
-			// Identificación
 			if ($identificacion != "") {
-				$busqueda[] = "alumno_identificacion LIKE :ident";
+				$busqueda[] = "A.alumno_identificacion LIKE :ident";
 				$parametros[':ident'] = $identificacion . '%';
 			}
-
-			// Nombre
 			if ($primernombre != "") {
-				$busqueda[] = "alumno_primernombre LIKE :nombre";
+				$busqueda[] = "A.alumno_primernombre LIKE :nombre";
 				$parametros[':nombre'] = $primernombre . '%';
 			}
-
-			// Apellido
 			if ($apellidopaterno != "") {
-				$busqueda[] = "alumno_apellidopaterno LIKE :apellido";
+				$busqueda[] = "A.alumno_apellidopaterno LIKE :apellido";
 				$parametros[':apellido'] = $apellidopaterno . '%';
 			}
-
-			// Agrupar búsqueda por nombre/identificación/apellido
-			if (!empty($busqueda)) {
-				$condiciones[] = "(".implode(" OR ", $busqueda).")";
+			if ($busqueda) {
+				$condiciones[] = "(" . implode(" OR ", $busqueda) . ")";
 			}
 
-			// Filtro por año (usar rango en lugar de YEAR para índices)
-			if ($anio != "") {
-				$condiciones[] = "alumno_fechanacimiento BETWEEN :anioIni AND :anioFin";
+			/* Año de nacimiento (la categoría): rango, para que use el índice. */
+			if (preg_match('/^\d{4}$/', (string)$anio)) {
+				$condiciones[] = "A.alumno_fechanacimiento BETWEEN :anioIni AND :anioFin";
 				$parametros[':anioIni'] = $anio . '-01-01';
 				$parametros[':anioFin'] = $anio . '-12-31';
 			}
 
-			// Si no hay ningún filtro de identificación, nombre o apellido
-			if ($identificacion == "" && $primernombre == "" && $apellidopaterno == "") {
-				if ($anio == "") {					
-					$condiciones = ["alumno_primernombre <> ''"];
-					$parametros = [];
-				}
-			}
+			$condiciones[] = $this->condicionSede('A.alumno_sedeid', $sede, $parametros);
+			$condiciones[] = $this->condicionEstado('A.alumno_estado', $estado);
 
-			// Filtro de sede
-			if ($sede != "") {
-				if ($sede == 0) {
-					$condiciones[] = "alumno_sedeid <> 0";
-				} else {
-					$condiciones[] = "alumno_sedeid = :sede";
-					$parametros[':sede'] = (int)$sede;
-				}
-			} else {
-				$condiciones = ["alumno_primernombre = ''"]; // sin sede -> nunca traerá resultados
-				$parametros = [];
-			}
-
-			// Condición fija
-			$condiciones[] = "alumno_estado <> 'E'  ORDER BY alumno_numcamiseta";
-
-			// Construir SQL final
-			$consulta_datos = "SELECT *, TIMESTAMPDIFF(YEAR, alumno_fechanacimiento, CURDATE()) AS EDAD FROM sujeto_alumno WHERE " . implode(" AND ", $condiciones);
-			
-			$datos = $this->ejecutarConsulta($consulta_datos, $parametros);
-			$datos = $datos->fetchAll();
+			$datos = $this->ejecutarConsulta("SELECT A.alumno_id, A.alumno_identificacion, A.alumno_primernombre, A.alumno_segundonombre,
+						A.alumno_apellidopaterno, A.alumno_apellidomaterno, A.alumno_fechanacimiento, A.alumno_estado,
+						S.sede_nombre, TIMESTAMPDIFF(YEAR, A.alumno_fechanacimiento, CURDATE()) AS EDAD
+					FROM sujeto_alumno A
+					LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
+					WHERE " . implode(" AND ", $condiciones) . "
+					ORDER BY A.alumno_apellidopaterno, A.alumno_apellidomaterno, A.alumno_primernombre", $parametros)->fetchAll();
 
 			/* La interfaz sólo ofrece lo que el rol puede hacer en esta
 			   pantalla. Es acompañamiento del control real, que sigue
@@ -691,59 +679,57 @@
 			$puedeEditar   = puede_editar('alumnoList');
 			$puedeEliminar = puede_eliminar('alumnoList');
 
-			foreach($datos as $rows){
-				if($rows['alumno_estado']=='A'){
-					$estado = "Activo";
-					$texto = "Inactivar";
-					$boton = "btn-secondary";
-				}else{
-					$estado = "Inactivo";
-					$texto = "Activar";
-					$boton = "btn-info";
+			/* Los textos se guardan escapados (limpiarHtml): se deshace y se
+			   escapa una sola vez. Antes iban tal cual a la tabla. */
+			$h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+			$junta = static fn(...$p) => preg_replace('/\s+/', ' ', trim(implode(' ', $p)));
+
+			$tabla = "";
+			foreach ($datos as $al) {
+				$id      = (int)$al['alumno_id'];
+				$activo  = $al['alumno_estado'] === 'A';
+				$nombre  = $junta($al['alumno_primernombre'], $al['alumno_segundonombre'], $al['alumno_apellidopaterno'], $al['alumno_apellidomaterno']);
+				$orden   = $junta($al['alumno_apellidopaterno'], $al['alumno_apellidomaterno'], $al['alumno_primernombre']);
+				$inicial = mb_strtoupper(mb_substr(html_entity_decode((string)$al['alumno_primernombre']), 0, 1) . mb_substr(html_entity_decode((string)$al['alumno_apellidopaterno']), 0, 1));
+				$fnac    = (string)$al['alumno_fechanacimiento'];
+				$nacio   = ($fnac !== '' && !str_starts_with($fnac, '0000')) ? date('d/m/Y', strtotime($fnac)) : '';
+
+				$botones = '<a href="'.APP_URL.'alumnoProfile/'.$id.'/" class="btn btn-primary btn-sm ds-ficha__primario"><i class="fas fa-id-card me-1" aria-hidden="true"></i>Ver ficha</a>';
+				if ($puedeEditar) {
+					$botones .= '<a href="'.APP_URL.'alumnoUpdate/'.$id.'/" class="btn btn-info btn-sm" title="Editar" aria-label="Editar a '.$h($nombre).'"><i class="fas fa-pen" aria-hidden="true"></i></a>';
+					/* Sin un formulario por fila: el botón lleva la acción y el id,
+					   y un único formulario de la vista (#formAccionAlumno) se
+					   rellena al pulsarlo. Con dos formularios por alumno, 223
+					   activos eran 543 KB de página, y «Todos», más de 2 MB. */
+					$botones .= '<button type="button" class="btn btn-sm '.($activo ? 'btn-secondary' : 'btn-success').' js-alumno" data-accion="actualizarestado" data-id="'.$id.'"'
+						.' title="'.($activo ? 'Inactivar' : 'Activar').'" aria-label="'.($activo ? 'Inactivar' : 'Activar').' a '.$h($nombre).'">'
+						.'<i class="fas '.($activo ? 'fa-user-slash' : 'fa-user-check').'" aria-hidden="true"></i></button>';
+				}
+				if ($puedeEliminar) {
+					$botones .= '<button type="button" class="btn btn-danger btn-sm js-alumno" data-accion="eliminar" data-id="'.$id.'"'
+						.' title="Eliminar" aria-label="Eliminar a '.$h($nombre).'"><i class="fas fa-trash" aria-hidden="true"></i></button>';
 				}
 
-				$acciones = '';
-
-				if($puedeEliminar){
-					$acciones.='
-							<form class="FormularioAjax" action="'.APP_URL.'app/ajax/alumnoAjax.php" method="POST" autocomplete="off" >
-								<input type="hidden" name="modulo_alumno" value="eliminar">
-								<input type="hidden" name="alumno_id" value="'.$rows['alumno_id'].'">
-								<button type="submit" class="btn float-end btn-danger btn-sm" style="margin-right: 5px;" title="Eliminar" aria-label="Eliminar"><i class="fas fa-trash"></i></button>
-							</form>';
-				}
-
-				if($puedeEditar){
-					$acciones.='
-							<a href="'.APP_URL.'alumnoUpdate/'.$rows['alumno_id'].'/" target="_blank" class="btn float-end btn-actualizar btn-sm" style="margin-right: 5px;" title="Actualizar" aria-label="Actualizar"><i class="fas fa-pen"></i></a>';
-				}
-
-				/* Ver es lectura: quien llega a la pantalla ya tiene permiso. */
-				$acciones.='
-							<a href="'.APP_URL.'alumnoProfile/'.$rows['alumno_id'].'/" target="_blank" class="btn float-end btn-ver btn-sm" style="margin-right: 5px;" title="Ver" aria-label="Ver"><i class="fas fa-eye"></i></a>';
-
-				if($puedeEditar){
-					$acciones.='
-							<form class="FormularioAjax" action="'.APP_URL.'app/ajax/alumnoAjax.php" method="POST" autocomplete="off" >
-								<input type="hidden" name="modulo_alumno" value="actualizarestado">
-								<input type="hidden" name="alumno_id" value="'.$rows['alumno_id'].'">
-								<button type="submit" class="btn float-end '.$boton.' btn-sm" style="margin-right: 5px;"> '.$texto.' </button>
-							</form>';
-				}
-
-				$tabla.='
+				$tabla .= '
 					<tr>
-						<td>'.$rows['alumno_identificacion'].'</td>
-						<td>'.$rows['alumno_primernombre'].' '.$rows['alumno_segundonombre'].'</td>
-						<td>'.$rows['alumno_apellidopaterno'].' '.$rows['alumno_apellidomaterno'].'</td>
-						<td>'.$rows['alumno_fechanacimiento'].' - <p style="font-weight:bold; color:#007bff; display:inline; margin:0;">'.$rows['EDAD'].' años</p></td>
-
-						<td>'.$acciones.'</td>
+						<td class="ds-ficha__principal" data-order="'.$h($orden).'">
+							<div class="ds-ficha__con-imagen">
+								<span class="ds-ficha__imagen ds-alumnos__inicial" aria-hidden="true">'.$h($inicial).'</span>
+								<div class="min-w-0">
+									<div class="ds-ficha__nombre">'.$h($nombre).'</div>
+									<div class="ds-ficha__meta"><i class="fas fa-id-card" aria-hidden="true"></i> '.$h($al['alumno_identificacion']).'</div>
+								</div>
+							</div>
+						</td>
+						<td class="ds-ficha__dato ds-ficha__nowrap" data-etiqueta="Nacimiento" data-order="'.$h($fnac).'">'
+							.($nacio !== '' ? $nacio.' · <strong>'.(int)$al['EDAD'].' años</strong>' : '<span class="text-body-secondary">—</span>').'</td>
+						<td class="ds-ficha__dato ds-col-opcional" data-etiqueta="Sede">'.$h($al['sede_nombre'] ?? '').'</td>
+						<td class="ds-ficha__estado" data-order="'.($activo ? 'A' : 'I').'"><span class="badge '.($activo ? 'text-bg-success' : 'text-bg-secondary').'">'.($activo ? 'Activo' : 'Inactivo').'</span></td>
+						<td class="ds-tabla-acciones ds-ficha__acciones"><div class="ds-ficha__botones">'.$botones.'</div></td>
 					</tr>';
 			}
-			return $tabla;			
+			return $tabla;
 		}
-
 		/*----------  Obtener el tipo de documento guardado  ----------*/
 		public function listarOptionTipoIdentificacion($tipoidentificacion){
 			$option="";
@@ -805,22 +791,21 @@
 		}
 
 		/*----------  Obtener la posición de juego guardada  ----------*/
-		public function listarAlumnosPDF($categoriaid,$sedeid){		
-			$consulta_datos=("SELECT sede_nombre, alumno_identificacion, alumno_primernombre, alumno_segundonombre, 
-									alumno_apellidopaterno, alumno_apellidomaterno, alumno_fechanacimiento
-								FROM sujeto_alumno, general_sede
-								WHERE alumno_estado = 'A'
-									AND alumno_sedeid = sede_id");	
+		/* El PDF de «Imprimir» del listado: el mismo estado (A, I o T) y las
+		   mismas sedes que el usuario puede ver. Antes la sede 0 eran todas
+		   para cualquiera, igual que en el listado. */
+		public function listarAlumnosPDF($categoriaid, $sedeid, $estado = 'A'){
 			$parametros = [];
+			$consulta_datos = "SELECT sede_nombre, alumno_identificacion, alumno_primernombre, alumno_segundonombre,
+									alumno_apellidopaterno, alumno_apellidomaterno, alumno_fechanacimiento, alumno_estado
+								FROM sujeto_alumno, general_sede
+								WHERE alumno_sedeid = sede_id
+									AND " . $this->condicionEstado('alumno_estado', $estado) . "
+									AND " . $this->condicionSede('alumno_sedeid', $sedeid, $parametros);
 
 			if($categoriaid!=0){
-				$consulta_datos .= " and YEAR(alumno_fechanacimiento) = :categoria"; 
+				$consulta_datos .= " and YEAR(alumno_fechanacimiento) = :categoria";
 				$parametros[':categoria'] = (int)$categoriaid;
-			}
-
-			if($sedeid!=0){
-				$consulta_datos .= " and alumno_sedeid = :sede"; 
-				$parametros[':sede'] = (int)$sedeid;
 			}
 
 			$consulta_datos.= " ORDER BY alumno_fechanacimiento";

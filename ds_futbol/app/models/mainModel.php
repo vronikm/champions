@@ -297,4 +297,47 @@ class mainModel
 			return $digitoVerificador == intval($cedula[9]);
 		}
 
+
+		/*----------  Las sedes que puede ver el usuario de la sesión  ----------*/
+		/*
+		| null = todas (los roles de administración, 1 y 2, como en
+		| listarSedebusqueda). Para el resto, las suyas (seguridad_usuario_sede).
+		|
+		| ANTES: el listado convertía «sede 0» en «alumno_sedeid <> 0», o sea,
+		| TODAS las sedes, para cualquiera. La opción «Todas» sólo se le
+		| ofrecía a administración, pero el servidor no lo comprobaba: bastaba
+		| con enviar alumno_sedeid=0 para ver los alumnos —menores, con sus
+		| datos— de las otras sedes. Ahora la sede se acota aquí, siempre.
+		*/
+		protected function sedesDeLaSesion(): ?array{
+			$rol = (int)($_SESSION['rol'] ?? 0);
+			if ($rol === 1 || $rol === 2) {
+				return null;
+			}
+			$ids = $this->ejecutarConsulta("SELECT US.usuariosede_sedeid
+					FROM seguridad_usuario_sede US
+					INNER JOIN seguridad_usuario U ON U.usuario_id = US.usuariosede_usuarioid
+					WHERE U.usuario_usuario = :usuario", [':usuario' => (string)($_SESSION['usuario'] ?? '')])->fetchAll(\PDO::FETCH_COLUMN);
+			return array_values(array_unique(array_map('intval', $ids)));
+		}
+
+		/** Condición SQL de sede (0 = todas las permitidas). Añade su parámetro a $parametros. */
+		protected function condicionSede(string $columna, $sede, array &$parametros): string{
+			$sede = (int)$sede;
+			$permitidas = $this->sedesDeLaSesion();
+			if ($permitidas === null) {
+				if ($sede <= 0) { return "1 = 1"; }
+				$parametros[':sede'] = $sede;
+				return "$columna = :sede";
+			}
+			if (!$permitidas) { return "1 = 0"; }
+			if ($sede > 0) {
+				if (!in_array($sede, $permitidas, true)) { return "1 = 0"; }
+				$parametros[':sede'] = $sede;
+				return "$columna = :sede";
+			}
+			/* Son enteros sacados de la base: se pueden escribir en la consulta. */
+			return "$columna IN (" . implode(',', $permitidas) . ")";
+		}
+
 }

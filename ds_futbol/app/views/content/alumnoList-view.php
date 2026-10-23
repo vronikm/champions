@@ -2,50 +2,34 @@
 	use app\controllers\alumnoController;
 	$insAlumno = new alumnoController();
 
-	/* Rol de la sesión: decide si el filtro ofrece "Todas las sedes".
-	   Faltaba definirlo, así que la condición era siempre falsa y la opción
-	   no aparecía para nadie, ni siquiera para los administradores. */
+	/* Rol de la sesión: decide si el filtro ofrece "Todas las sedes". */
 	$rolid = rol_actual();
 
-	if(isset($_POST['alumno_sedeid'])){
-		$alumno_sedeid = $insAlumno->limpiarCadena($_POST['alumno_sedeid']);		
-	} ELSE{
-		$alumno_sedeid = "";		
-	}
+	$campo = static fn(string $n) => isset($_POST[$n]) ? $insAlumno->limpiarCadena($_POST[$n]) : '';
+	$alumno_identificacion  = $campo('alumno_identificacion');
+	$alumno_primernombre    = $campo('alumno_nombre1');
+	$alumno_apellidopaterno = $campo('alumno_apellido1');
+	$alumno_anio            = preg_match('/^\d{4}$/', $campo('alumno_anio')) ? $campo('alumno_anio') : '';
 
-	if(isset($_POST['alumno_identificacion'])){
-		$alumno_identificacion = $insAlumno->limpiarCadena($_POST['alumno_identificacion']);
-	} ELSE{
-		$alumno_identificacion = "";
-	}
+	/* Estado: el listado muestra los ACTIVOS salvo que se pida otra cosa. */
+	$alumno_estado = in_array($campo('alumno_estado'), ['A', 'I', 'T'], true) ? $campo('alumno_estado') : 'A';
 
-	if(isset($_POST['alumno_nombre1'])){
-		$alumno_primernombre = $insAlumno->limpiarCadena($_POST['alumno_nombre1']);
-	} ELSE{
-		$alumno_primernombre = "";
-	}
+	/* Sede: «Todas» se ofrece a administración y a quien tiene más de una;
+	   para el resto, «todas» son las suyas (el servidor lo acota en
+	   condicionSede). Al abrir la pantalla, todas: antes no salía ningún
+	   alumno hasta pulsar Buscar. */
+	$opcionesSede = $insAlumno->listarSedebusqueda($campo('alumno_sedeid'), $_SESSION['rol'], $_SESSION['usuario']);
+	$ofrecerTodas = $rolid == 1 || $rolid == 2 || substr_count($opcionesSede, '<option') > 1;
+	$alumno_sedeid = isset($_POST['alumno_sedeid']) ? (int)$campo('alumno_sedeid') : 0;
 
-	if(isset($_POST['alumno_apellido1'])){
-		$alumno_apellidopaterno = $insAlumno->limpiarCadena($_POST['alumno_apellido1']);
-	} ELSE{
-		$alumno_apellidopaterno = "";
-	}
-	
-	if(isset($_POST['alumno_anio'])){
-		$alumno_anio = $insAlumno->limpiarCadena($_POST['alumno_anio']);
-	
-	} ELSE{
-		$alumno_anio = "";
-		
-	}
+	$categoria = $alumno_anio === '' ? 0 : (int)$alumno_anio;
 
-	if($alumno_anio == ""){
-		$categoria = 0;
-	}else{
-		$categoria = $alumno_anio;
-	}
+	$filas = $insAlumno->listarAlumnos($alumno_identificacion, $alumno_apellidopaterno, $alumno_primernombre, $alumno_anio, $alumno_sedeid, $alumno_estado);
+	$total = substr_count($filas, '<tr>');
+
+	$h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+	$ESTADOS = ['A' => 'Activos', 'I' => 'Inactivos', 'T' => 'Todos'];
 ?>
-
 
 <?php
 	/* La cabecera es comun a todas las vistas: ds_futbol/app/views/inc/cabecera.php */
@@ -55,263 +39,203 @@
 ?>
   <body class="layout-fixed sidebar-expand-lg bg-body-tertiary">
     <div class="app-wrapper ds-core">
-      <!-- Navbar -->
       <?php require_once "app/views/inc/navbar.php"; ?>
-      <!-- /.navbar -->
-
-      <!-- Main Sidebar Container -->
       <?php require_once "app/views/inc/main-sidebar.php"; ?>
-      <!-- /.Main Sidebar Container -->  
 
-      <!-- vista -->
       <div class="app-main">
 
-		<!-- Content Header (Page header) -->
 		<div class="app-content-header">
 			<div class="container-fluid">
-			<div class="row mb-2">
-				<div class="col-sm-6">
-				<h1 class="m-0">Búsqueda de alumnos</h1>
-				</div><!-- /.col -->
-				<div class="col-sm-6">
-				<ol class="breadcrumb float-sm-end">
-					<li class="breadcrumb-item"><a href="#">Nuevo</a></li>
-					<li class="breadcrumb-item active">Dashboard v1</li>
-				</ol>
-				</div><!-- /.col -->
-			</div><!-- /.row -->
-			</div><!-- /.container-fluid -->
-		</div>
-		<!-- /.content-header -->
-
-		<!-- Section listado de alumnos -->
-		<section class="app-content">
-			<form action="<?php echo APP_URL."alumnoList/" ?>" method="POST" autocomplete="off" enctype="multipart/form-data" >			
-			<div class="container-fluid">
-				<div class="card card-default">
-					<div class="card-header">
-						<h3 class="card-title">Criterios de búsqueda</h3>
-						<div class="card-tools">
-							<button type="button" class="btn btn-tool" data-lte-toggle="card-collapse" title="Plegar o desplegar" aria-label="Plegar o desplegar"><i data-lte-icon="expand" class="fas fa-plus"></i><i data-lte-icon="collapse" class="fas fa-minus"></i></button>
-						</div>
-					</div>  
-
-					<!-- card-body -->                
-					<div class="card-body">
-						<div class="row">
-							<div class="col-sm-2">
-								<div class="mb-3">
-									<label for="alumno_identificacion">Identificación</label>                        
-									<input type="text" class="form-control" id="alumno_identificacion" name="alumno_identificacion" placeholder="Identificación" value="<?php echo $alumno_identificacion; ?>">
-								</div>        
-							</div>
-							<div class="col-sm-2">
-								<div class="mb-3">
-									<label for="alumno_apellido1">Apellido paterno</label>
-									<input type="text" class="form-control" id="alumno_apellido1" name="alumno_apellido1" placeholder="Primer apellido" value="<?php echo $alumno_apellidopaterno; ?>">
-								</div>         
-							</div>
-							<div class="col-md-2">
-								<div class="mb-3">
-									<label for="alumno_nombre1">Primer nombre</label>
-									<input type="text" class="form-control" id="alumno_nombre1" name="alumno_nombre1" placeholder="Primer nombre" value="<?php echo $alumno_primernombre; ?>">
-								</div>
-							</div>  
-
-							<div class="col-md-2">
-								<div class="mb-3">
-									<div class="mb-3">
-										<label for="alumno_anio">Año</label>
-										<input type="text" class="form-control" id="alumno_anio" name="alumno_anio" placeholder="año" value="<?php echo $alumno_anio; ?>">
-									</div>	
-								</div>
-							</div>
-							<div class="col-md-2">
-								<div class="mb-3">
-									<label for="alumno_sedeid">Sede</label>
-									<select class="form-select" id="alumno_sedeid" name="alumno_sedeid">
-										<?php
-											if($rolid == 1 || $rolid == 2){
-												if($alumno_sedeid == 0){	
-													echo "<option value='0' selected='selected'>Todas</option>";
-												}else{
-													echo "<option value='0'>Todas</option>";	
-												}
-											}
-										?>																		
-										<?php echo $insAlumno->listarSedebusqueda($alumno_sedeid, $_SESSION['rol'], $_SESSION['usuario']); ?>
-									</select>	
-								</div>
-							</div>
-
-							<div class="col-md-2 d-flex align-items-end">
-								<div class="mb-3 w-100">
-																		<?php echo ds_boton_buscar(); ?>
-								</div>
-							</div>
-
-						</div>
-					
+				<div class="row mb-2 g-2 align-items-center">
+					<div class="col-sm-7">
+						<h4 class="m-0">Alumnos</h4>
+					</div>
+					<div class="col-sm-5">
+						<ol class="breadcrumb float-sm-end mb-0">
+							<li class="breadcrumb-item"><a href="<?php echo APP_URL; ?>dashboard/">Inicio</a></li>
+							<li class="breadcrumb-item active" aria-current="page">Alumnos</li>
+						</ol>
 					</div>
 				</div>
-            </div>  
-			</form>
+			</div>
+		</div>
 
-			<div class="container-fluid">
-			<!-- Small boxes (Stat box) -->
-				<div class="card card-default">
+		<section class="app-content">
+			<div class="container-fluid ds-crud">
+
+				<!-- =================== Criterios de búsqueda =================== -->
+				<form action="<?php echo APP_URL."alumnoList/" ?>" method="POST" autocomplete="off" class="card ds-alumnos__filtros">
 					<div class="card-header">
-						<h3 class="card-title">Resultado de la búsqueda</h3>
+						<h3 class="card-title"><i class="fas fa-filter me-2" aria-hidden="true"></i>Criterios de búsqueda</h3>
 						<div class="card-tools">
-							<a href="<?php echo APP_URL.'alumnoListaPDF/'.$categoria.'/'.$alumno_sedeid; ?> " class="btn btn-success btn-sm" style="margin-right: 10px;" target="_blank"> <i class="fas fa-print"></i> Imprimir</a>
-							<a href="<?php echo APP_URL; ?>representanteList/" class="btn btn-primary btn-sm" >Nuevo Alumno</a>
 							<button type="button" class="btn btn-tool" data-lte-toggle="card-collapse" title="Plegar o desplegar" aria-label="Plegar o desplegar"><i data-lte-icon="expand" class="fas fa-plus"></i><i data-lte-icon="collapse" class="fas fa-minus"></i></button>
 						</div>
 					</div>
-
 					<div class="card-body">
-						<div class="table-responsive">
-						<table id="example1" class="table table-bordered table-striped table-sm">
+						<div class="row g-3">
+							<div class="col-12 col-sm-6 col-lg-4 col-xl">
+								<label for="alumno_identificacion" class="form-label">Identificación</label>
+								<input type="text" class="form-control" id="alumno_identificacion" name="alumno_identificacion" inputmode="numeric" placeholder="Cédula" value="<?php echo $h($alumno_identificacion); ?>">
+							</div>
+							<div class="col-6 col-sm-6 col-lg-4 col-xl">
+								<label for="alumno_apellido1" class="form-label">Apellido paterno</label>
+								<input type="text" class="form-control" id="alumno_apellido1" name="alumno_apellido1" placeholder="Primer apellido" value="<?php echo $h($alumno_apellidopaterno); ?>">
+							</div>
+							<div class="col-6 col-sm-6 col-lg-4 col-xl">
+								<label for="alumno_nombre1" class="form-label">Primer nombre</label>
+								<input type="text" class="form-control" id="alumno_nombre1" name="alumno_nombre1" placeholder="Primer nombre" value="<?php echo $h($alumno_primernombre); ?>">
+							</div>
+							<div class="col-6 col-sm-3 col-lg-2 col-xl-1">
+								<label for="alumno_anio" class="form-label">Año</label>
+								<input type="text" class="form-control" id="alumno_anio" name="alumno_anio" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="2014" value="<?php echo $h($alumno_anio); ?>">
+							</div>
+							<div class="col-6 col-sm-3 col-lg-2 col-xl">
+								<label for="alumno_estado" class="form-label">Estado</label>
+								<select class="form-select" id="alumno_estado" name="alumno_estado">
+									<?php foreach ($ESTADOS as $valor => $texto): ?>
+										<option value="<?php echo $valor; ?>" <?php echo $alumno_estado === $valor ? 'selected' : ''; ?>><?php echo $texto; ?></option>
+									<?php endforeach; ?>
+								</select>
+							</div>
+							<div class="col-12 col-sm-6 col-lg-4 col-xl">
+								<label for="alumno_sedeid" class="form-label">Sede</label>
+								<select class="form-select" id="alumno_sedeid" name="alumno_sedeid">
+									<?php if ($ofrecerTodas): ?>
+										<option value="0" <?php echo $alumno_sedeid === 0 ? 'selected' : ''; ?>>Todas</option>
+									<?php endif; ?>
+									<?php echo $opcionesSede; ?>
+								</select>
+							</div>
+							<div class="col-12 col-sm-6 col-lg-4 col-xl-auto d-flex align-items-end">
+								<div class="w-100">
+									<?php echo ds_boton_buscar(); ?>
+								</div>
+							</div>
+						</div>
+					</div>
+				</form>
+
+				<!-- =================== Resultado de la búsqueda =================== -->
+				<div class="card ds-crud__lista" id="alumnos-resultado">
+					<div class="card-header d-flex flex-wrap align-items-center gap-2">
+						<h3 class="card-title me-auto">
+							<i class="fas fa-user-graduate me-2" aria-hidden="true"></i>Resultado de la búsqueda
+							<span class="badge text-bg-secondary ms-1" title="<?php echo $ESTADOS[$alumno_estado]; ?>"><?php echo $total; ?></span>
+						</h3>
+						<div class="ds-alumnos__herramientas">
+							<a href="<?php echo APP_URL . 'alumnoListaPDF/' . $categoria . '/' . $alumno_sedeid . '/' . $alumno_estado . '/'; ?>" class="btn btn-success btn-sm" target="_blank" rel="noopener">
+								<i class="fas fa-print me-1" aria-hidden="true"></i>Imprimir
+							</a>
+							<a href="<?php echo APP_URL; ?>representanteList/" class="btn btn-primary btn-sm" title="Se registra desde su representante">
+								<i class="fas fa-plus me-1" aria-hidden="true"></i>Nuevo alumno
+							</a>
+							<button type="button" class="btn btn-tool" data-lte-toggle="card-collapse" title="Plegar o desplegar" aria-label="Plegar o desplegar"><i data-lte-icon="expand" class="fas fa-plus"></i><i data-lte-icon="collapse" class="fas fa-minus"></i></button>
+						</div>
+					</div>
+					<div class="card-body">
+						<table id="example1" class="table table-hover align-middle ds-crud__tabla" style="width:100%">
 							<thead>
 								<tr>
-									<th>Identificación</th>
-									<th>Nombres</th>
-									<th>Apellidos</th>
-									<th>Año Nacimiento - Edad</th>									
-									<th style="width: 220px;">Opciones</<th>
+									<th>Alumno</th>
+									<th>Nacimiento</th>
+									<th class="ds-col-opcional">Sede</th>
+									<th>Estado</th>
+									<th class="text-end"><span class="visually-hidden">Acciones</span></th>
 								</tr>
 							</thead>
 							<tbody>
-								<?php 
-									echo $insAlumno->listarAlumnos($alumno_identificacion,$alumno_apellidopaterno, $alumno_primernombre, $alumno_anio, $alumno_sedeid); 
-								?>								
+								<?php echo $filas; ?>
 							</tbody>
 						</table>
-						</div>	
 					</div>
 				</div>
-			<!-- /.row -->
-			</div><!-- /.container-fluid -->
 
+			</div><!-- /.container-fluid -->
 		</section>
-		<!-- /.section -->
-      
+
+		<?php /* Un solo formulario para las acciones de todas las filas
+		         (activar/inactivar y eliminar): el botón pone la acción y el
+		         id y lo envía por el mismo camino de ajax.js —confirmación,
+		         envío y respuesta—, como en representanteList. */ ?>
+		<form class="FormularioAjax d-none" id="formAccionAlumno" action="<?php echo APP_URL; ?>app/ajax/alumnoAjax.php" method="POST" autocomplete="off">
+			<input type="hidden" name="modulo_alumno" id="accionAlumno" value="">
+			<input type="hidden" name="alumno_id" id="idAlumno" value="">
+		</form>
+
       </div>
-      <!-- /.vista -->
 
       <?php require_once "app/views/inc/footer.php"; ?>
-
-      <!-- Control Sidebar -->
-      <aside class="control-sidebar control-sidebar-dark">
-        <!-- Control sidebar content goes here -->
-      </aside>
-      <!-- /.control-sidebar -->
     </div>
-    <!-- ./wrapper -->
 
-    
 	<!-- jQuery -->
 	<script src="<?php echo APP_URL; ?>app/views/dist/plugins/jquery/jquery.min.js"></script>
-	<!-- Bootstrap 4 -->
 	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/overlayscrollbars/js/overlayscrollbars.browser.es6.min.js"></script>
 	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/bootstrap5/js/bootstrap.bundle.min.js"></script>
-	<!-- DataTables  & Plugins -->
+	<!-- DataTables: sin Responsive ni los botones de copiar/exportar -->
 	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/dataTables.min.js"></script>
 	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/dataTables.bootstrap5.min.js"></script>
-	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/dataTables.responsive.min.js"></script>
-	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/responsive.bootstrap5.min.js"></script>
-	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/dataTables.buttons.min.js"></script>
-	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/buttons.bootstrap5.min.js"></script>
-	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/buttons.html5.min.js"></script>
-	<?php /* pdfmake y jszip pesan 2,2 MB y sirven a dos botones: se traen
-			 al pulsarlos, no en cada carga. Va DESPUES de buttons.html5, que es
-			 quien define esos botones. */ ?>
-	<script src="<?php echo ds_recurso('ds_core/assets/js/exportar.js'); ?>"></script>
-	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/buttons.print.min.js"></script>
-	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/buttons.colVis.min.js"></script>
-	<!-- AdminLTE App -->
 	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/adminlte4/js/adminlte.min.js"></script>
 	<script src="<?php echo ds_recurso('ds_futbol/app/views/dist/js/ajax.js'); ?>" ></script>
-	<script src="<?php echo ds_recurso('ds_futbol/app/views/dist/js/main.js'); ?>" ></script>	
-     <!-- Page specific script -->
+	<script src="<?php echo ds_recurso('ds_futbol/app/views/dist/js/main.js'); ?>" ></script>
 	<script>
 	document.addEventListener('DOMContentLoaded', function () {
-		new DataTable("#example1", {
-		"responsive": true, "lengthChange": false, "autoWidth": false,
-		"language": {
-			"decimal": "",
-			"emptyTable": "No hay datos disponibles en la tabla",
-			"info": "Mostrando _START_ a _END_ de _TOTAL_ entradas",
-			"infoEmpty": "Mostrando 0 a 0 de 0 entradas",
-			"infoFiltered": "(filtrado de _MAX_ entradas totales)",
-			"infoPostFix": "",
-			"thousands": ",",
-			"lengthMenu": "Mostrar _MENU_ entradas",
-			"loadingRecords": "Cargando...",
-			"processing": "Procesando...",
-			"search": "Buscar:",
-			"zeroRecords": "No se encontraron registros coincidentes",
-			"paginate": {
-				"first": "Primero",
-				"last": "Último",
-				"next": "Siguiente",
-				"previous": "Anterior"
+		/*
+		| Sin la extensión Responsive (escondía columnas y botones tras un ▶)
+		| y sin la barra de copiar/CSV/Excel/PDF: el listado se imprime con el
+		| botón «Imprimir» (PDF con cabecera de la escuela). En el teléfono
+		| cada fila es una ficha (futbol.css, .ds-crud).
+		|
+		| «Mostrar N» elige cuántos alumnos por página y se recuerda en este
+		| navegador. Si el almacenamiento no está disponible (modo privado),
+		| simplemente vuelve a 25.
+		*/
+		var CLAVE = 'ds-alumnos-por-pagina', LARGOS = [10, 25, 50, 100, -1], largo = 25;
+		try { var guardado = parseInt(localStorage.getItem(CLAVE), 10); if (LARGOS.indexOf(guardado) !== -1) { largo = guardado; } } catch (e) {}
+
+		var tabla = new DataTable("#example1", {
+			autoWidth: false,
+			pageLength: largo,
+			lengthMenu: [LARGOS, [10, 25, 50, 100, 'Todos']],
+			order: [[0, 'asc']],               /* por apellido (data-order) */
+			columnDefs: [
+				{ targets: 1, type: 'string' },  /* data-order: fecha ISO */
+				{ targets: 4, orderable: false, searchable: false }
+			],
+			layout: {
+				topStart: 'pageLength',
+				topEnd: 'search',
+				bottomStart: 'info',
+				bottomEnd: { paging: { firstLast: false } }
 			},
-			"aria": {
-				"sortAscending": ": activar para ordenar la columna ascendente",
-				"sortDescending": ": activar para ordenar la columna descendente"
-			},
-			"buttons": {
-				"copy": "Copiar",
-				"print": "Imprimir",
-                "text": 'Imprimir Tabla',
-                "title": 'Datos de Alumnos',
-                "messageTop": 'Generado por el sistema de gestión de alumnos.',
-                "messageBottom": 'Página generada automáticamente.',
-                customize: function(win) {
-                    $(win.document.body)
-                        .css('font-family', 'Arial')
-                        .css('background-color', '#f3f3f3');
-
-                    // Cambiar el estilo de la tabla impresa
-                    $(win.document.body).find('table')
-                        .addClass('display')  // Añadir una clase CSS a la tabla impresa
-                        .css('font-size', '12pt')
-                        .css('border', '1px solid black');
-
-                    // Agregar logotipo al principio
-                    $(win.document.body).prepend(
-                        '<img src="https://example.com/logo.png" style="position:absolute; top:0; left:0; width:100px;" />'
-                    );
-
-                    // Modificar título y agregar estilos CSS adicionales
-                    $(win.document.body).find('h1')
-                        .css('text-align', 'center')
-                        .css('color', '#4CAF50');
+			language: {
+				emptyTable: "No hay alumnos con estos criterios",
+				info: "_START_ a _END_ de _TOTAL_ alumnos",
+				infoEmpty: "Sin alumnos",
+				infoFiltered: "(de _MAX_)",
+				lengthMenu: "Mostrar _MENU_",
+				search: "",
+				searchPlaceholder: "Filtrar por nombre, cédula o sede…",
+				zeroRecords: "Ningún alumno coincide con el filtro",
+				paginate: { next: "Siguiente", previous: "Anterior" },
+				aria: {
+					sortAscending: ": ordenar de forma ascendente",
+					sortDescending: ": ordenar de forma descendente"
 				}
 			}
-		},
-		layout: { topStart: 'buttons' },
-		"buttons": ["copy", "csv", "excel", "pdf", "print", "colvis"]
 		});
-		new DataTable('#example2', {
-		"paging": true,
-		"lengthChange": false,
-		"searching": false,
-		"ordering": true,
-		"info": true,
-		"autoWidth": false,
-		"responsive": true,
+		tabla.on('length', function (e, s, nuevo) {
+			try { localStorage.setItem(CLAVE, String(nuevo)); } catch (err) {}
+		});
+
+		/* Delegado en el documento: DataTables rehace las filas al paginar. */
+		document.addEventListener('click', function (e) {
+			var b = e.target.closest('.js-alumno');
+			if (!b) { return; }
+			document.getElementById('accionAlumno').value = b.dataset.accion || '';
+			document.getElementById('idAlumno').value     = b.dataset.id     || '';
+			document.getElementById('formAccionAlumno').requestSubmit();
 		});
 	});
 	</script>
-  </body> 
+  </body>
 </html>
-
-
-
-
-
-
-
-

@@ -43,11 +43,35 @@
 		private function columnasRepresentante(): array
 		{
 			return [
-				0 => 'repre_identificacion',
-				1 => 'repre_primernombre',
-				2 => 'repre_apellidopaterno',
-				3 => 'alumnos',               // el recuento de representados (alias)
+				0 => 'repre_apellidopaterno',   // Representante: por apellido
+				1 => 'alumnos',                 // el recuento de representados (alias)
+				2 => 'repre_firmado',           // Protección de datos
 			];
+		}
+
+		/*
+		| ESTADO: EL DE SUS ALUMNOS
+		|
+		| Un representante no está «activo» por sí mismo: lo está si representa
+		| a alguien que entrena. Con varios representados basta uno activo.
+		|
+		|   A  con al menos un alumno activo (por defecto: lo que se gestiona)
+		|   I  con alumnos, pero ninguno activo
+		|   S  sin alumnos todavía (recién dados de alta)
+		|   T  todos
+		|
+		| Los alumnos eliminados ('E') no cuentan. Para quien no es de
+		| administración, sólo cuentan los alumnos de sus sedes, y no ve a un
+		| representante cuyos alumnos son todos de otra sede.
+		*/
+		private function condicionEstadoRepresentante(string $estado): string
+		{
+			return match ($estado) {
+				'I'     => "COALESCE(AC.total, 0) > 0 AND COALESCE(AC.activos, 0) = 0",
+				'S'     => "COALESCE(AC.total, 0) = 0",
+				'T'     => "1 = 1",
+				default => "COALESCE(AC.activos, 0) > 0",
+			};
 		}
 
 		public function representantesServidor(array $peticion): array
@@ -57,23 +81,56 @@
 			$largo   = (int)($peticion['length'] ?? 25);
 			$largo   = ($largo < 1 || $largo > 200) ? 25 : $largo;
 			$buscado = trim((string)($peticion['search']['value'] ?? ''));
+			$estado  = in_array($peticion['estado'] ?? 'A', ['A', 'I', 'S', 'T'], true) ? $peticion['estado'] ?? 'A' : 'A';
 
 			/*----------  Orden: lista blanca, nunca lo que llegue  ----------*/
 			$columnas = $this->columnasRepresentante();
-			$idxOrden = (int)($peticion['order'][0]['column'] ?? 2);
+			$idxOrden = (int)($peticion['order'][0]['column'] ?? 0);
 			$colOrden = $columnas[$idxOrden] ?? 'repre_apellidopaterno';
 			$dirOrden = strtolower((string)($peticion['order'][0]['dir'] ?? 'asc')) === 'desc'
 			          ? 'DESC' : 'ASC';
 
-			/*----------  Filtro  ----------*/
-			/* $donde va aparte de la tabla: la página le une el recuento de
-			   alumnos y los COUNT no lo necesitan. */
-			$donde  = "WHERE repre_estado IN ('A','I') AND repre_primernombre <> ''";
-			$par    = [];
+			/*----------  De quién se cuentan los alumnos  ----------*/
+			/* Cuántos alumnos representa cada uno y cuántos siguen activos, en
+			   un recuento agrupado y unido (no una subconsulta por fila): así se
+			   filtra y se ordena por él en la base. */
+			$parSede = [];
+			$sede    = $this->condicionSede('alumno_sedeid', 0, $parSede);
+			$desde   = "FROM alumno_representante
+			            LEFT JOIN (SELECT alumno_repreid, COUNT(*) AS total, SUM(alumno_estado = 'A') AS activos
+			                         FROM sujeto_alumno
+			                        WHERE alumno_estado <> 'E' AND {$sede}
+			                        GROUP BY alumno_repreid) AC ON AC.alumno_repreid = repre_id";
 
+			/*----------  El universo: estado (y sedes)  ----------*/
+			$ambito = "WHERE repre_estado IN ('A','I') AND repre_primernombre <> ''
+			             AND " . $this->condicionEstadoRepresentante($estado);
+			if ($this->sedesDeLaSesion() !== null) {
+				/* Fuera de administración: nada de representantes cuyos alumnos
+				   son todos de otras sedes. */
+				$ambito .= " AND (AC.total > 0 OR repre_id NOT IN
+				               (SELECT alumno_repreid FROM sujeto_alumno WHERE alumno_estado <> 'E' AND alumno_repreid IS NOT NULL))";
+			}
+
+			/*----------  Los criterios: los del formulario y la caja de buscar  ----------*/
+			$donde = $ambito;
+			$par   = [];
+			$criterio = static fn(string $clave) => trim((string)($peticion[$clave] ?? ''));
+			if ($criterio('identificacion') !== '') {
+				$donde .= " AND repre_identificacion LIKE :ident";
+				$par[':ident'] = $criterio('identificacion') . '%';
+			}
+			if ($criterio('apellido') !== '') {
+				$donde .= " AND (repre_apellidopaterno LIKE :ape1 OR repre_apellidomaterno LIKE :ape2)";
+				$par[':ape1'] = $par[':ape2'] = $criterio('apellido') . '%';
+			}
+			if ($criterio('nombre') !== '') {
+				$donde .= " AND (repre_primernombre LIKE :nom1 OR repre_segundonombre LIKE :nom2)";
+				$par[':nom1'] = $par[':nom2'] = $criterio('nombre') . '%';
+			}
 			if ($buscado !== '') {
-				/* Una sola condicion sobre los tres campos que se ven: el
-				   usuario busca «lo que sea que recuerde», no una columna. */
+				/* Una sola condicion sobre los campos que se ven: el usuario
+				   busca «lo que sea que recuerde», no una columna. */
 				$donde .= " AND (repre_identificacion LIKE :b
 				             OR repre_primernombre   LIKE :b
 				             OR repre_segundonombre  LIKE :b
@@ -82,76 +139,79 @@
 				$par[':b'] = '%' . $buscado . '%';
 			}
 
-			/*----------  Recuentos  ----------*/
-			$total = (int)$this->ejecutarConsulta(
-				"SELECT COUNT(1) FROM alumno_representante
-				  WHERE repre_estado IN ('A','I') AND repre_primernombre <> ''")->fetchColumn();
-
-			$filtrados = $buscado === ''
+			/*----------  Recuentos: el universo del estado, y lo que queda al buscar  ----------*/
+			$total     = (int)$this->ejecutarConsulta("SELECT COUNT(1) {$desde} {$ambito}", $parSede)->fetchColumn();
+			$filtrados = $donde === $ambito
 				? $total
-				: (int)$this->ejecutarConsulta("SELECT COUNT(1) FROM alumno_representante " . $donde, $par)->fetchColumn();
+				: (int)$this->ejecutarConsulta("SELECT COUNT(1) {$desde} {$donde}", $parSede + $par)->fetchColumn();
 
-			/*----------  La pagina  ----------*/
-			/* Cuántos alumnos representa cada uno, y cuántos siguen activos.
-			   Un recuento agrupado y unido, no una subconsulta por fila: así
-			   también se puede ORDENAR por él en la base. Los eliminados ('E')
-			   no cuentan. */
-			$sql = "SELECT repre_id, repre_identificacion, repre_primernombre,
-			               repre_segundonombre, repre_apellidopaterno,
-			               repre_apellidomaterno, repre_firmado,
-			               COALESCE(AC.total, 0) AS alumnos, COALESCE(AC.activos, 0) AS activos
-			        FROM alumno_representante
-			        LEFT JOIN (SELECT alumno_repreid, COUNT(*) AS total, SUM(alumno_estado = 'A') AS activos
-			                     FROM sujeto_alumno
-			                    WHERE alumno_estado <> 'E'
-			                    GROUP BY alumno_repreid) AC ON AC.alumno_repreid = repre_id
-			        " . $donde
-			    . " ORDER BY " . $colOrden . " " . $dirOrden . ", repre_id ASC"
-			    . " LIMIT " . (int)$largo . " OFFSET " . (int)$inicio;
+			/*----------  La página  ----------*/
+			$filas = $this->ejecutarConsulta(
+				"SELECT repre_id, repre_identificacion, repre_primernombre, repre_segundonombre,
+				        repre_apellidopaterno, repre_apellidomaterno, repre_celular, repre_firmado,
+				        COALESCE(AC.total, 0) AS alumnos, COALESCE(AC.activos, 0) AS activos
+				 {$desde} {$donde}
+				 ORDER BY {$colOrden} {$dirOrden}, repre_apellidomaterno ASC, repre_id ASC
+				 LIMIT " . (int)$largo . " OFFSET " . (int)$inicio, $parSede + $par)->fetchAll(\PDO::FETCH_ASSOC);
 
-			$filas = $this->ejecutarConsulta($sql, $par)->fetchAll(\PDO::FETCH_ASSOC);
+			$h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+			$junta = static fn(...$p) => preg_replace('/\s+/', ' ', trim(implode(' ', $p)));
+			$puedeCrear    = puede('crear', 'representanteList');
+			$puedeEditar   = puede('editar', 'representanteList');
+			$puedeEliminar = puede('eliminar', 'representanteList');
 
 			$datos = [];
 			foreach ($filas as $r) {
-				$id = (int)$r['repre_id'];
-
+				$id      = (int)$r['repre_id'];
+				$nombre  = $junta($r['repre_primernombre'], $r['repre_segundonombre'], $r['repre_apellidopaterno'], $r['repre_apellidomaterno']);
+				$inicial = mb_strtoupper(mb_substr(html_entity_decode((string)$r['repre_primernombre']), 0, 1) . mb_substr(html_entity_decode((string)$r['repre_apellidopaterno']), 0, 1));
 				$firmado = $r['repre_firmado'] === 'S';
-				$texto   = $firmado ? 'Firmado' : 'Pendiente';
-				$boton   = $firmado ? 'btn-secondary' : 'btn-info';
 
 				/* Los alumnos: el total como insignia, que lleva a la ficha del
 				   representante (ahí está la lista). Azul si alguno está activo,
-				   gris si ninguno; y debajo cuántos activos, sólo si no lo están
-				   todos (de 853 alumnos, 630 están inactivos). */
+				   gris si ninguno; al lado, cuántos activos, si no lo están todos. */
 				$nAlumnos = (int)$r['alumnos'];
 				$nActivos = (int)$r['activos'];
 				$celdaAlumnos = '<a href="' . APP_URL . 'representanteProfile/' . $id . '/" class="badge rounded-pill text-decoration-none '
 				              . ($nActivos > 0 ? 'text-bg-primary' : 'text-bg-secondary') . '"'
 				              . ' title="Ver sus representados" aria-label="' . $nAlumnos . ($nAlumnos === 1 ? ' alumno' : ' alumnos') . '">' . $nAlumnos . '</a>'
 				              . ($nAlumnos > 0 && $nActivos < $nAlumnos
-				                  ? '<span class="d-block small text-body-secondary text-nowrap">' . ($nActivos === 0 ? 'ninguno activo' : $nActivos . ($nActivos === 1 ? ' activo' : ' activos')) . '</span>'
+				                  ? ' <span class="small text-body-secondary text-nowrap">' . ($nActivos === 0 ? 'ninguno activo' : $nActivos . ($nActivos === 1 ? ' activo' : ' activos')) . '</span>'
 				                  : '');
 
+				/* Protección de datos: el formulario, un BOTÓN (antes un icono
+				   suelto de 12 px, difícil de acertar), y su estado. Quien puede
+				   editar lo cambia con el mismo botón (Firmado / Pendiente). */
+				$celdaDatos = '<div class="ds-repres__datos">'
+				            . '<a href="' . APP_URL . 'representanteFLPD/' . $id . '/" target="_blank" rel="noopener" class="btn btn-sm btn-light border" title="Abrir el formulario de protección de datos">'
+				            . '<i class="fas fa-file-signature me-1" aria-hidden="true"></i>Formulario</a>'
+				            . ($puedeEditar
+				                ? '<button type="button" class="btn btn-sm ' . ($firmado ? 'btn-success' : 'btn-warning') . ' js-repre" data-accion="estadofirmado" data-id="' . $id . '"'
+				                  . ' title="' . ($firmado ? 'Marcar como pendiente' : 'Marcar como firmado') . '">'
+				                  . '<i class="fas ' . ($firmado ? 'fa-circle-check' : 'fa-hourglass-half') . ' me-1" aria-hidden="true"></i>' . ($firmado ? 'Firmado' : 'Pendiente') . '</button>'
+				                : '<span class="badge ' . ($firmado ? 'text-bg-success' : 'text-bg-warning') . '">' . ($firmado ? 'Firmado' : 'Pendiente') . '</span>')
+				            . '</div>';
+
+				$botones = '<a href="' . APP_URL . 'representanteProfile/' . $id . '/" class="btn btn-primary btn-sm ds-ficha__primario"><i class="fas fa-id-card me-1" aria-hidden="true"></i>Ver ficha</a>';
+				if ($puedeCrear) {
+					$botones .= '<a href="' . APP_URL . 'alumnoNew/' . $id . '/" class="btn btn-success btn-sm" title="Nuevo alumno" aria-label="Registrar un alumno de ' . $h($nombre) . '"><i class="fas fa-user-plus" aria-hidden="true"></i></a>'
+					          . '<a href="' . APP_URL . 'representanteVinc/' . $id . '/" class="btn btn-secondary btn-sm" title="Vincular alumno" aria-label="Vincular un alumno a ' . $h($nombre) . '"><i class="fas fa-link" aria-hidden="true"></i></a>';
+				}
+				if ($puedeEditar) {
+					$botones .= '<a href="' . APP_URL . 'representanteUpdate/' . $id . '/" class="btn btn-info btn-sm" title="Editar" aria-label="Editar a ' . $h($nombre) . '"><i class="fas fa-pen" aria-hidden="true"></i></a>';
+				}
+				if ($puedeEliminar) {
+					$botones .= '<button type="button" class="btn btn-danger btn-sm js-repre" data-accion="eliminar" data-id="' . $id . '" title="Eliminar" aria-label="Eliminar a ' . $h($nombre) . '"><i class="fas fa-trash" aria-hidden="true"></i></button>';
+				}
+
 				$datos[] = [
-					htmlspecialchars((string)$r['repre_identificacion'], ENT_QUOTES, 'UTF-8'),
-					htmlspecialchars(trim($r['repre_primernombre'] . ' ' . $r['repre_segundonombre']), ENT_QUOTES, 'UTF-8'),
-					htmlspecialchars(trim($r['repre_apellidopaterno'] . ' ' . $r['repre_apellidomaterno']), ENT_QUOTES, 'UTF-8'),
+					'<div class="ds-ficha__con-imagen"><span class="ds-ficha__imagen ds-alumnos__inicial" aria-hidden="true">' . $h($inicial) . '</span>'
+					. '<div class="min-w-0"><div class="ds-ficha__nombre">' . $h($nombre) . '</div>'
+					. '<div class="ds-ficha__meta"><i class="fas fa-id-card" aria-hidden="true"></i> ' . $h($r['repre_identificacion'])
+					. (trim((string)$r['repre_celular']) !== '' ? ' · <i class="fas fa-phone" aria-hidden="true"></i> ' . $h($r['repre_celular']) : '') . '</div></div></div>',
 					$celdaAlumnos,
-
-					$this->siPuede('crear', 'representanteList',
-						'<a href="' . APP_URL . 'alumnoNew/' . $id . '/" class="btn float-end btn-secondary btn-sm ms-1"><i class="fas fa-plus me-1"></i>Nuevo Alumno</a>')
-					. $this->siPuede('crear', 'representanteList',
-						'<a href="' . APP_URL . 'representanteVinc/' . $id . '/" class="btn float-end btn-warning btn-sm ms-1"><i class="fas fa-link me-1"></i>Vincular alumno</a>'),
-
-					'<a href="' . APP_URL . 'representanteFLPD/' . $id . '/" target="_blank" class="nav-icon far fa-file float-end ms-1" title="Formulario LPD"></a>'
-					. $this->siPuede('editar', 'representanteList',
-						'<button type="button" class="btn float-end ' . $boton . ' btn-sm ms-1 js-repre" data-accion="estadofirmado" data-id="' . $id . '"> ' . $texto . ' </button>'),
-
-					$this->siPuede('eliminar', 'representanteList',
-						'<button type="button" class="btn float-end btn-danger btn-sm ms-1 js-repre" data-accion="eliminar" data-id="' . $id . '" title="Eliminar" aria-label="Eliminar"><i class="fas fa-trash"></i></button>')
-					. $this->siPuede('editar', 'representanteList',
-						'<a href="' . APP_URL . 'representanteUpdate/' . $id . '/" class="btn float-end btn-actualizar btn-sm ms-1" title="Actualizar" aria-label="Actualizar"><i class="fas fa-pen"></i></a>')
-					. '<a href="' . APP_URL . 'representanteProfile/' . $id . '/" class="btn float-end btn-ver btn-sm ms-1" title="Ver" aria-label="Ver"><i class="fas fa-eye"></i></a>',
+					$celdaDatos,
+					'<div class="ds-ficha__botones">' . $botones . '</div>',
 				];
 			}
 

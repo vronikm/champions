@@ -615,14 +615,6 @@
 			return json_encode($alerta);
 		}
 
-		/** Estado del filtro: A (activos, por defecto), I (inactivos) o T (todos). */
-		private function condicionEstado(string $columna, $estado): string{
-			return match ((string)$estado) {
-				'I'     => "$columna = 'I'",
-				'T'     => "$columna IN ('A','I')",
-				default => "$columna = 'A'",
-			};
-		}
 
 		/*----------  Listado de alumnos (alumnoList)  ----------*/
 		/*
@@ -662,7 +654,7 @@
 			}
 
 			$condiciones[] = $this->condicionSede('A.alumno_sedeid', $sede, $parametros);
-			$condiciones[] = $this->condicionEstado('A.alumno_estado', $estado);
+			$condiciones[] = $this->condicionEstadoAlumno('A.alumno_estado', $estado);
 
 			$datos = $this->ejecutarConsulta("SELECT A.alumno_id, A.alumno_identificacion, A.alumno_primernombre, A.alumno_segundonombre,
 						A.alumno_apellidopaterno, A.alumno_apellidomaterno, A.alumno_fechanacimiento, A.alumno_estado,
@@ -800,7 +792,7 @@
 									alumno_apellidopaterno, alumno_apellidomaterno, alumno_fechanacimiento, alumno_estado
 								FROM sujeto_alumno, general_sede
 								WHERE alumno_sedeid = sede_id
-									AND " . $this->condicionEstado('alumno_estado', $estado) . "
+									AND " . $this->condicionEstadoAlumno('alumno_estado', $estado) . "
 									AND " . $this->condicionSede('alumno_sedeid', $sedeid, $parametros);
 
 			if($categoriaid!=0){

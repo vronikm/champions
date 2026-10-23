@@ -895,3 +895,22 @@
 /* «Mostrar N»: la palabra y el selector, separados (DataTables los pega). */
 .ds-crud__lista .dt-length { display: flex; align-items: center; gap: .5rem; }
 .ds-crud__lista .dt-length label { margin: 0; }
+
+/* =========================================================================
+   LISTADO DE PAGOS (pagosList). Fichas de .ds-crud; aquí, el total
+   adeudado de la cabecera y la barrita de asistencia.
+   ========================================================================= */
+.ds-pagos__resumen { display: flex; align-items: baseline; gap: .4rem; font-size: .95rem; }
+.ds-pagos__resumen strong { font-size: 1.1rem; }
+.ds-pagos__deuda { font-size: .85rem; }
+.ds-pagos__asis { display: inline-flex; align-items: center; gap: .45rem; }
+.ds-pagos__barra { display: inline-block; width: 3.5rem; height: .45rem; border-radius: 1rem; background: var(--bs-secondary-bg); overflow: hidden; }
+.ds-pagos__barra > span { display: block; height: 100%; }
+@media (max-width: 991.98px) {
+    .ds-pagos__resumen { flex: 1 1 auto; }
+    /* Las columnas numéricas (DataTables las alinea a la derecha), dentro
+       de la ficha, a la izquierda como el resto. */
+    .ds-crud__tabla > tbody > tr > td.dt-type-numeric { text-align: left !important; }
+    /* En la ficha, el detalle de la deuda y los días, en la misma línea. */
+    .ds-crud__tabla td.ds-ficha__dato .d-block.small { display: inline !important; margin-left: .35rem; }
+}

@@ -340,4 +340,13 @@ class mainModel
 			return "$columna IN (" . implode(',', $permitidas) . ")";
 		}
 
+
+		/** Estado de alumno para un filtro: A (activos, por defecto), I (inactivos) o T (todos). Nunca los eliminados. */
+		protected function condicionEstadoAlumno(string $columna, $estado): string{
+			return match ((string)$estado) {
+				'I'     => "$columna = 'I'",
+				'T'     => "$columna IN ('A','I')",
+				default => "$columna = 'A'",
+			};
+		}
 }

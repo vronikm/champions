@@ -16,128 +16,184 @@
 		| Ahora el valor viaja tal cual lo escribio el usuario y es PDO quien
 		| lo separa de la consulta.
 		*/
+		/*----------  Pensiones que debe desde su último pago de pensión  ----------*/
+		/*
+		| La MISMA regla que pensionesPendientes(): cada mes cumplido desde la
+		| fecha del último pago de pensión, hasta el último día del mes en
+		| curso, es una pensión adeudada. Al sumar meses, el día se recorta al
+		| final del mes, como DATE_ADD de MySQL (31 de enero + 1 mes = 28 de
+		| febrero); el +1 month de PHP lo pasaría a marzo.
+		*/
+		private function mesesPensionAdeudados(?string $ultimoPago): int{
+			if (!$ultimoPago || str_starts_with($ultimoPago, '0000')) { return 0; }
+			$base  = new \DateTime($ultimoPago);
+			$tope  = new \DateTime(date('Y-m-t'));
+			$meses = 0;
+			for ($m = 1; $m <= 120; $m++) {
+				$y = (int)$base->format('Y');
+				$mes = (int)$base->format('n') + $m;
+				$y += intdiv($mes - 1, 12);
+				$mes = ($mes - 1) % 12 + 1;
+				/* date('t') y no cal_days_in_month(): ésta es de la extensión
+				   calendar, que no todos los hosting traen. */
+				$dia = min((int)$base->format('j'), (int)date('t', mktime(0, 0, 0, $mes, 1, $y)));
+				if (new \DateTime(sprintf('%04d-%02d-%02d', $y, $mes, $dia)) > $tope) { break; }
+				$meses++;
+			}
+			return $meses;
+		}
+
+		/*----------  Listado de pagos (pagosList)  ----------*/
+		/*
+		| Una fila por alumno con lo que se necesita para cobrar: cuándo pagó
+		| la última pensión, cuánto debe y cómo asiste. Marcado de fichas
+		| (.ds-crud): tabla en escritorio y ficha por debajo de 992 px.
+		|
+		| UNA consulta para todo el listado. Antes, por cada alumno, se hacían
+		| cuatro o cinco (descuento, pagos, estado, pensiones): con 223 activos,
+		| un millar de consultas por carga.
+		|
+		| VALOR ADEUDADO = saldo de los pagos pendientes (estado P, cualquier
+		| rubro) + pensiones no pagadas desde la última (mesesPensionAdeudados)
+		| por el valor de la pensión: el descuento activo (DDS) si lo tiene, si
+		| no la de su sede. Las pensiones sin pagar sólo corren para alumnos
+		| ACTIVOS: un inactivo no entrena, y contarle los meses desde que dejó
+		| de venir inflaba la deuda con meses que nadie va a cobrar.
+		|
+		| ASISTENCIA = (presentes + atrasos) / días marcados, la fórmula de
+		| Insights (el justificado cuenta como inasistencia), sobre todo lo
+		| registrado: la asistencia no se registra desde hace meses y un
+		| periodo corto dejaría a todos en blanco.
+		|
+		| $estado: A (por defecto), I o T. La sede se acota a la del usuario.
+		*/
 		public function listarAlumnosPagos($identificacion, $apellidopaterno, $primernombre, $estado, $sede){
-			$tabla="";
 			$condiciones = [];
 			$parametros  = [];
 			$busqueda    = [];
 
 			if ($identificacion != "") {
-				$busqueda[] = "alumno_identificacion LIKE :identificacion";
+				$busqueda[] = "A.alumno_identificacion LIKE :identificacion";
 				$parametros[':identificacion'] = $identificacion.'%';
 			}
-
 			if ($primernombre != "") {
-				$busqueda[] = "alumno_primernombre LIKE :primernombre";
+				$busqueda[] = "A.alumno_primernombre LIKE :primernombre";
 				$parametros[':primernombre'] = $primernombre.'%';
 			}
-
 			if ($apellidopaterno != "") {
-				$busqueda[] = "alumno_apellidopaterno LIKE :apellidopaterno";
+				$busqueda[] = "A.alumno_apellidopaterno LIKE :apellidopaterno";
 				$parametros[':apellidopaterno'] = $apellidopaterno.'%';
 			}
-
-			// Agrupar búsqueda por nombre/identificación/apellido
-			if (!empty($busqueda)) {
-				$condiciones[] = "(".implode(" OR ", $busqueda).")";
+			if ($busqueda) {
+				$condiciones[] = "(" . implode(" OR ", $busqueda) . ")";
 			}
+			$condiciones[] = $this->condicionEstadoAlumno('A.alumno_estado', $estado);
+			$condiciones[] = $this->condicionSede('A.alumno_sedeid', $sede, $parametros);
 
-			// Si no hay ningún filtro de identificación, nombre o apellido
-			if ($identificacion == "" && $primernombre == "" && $apellidopaterno == "") {
-				if ($estado == "") {
-					$condiciones = ["alumno_primernombre <> ''"];
+			$filas = $this->ejecutarConsulta("SELECT A.alumno_id, A.alumno_identificacion, A.alumno_primernombre, A.alumno_segundonombre,
+						A.alumno_apellidopaterno, A.alumno_apellidomaterno, A.alumno_estado, A.alumno_fechaingreso,
+						TIMESTAMPDIFF(YEAR, A.alumno_fechanacimiento, CURDATE()) AS edad,
+						S.sede_nombre, S.sede_pension, D.descuento_valor,
+						UP.ultima, UP.periodo, COALESCE(PP.saldo, 0) AS saldo,
+						COALESCE(AS1.dias, 0) AS dias, COALESCE(AS1.asistidos, 0) AS asistidos
+					FROM sujeto_alumno A
+					LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
+					LEFT JOIN alumno_pago_descuento D ON D.descuento_alumnoid = A.alumno_id
+					       AND D.descuento_estado = 'S' AND D.descuento_rubroid = 'DDS'
+					LEFT JOIN (SELECT pago_alumnoid, MAX(pago_fecha) AS ultima,
+					                  SUBSTRING_INDEX(GROUP_CONCAT(pago_periodo ORDER BY pago_fecha DESC, pago_id DESC SEPARATOR '|'), '|', 1) AS periodo
+					             FROM alumno_pago WHERE pago_rubroid = 'RPE' AND pago_estado <> 'E'
+					            GROUP BY pago_alumnoid) UP ON UP.pago_alumnoid = A.alumno_id
+					LEFT JOIN (SELECT pago_alumnoid, SUM(pago_saldo) AS saldo
+					             FROM alumno_pago WHERE pago_estado = 'P'
+					            GROUP BY pago_alumnoid) PP ON PP.pago_alumnoid = A.alumno_id
+					LEFT JOIN (SELECT dia_alumnoid, COUNT(*) AS dias, SUM(dia_marca IN ('P','A')) AS asistidos
+					             FROM insights_v_asistencia_dia GROUP BY dia_alumnoid) AS1 ON AS1.dia_alumnoid = A.alumno_id
+					WHERE " . implode(" AND ", $condiciones) . "
+					ORDER BY A.alumno_apellidopaterno, A.alumno_apellidomaterno, A.alumno_primernombre", $parametros)->fetchAll();
+
+			$h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+			$junta = static fn(...$p) => preg_replace('/\s+/', ' ', trim(implode(' ', $p)));
+			$dinero = static fn(float $v) => '$' . number_format($v, 2, '.', ',');
+
+			$this->totalAdeudado = 0.0;
+			$tabla = "";
+			foreach ($filas as $al) {
+				$id      = (int)$al['alumno_id'];
+				$activo  = $al['alumno_estado'] === 'A';
+				$nombre  = $junta($al['alumno_primernombre'], $al['alumno_segundonombre'], $al['alumno_apellidopaterno'], $al['alumno_apellidomaterno']);
+				$orden   = $junta($al['alumno_apellidopaterno'], $al['alumno_apellidomaterno'], $al['alumno_primernombre']);
+				$inicial = mb_strtoupper(mb_substr(html_entity_decode((string)$al['alumno_primernombre']), 0, 1) . mb_substr(html_entity_decode((string)$al['alumno_apellidopaterno']), 0, 1));
+
+				/* Lo que debe. */
+				$pension = $al['descuento_valor'] !== null ? (float)$al['descuento_valor'] : (float)$al['sede_pension'];
+				$meses   = $activo ? $this->mesesPensionAdeudados($al['ultima']) : 0;
+				$deuda   = round((float)$al['saldo'] + $meses * $pension, 2);
+				$this->totalAdeudado += $deuda;
+				$detalle = [];
+				if ($meses > 0) { $detalle[] = $meses . ($meses === 1 ? ' pensión' : ' pensiones'); }
+				if ((float)$al['saldo'] > 0) { $detalle[] = 'saldo ' . $dinero((float)$al['saldo']); }
+				$celdaDeuda = $deuda > 0
+					? '<span class="badge text-bg-danger ds-pagos__deuda">' . $dinero($deuda) . '</span>'
+					  . '<span class="d-block small text-body-secondary">' . implode(' + ', $detalle) . '</span>'
+					: '<span class="badge text-bg-success">Al día</span>';
+
+				/* Fecha de ingreso, y cuánto lleva en la escuela. */
+				$fing = (string)$al['alumno_fechaingreso'];
+				$ingreso = ($fing !== '' && !str_starts_with($fing, '0000')) ? $fing : '';
+				$antiguedad = '';
+				if ($ingreso !== '') {
+					$dif = (new \DateTime($ingreso))->diff(new \DateTime('today'));
+					$antiguedad = $dif->invert ? '' : ($dif->y > 0 ? $dif->y . ($dif->y === 1 ? ' año' : ' años') : $dif->m . ($dif->m === 1 ? ' mes' : ' meses'));
 				}
-			}
+				$celdaIngreso = $ingreso !== ''
+					? date('d/m/Y', strtotime($ingreso)) . ($antiguedad !== '' ? '<span class="d-block small text-body-secondary">' . $antiguedad . '</span>' : '')
+					: '<span class="text-body-secondary">—</span>';
 
-			// Filtro de estado
-			if ($estado == "") {
-				$condiciones[] = "alumno_estado = 'A'";
-			} else {
-				$condiciones[] = "alumno_estado = :estado";
-				$parametros[':estado'] = $estado;
-			}
+				/* Último pago de pensión: la fecha y el mes que cubrió. */
+				$ultima = $al['ultima'] && !str_starts_with((string)$al['ultima'], '0000') ? (string)$al['ultima'] : '';
+				$celdaUltima = $ultima !== ''
+					? date('d/m/Y', strtotime($ultima)) . (trim((string)$al['periodo']) !== '' ? '<span class="d-block small text-body-secondary">' . $h($al['periodo']) . '</span>' : '')
+					: '<span class="text-body-secondary">Sin pagos de pensión</span>';
 
-			// Filtro de sede
-			if ($sede != "") {
-				if ($sede == 0) {
-					$condiciones[] = "alumno_sedeid <> 0";
-				} else {
-					$condiciones[] = "alumno_sedeid = :sede";
-					$parametros[':sede'] = $sede;
-				}
-			} else {
-				/* Sin sede no se lista nada. Se descartan los parametros ya
-				   recogidos: la condicion que los usaba acaba de desaparecer
-				   y PDO falla si sobra alguno. */
-				$condiciones = ["alumno_primernombre = ''"];
-				$parametros  = [];
-			}
+				/* Asistencia, con cuántos días la sustentan. */
+				$dias = (int)$al['dias'];
+				$pct  = $dias > 0 ? round((int)$al['asistidos'] / $dias * 100) : null;
+				$celdaAsis = $pct === null
+					? '<span class="text-body-secondary">Sin registros</span>'
+					: '<span class="ds-pagos__asis"><span class="ds-pagos__barra" aria-hidden="true"><span style="width:' . $pct . '%" class="' . ($pct >= 75 ? 'bg-success' : ($pct >= 50 ? 'bg-warning' : 'bg-danger')) . '"></span></span>'
+					  . '<strong>' . $pct . ' %</strong></span><span class="d-block small text-body-secondary">de ' . $dias . ($dias === 1 ? ' día' : ' días') . '</span>';
 
-			// Construir SQL final
-			$consulta_datos = "SELECT * FROM sujeto_alumno WHERE " . implode(" AND ", $condiciones) . " ORDER BY alumno_estado DESC";
-
-			$datos = $this->ejecutarConsulta($consulta_datos, $parametros);
-			$datos = $datos->fetchAll();
-			foreach($datos as $rows){				
-				$consulta_descuento = "SELECT descuento_alumnoid, descuento_estado  FROM alumno_pago_descuento WHERE descuento_alumnoid = :alumno";
-				$descuento = $this->ejecutarConsulta($consulta_descuento, [':alumno' => (int)$rows['alumno_id']]);
-				if($descuento->rowCount()==1){
-					foreach($descuento as $rows_descuento){
-						if($rows_descuento["descuento_estado"] == 'N'){
-							$boton = "btn-warning";							
-						}else{
-							$boton = "btn-info";							
-						}
-					}								
-				}else{
-					$boton = "btn-secondary";	
-				}				
-				$consulta_pagos = "SELECT pago_id FROM alumno_pago WHERE pago_alumnoid = :alumno";
-				$pagos = $this->ejecutarConsulta($consulta_pagos, [':alumno' => (int)$rows['alumno_id']]);
-				if($pagos->rowCount()>0){
-					$botonpago = "btn-info";
-				}else{
-					$botonpago = "btn-secondary";
-				}
-				if($rows['alumno_estado']=="I"){
-					$class = 'class="text-primary"';
-				}else{
-					$class = '';
-				}
-				
-				$estadop=$this->BuscarAlumno($rows['alumno_id']);
-				if($estadop->rowCount()==1){
-					$estadop=$estadop->fetch(); 
-					if($estadop['pendiente']==1){
-						$pendiente = 'Pendiente';
-						$clase = '<a class="float-start text-danger">';
-					}else{
-						$pendiente = 'Al día';
-						$clase = '<a class="float-start">';
-					}
-				}
-
-				$pension = $this->pensionesPendientes($rows['alumno_id']);
-				if($pension != ""){
-					$pendiente = "Pendiente";
-					$clase = '<a class="float-start text-danger">';
-				}
-
-				$tabla.='
-					<tr '.$class.'>
-						<td>'.$rows['alumno_identificacion'].'</td>
-						<td>'.$rows['alumno_primernombre'].' '.$rows['alumno_segundonombre'].'</td>
-						<td>'.$rows['alumno_apellidopaterno'].' '.$rows['alumno_apellidomaterno'].'</td>
-						<td>'.$rows['alumno_fechanacimiento'].'</td>
-						<td>'.$clase.$pendiente.'</a></td>
-						<td>
-							<a href="'.APP_URL.'pagosNew/'.$rows['alumno_id'].'/" class="btn float-end '.$botonpago.' btn-sm" target="_blank"><i class="fas fa-dollar-sign me-1"></i>Registrar pagos</a>
-							<a href="'.APP_URL.'pagosDescuento/'.$rows['alumno_id'].'/" class="btn float-end '.$boton.' btn-sm" style="margin-right: 5px;" target="_blank"><i class="fas fa-dollar-sign me-1"></i>Descuentos</a>
+				$conDescuento = $al['descuento_valor'] !== null;
+				$tabla .= '
+					<tr>
+						<td class="ds-ficha__principal" data-order="' . $h($orden) . '">
+							<div class="ds-ficha__con-imagen">
+								<span class="ds-ficha__imagen ds-alumnos__inicial" aria-hidden="true">' . $h($inicial) . '</span>
+								<div class="min-w-0">
+									<div class="ds-ficha__nombre">' . $h($nombre) . '</div>
+									<div class="ds-ficha__meta"><i class="fas fa-id-card" aria-hidden="true"></i> ' . $h($al['alumno_identificacion'])
+										. ($al['edad'] !== null ? ' · ' . (int)$al['edad'] . ((int)$al['edad'] === 1 ? ' año' : ' años') : '')
+										. ($activo ? '' : ' · <span class="badge text-bg-secondary">Inactivo</span>') . '</div>
+								</div>
+							</div>
 						</td>
-					</tr>';	
+						<td class="ds-ficha__dato ds-col-opcional" data-etiqueta="Fecha de ingreso" data-order="' . $h($ingreso) . '">' . $celdaIngreso . '</td>
+						<td class="ds-ficha__dato" data-etiqueta="Último pago de pensión" data-order="' . $h($ultima) . '">' . $celdaUltima . '</td>
+						<td class="ds-ficha__dato" data-etiqueta="Valor adeudado" data-order="' . number_format($deuda, 2, '.', '') . '">' . $celdaDeuda . '</td>
+						<td class="ds-ficha__dato ds-col-opcional" data-etiqueta="Asistencia" data-order="' . ($pct ?? -1) . '">' . $celdaAsis . '</td>
+						<td class="ds-tabla-acciones ds-ficha__acciones"><div class="ds-ficha__botones">
+							<a href="' . APP_URL . 'pagosNew/' . $id . '/" class="btn btn-primary btn-sm ds-ficha__primario"><i class="fas fa-dollar-sign me-1" aria-hidden="true"></i>Registrar pago</a>
+							<a href="' . APP_URL . 'pagosDescuento/' . $id . '/" class="btn btn-sm ' . ($conDescuento ? 'btn-info' : 'btn-secondary') . '"'
+								. ' title="' . ($conDescuento ? 'Descuentos (tiene uno activo)' : 'Descuentos') . '" aria-label="Descuentos de ' . $h($nombre) . '"><i class="fas fa-percent" aria-hidden="true"></i></a>
+						</div></td>
+					</tr>';
 			}
-			return $tabla;			
+			return $tabla;
 		}
+
+		/** Lo que suma la columna «Valor adeudado» del último listarAlumnosPagos(). */
+		public float $totalAdeudado = 0.0;
 
 		public function listarOptionSede($sedeid, $rolid = null, $usuario = null){
 			$option="";

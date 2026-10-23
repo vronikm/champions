@@ -51,8 +51,7 @@
     $pdf->SetMargins(0,0,0);	    
  	   
     $pdf->AddPage();
-    $__img = ds_logo_ruta((int)$sede["sede_id"]);
-    if (is_file($__img)) $pdf->Image($__img, 24, 10, 47, 26);
+    ds_logo_dibujar($pdf, (int)$sede["sede_id"], 24, 10, 47, 26, 'L');   /* a su proporción: antes salía casi el doble de ancho */
     $pdf->SetLineWidth(0.1); $pdf->Rect(10, 10, 190, 40, "D"); $x=15; $y=13;  
     $pdf->SetXY( $x, $y ); $pdf->SetFont( "Arial", "B", 12 ); $pdf->Cell( 240, 10, ds_nombre_organizacion_may($sede["sede_id"]), 0, 0, 'C'); $y+=5;
     $pdf->SetXY( $x, $y); $pdf->SetFont( "Arial", "", 10 ); $pdf->Cell(240, 12, mb_convert_encoding("Dirección: ".$sede["sede_direccion"], 'ISO-8859-1', 'UTF-8'), 0, 0, 'C'); $y+=5;

@@ -288,18 +288,49 @@ if (!function_exists('ds_organizacion')) {
     function ds_firma_dibujar(object $pdf, int $sedeid,
                               float $x, float $y, float $ancho, float $alto): bool
     {
-        $archivo = ds_firma_ruta($sedeid);
+        return ds_pdf_imagen_encajada($pdf, ds_firma_ruta($sedeid), $x, $y, $ancho, $alto);
+    }
+
+    /**
+     * Dibuja el logo de la sede dentro de un recuadro SIN deformarlo.
+     *
+     * Mismo problema que tuvo la firma: los PDF pedían el logo con ancho Y
+     * alto fijos y FPDF lo estiraba hasta llenarlos. El escudo es casi
+     * cuadrado (0,97:1) y el listado de alumnos lo metía en 47 x 26 mm: salía
+     * casi el doble de ancho. Pasaba, en distinta medida, en once PDF.
+     *
+     * $alinear: 'C' centra en el recuadro; 'L' lo pega a la izquierda (para
+     * cabeceras con el logo a un lado y el texto al otro).
+     *
+     * @param object $pdf  Instancia de FPDF.
+     * @return bool  true si llegó a dibujarse.
+     */
+    function ds_logo_dibujar(object $pdf, int $sedeid,
+                             float $x, float $y, float $ancho, float $alto, string $alinear = 'C'): bool
+    {
+        return ds_pdf_imagen_encajada($pdf, ds_logo_ruta($sedeid), $x, $y, $ancho, $alto, $alinear);
+    }
+
+    /**
+     * Una imagen dentro de un recuadro, a su proporción: la escala menor de
+     * las dos es la que hace que quepa entera, y se centra en el hueco (en
+     * horizontal, según $alinear). Si el archivo no está o no es una imagen,
+     * no dibuja nada y el documento se genera igual.
+     */
+    function ds_pdf_imagen_encajada(object $pdf, string $archivo,
+                                    float $x, float $y, float $ancho, float $alto, string $alinear = 'C'): bool
+    {
         if ($archivo === '' || !is_file($archivo)) { return false; }
 
         $medidas = @getimagesize($archivo);
         if ($medidas === false || $medidas[0] <= 0 || $medidas[1] <= 0) { return false; }
 
-        /* La escala menor de las dos es la que hace que quepa entera. */
         $escala = min($ancho / $medidas[0], $alto / $medidas[1]);
         $w = $medidas[0] * $escala;
         $h = $medidas[1] * $escala;
+        $dx = $alinear === 'L' ? 0 : ($alinear === 'R' ? $ancho - $w : ($ancho - $w) / 2);
 
-        $pdf->Image($archivo, $x + ($ancho - $w) / 2, $y + ($alto - $h) / 2, $w, $h);
+        $pdf->Image($archivo, $x + $dx, $y + ($alto - $h) / 2, $w, $h);
         return true;
     }
 }

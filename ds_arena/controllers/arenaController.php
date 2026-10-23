@@ -2046,8 +2046,7 @@ class arenaController
 
         /* Cabecera: organización y sede a la izquierda, número a la derecha */
         $pdf->Rect(10, 10, 190, 40);
-        $logo = ds_logo_ruta($sede);
-        if ($logo !== '' && is_file($logo)) { $pdf->Image($logo, 15, 14, 30, 30); }
+        ds_logo_dibujar($pdf, (int)$sede, 15, 14, 30, 30);   /* a su proporción, sin estirar */
         $pdf->SetXY(50, 14); $pdf->SetFont('Arial', 'B', 12); $pdf->Cell(85, 6, $t(ds_nombre_organizacion_may($sede)), 0, 0, 'L');
         $pdf->SetXY(50, 20); $pdf->SetFont('Arial', '', 8);  $pdf->Cell(85, 5, $t('Alquiler de instalaciones · Arena'), 0, 0, 'L');
         $pdf->SetXY(50, 27); $pdf->Cell(85, 5, $t('Sede ' . $r['sede_nombre']), 0, 0, 'L');

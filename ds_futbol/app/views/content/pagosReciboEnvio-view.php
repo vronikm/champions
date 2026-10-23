@@ -60,8 +60,7 @@
 	
 	// logo : 80 de largo por 55 de alto
         //,,ancho,
-		$__img = ds_logo_ruta((int)$sede["sede_id"]);
-    if (is_file($__img)) $pdf->Image($__img, 52, 10, 28, 28);
+    ds_logo_dibujar($pdf, (int)$sede["sede_id"], 52, 10, 28, 28);   /* a su proporción, sin estirar */
 
         $pdf->SetLineWidth(0.1); $pdf->Rect(10, 10, 190, 40, "D"); $x=15; $y=13;       		
 

@@ -288,7 +288,7 @@ foreach($carnetsData as $carnet) {
     // ====================
     $logoPath = ds_logo_ruta((int)$sede["sede_id"]);
     if(file_exists($logoPath)) {
-        $pdf->Image($logoPath, $x + 40, $y + 2, 18, 17);
+        ds_logo_dibujar($pdf, (int)$sede["sede_id"], $x + 40, $y + 2, 18, 17);   /* a su proporción */
     }
     
     // Código QR

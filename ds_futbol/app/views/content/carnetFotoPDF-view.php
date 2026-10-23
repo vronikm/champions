@@ -132,7 +132,7 @@ if(file_exists($imgDerecha)){
 // ============================================
 $logoPath = ds_logo_ruta((int)$sede["sede_id"]);
 if(file_exists($logoPath)){
-    $pdf->Image($logoPath, $x + 40, $y + 2, 17, 19);
+    ds_logo_dibujar($pdf, (int)$sede["sede_id"], $x + 40, $y + 2, 17, 19);   /* a su proporción */
 }
 
 // Código QR

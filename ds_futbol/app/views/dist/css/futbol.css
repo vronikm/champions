@@ -945,3 +945,28 @@
    grande que la inicial de otros listados: es lo que se revisa aquí.
    ========================================================================= */
 #tablaFotos .ds-ficha__imagen { width: 3rem; height: 3rem; }
+
+/* =========================================================================
+   MARCAR ENTRADA Y SALIDA (empleadoEntrada). Una columna centrada: quién,
+   el reloj, el botón grande y las marcaciones del día.
+   ========================================================================= */
+.ds-marca__quien { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+.ds-marca__foto { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; background: var(--bs-tertiary-bg); flex: none; }
+.ds-marca__nombre { font-weight: 600; font-size: 1.05rem; line-height: 1.25; overflow-wrap: anywhere; }
+.ds-marca__reloj { text-align: center; margin: 1.5rem 0 1.25rem; }
+.ds-marca__hora { font-size: clamp(2.75rem, 12vw, 4rem); font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.ds-marca__fecha { color: var(--bs-secondary-color); margin-top: .35rem; }
+.ds-marca__fecha::first-letter { text-transform: uppercase; }   /* «Viernes 23 de octubre», no «De Octubre» */
+.ds-marca { overflow: hidden; }                                 /* la lista del día respeta las esquinas */
+.ds-marca__boton { min-height: 3.5rem; font-weight: 600; }
+.ds-marca__ubicacion { margin-top: .85rem; font-size: .9rem; text-align: center; }
+.ds-marca__permiso { background: var(--bs-tertiary-bg); border-radius: var(--bs-border-radius-lg); padding: .9rem 1rem; }
+.ds-marca__permiso--bloqueado { border-left: 4px solid var(--bs-warning); }
+.ds-marca__permiso .btn { min-height: 2.75rem; }
+.ds-marca__pasos { padding-left: 1.25rem; margin-bottom: .5rem; }
+.ds-marca__pasos li + li { margin-top: .3rem; }
+.ds-marca__permiso summary { cursor: pointer; color: var(--bs-link-color); }
+.ds-marca__icono { width: 2.25rem; height: 2.25rem; border-radius: 50%; display: grid; place-items: center; flex: none; font-size: .9rem; }
+@media (max-width: 575.98px) {
+    .ds-marca__quien .badge { margin-left: 0 !important; }
+}

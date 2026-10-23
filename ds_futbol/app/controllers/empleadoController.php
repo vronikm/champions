@@ -278,88 +278,104 @@
 			return $option;
 		}
 
+		/*----------  Empleados ingresados (vista empleadoList)  ----------*/
+		/*
+		| Una fila por empleado: quién es (foto, cédula, tipo y especialidad),
+		| sede, contacto, acceso al sistema y estado. Marcado de fichas
+		| (.ds-crud): tabla en escritorio y ficha por debajo de 992 px.
+		|
+		| ANTES: ocho columnas con float-end, sin el estado a la vista (sólo el
+		| texto del botón Activar/Inactivar lo delataba) y los datos sin
+		| escapar. El botón «Registrar» de honorarios abría otra pestaña.
+		*/
 		public function listarEmpleados(){
-			$tabla="";
-			$consulta_datos="SELECT empleado_id, empleado_sedeid, sede_nombre as SEDE, empleado_identificacion, empleado_nombre, empleado_correo, empleado_celular,
-									CASE WHEN empleado_estado='A' THEN 'Activo' 
-										WHEN empleado_estado = 'I' THEN 'Inactivo' 
-										ELSE empleado_estado 
-									END AS ESTADO, empleado_sistema, usuario_id, usuario_usuario, usuario_estado
-								FROM sujeto_empleado E
-									left join general_sede S on E.empleado_sedeid = sede_id
-									left join seguridad_usuario U on E.empleado_id = U.usuario_empleadoid
-								WHERE empleado_estado IN ('A','I')
-								ORDER BY empleado_estado ASC";	
-					
-			$datos = $this->ejecutarConsulta($consulta_datos);
-			$datos = $datos->fetchAll();
+			$datos = $this->ejecutarConsulta("SELECT E.empleado_id, E.empleado_identificacion, E.empleado_nombre, E.empleado_correo,
+						E.empleado_celular, E.empleado_foto, E.empleado_estado, S.sede_nombre,
+						TP.catalogo_descripcion AS tipo, ES.catalogo_descripcion AS especialidad,
+						U.usuario_estado
+					FROM sujeto_empleado E
+					LEFT JOIN general_sede S ON S.sede_id = E.empleado_sedeid
+					LEFT JOIN seguridad_usuario U ON U.usuario_empleadoid = E.empleado_id
+					LEFT JOIN general_tabla_catalogo TP ON TP.catalogo_valor = E.empleado_tipopersonalid
+					       AND TP.catalogo_tablaid = (SELECT tabla_id FROM general_tabla WHERE tabla_nombre = 'tipo_personal' LIMIT 1)
+					LEFT JOIN general_tabla_catalogo ES ON ES.catalogo_valor = E.empleado_especialidadid
+					       AND ES.catalogo_tablaid = (SELECT tabla_id FROM general_tabla WHERE tabla_nombre = 'especialidad_empleado' LIMIT 1)
+					WHERE E.empleado_estado IN ('A','I')
+					ORDER BY E.empleado_estado, E.empleado_nombre")->fetchAll();
 
 			/* Crear el usuario de sistema de un empleado es competencia de
 			   DigiSports Core; el enlace sale de aquí por comodidad, pero
 			   sólo se ofrece a quien tenga acceso a ese módulo. */
 			$accesoCore = usuario_tiene_modulo('core');
 
-			foreach($datos as $rows){
-				if($rows['ESTADO']=='Activo'){
-					$texto = "Inactivar";
-					$boton = "btn-secondary";
-				}else{
-					$texto = "Activar";
-					$boton = "btn-info";
+			$h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+
+			$tabla = "";
+			foreach ($datos as $rows) {
+				$id     = (int)$rows['empleado_id'];
+				$activo = $rows['empleado_estado'] === 'A';
+				$nombre = preg_replace('/\s+/', ' ', trim(html_entity_decode((string)$rows['empleado_nombre'], ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+
+				/* Foto, o las iniciales si no tiene. */
+				$partes  = preg_split('/\s+/', $nombre);
+				$inicial = mb_strtoupper(mb_substr($partes[0] ?? '', 0, 1) . mb_substr($partes[1] ?? '', 0, 1));
+				$imagen  = trim((string)$rows['empleado_foto']) !== ''
+					? '<img src="' . $h(media_url('empleado', $rows['empleado_foto'])) . '" alt="" loading="lazy" width="40" height="40" class="ds-ficha__imagen">'
+					: '<span class="ds-ficha__imagen ds-alumnos__inicial" aria-hidden="true">' . $h($inicial) . '</span>';
+
+				$puesto = implode(' · ', array_filter([$h($rows['tipo']), $h($rows['especialidad'])], 'strlen'));
+
+				/* Contacto: el celular llama y el correo abre el cliente de correo. */
+				$celular = preg_replace('/\D/', '', (string)$rows['empleado_celular']);
+				$correo  = trim((string)$rows['empleado_correo']);
+				$contacto = ($celular !== '' ? '<div><a href="tel:' . $celular . '" class="text-decoration-none text-nowrap"><i class="fas fa-phone me-1 text-body-secondary" aria-hidden="true"></i>' . $h($rows['empleado_celular']) . '</a></div>' : '')
+					. ($correo !== '' ? '<div class="small text-break"><a href="mailto:' . $h($correo) . '" class="text-decoration-none">' . $h($correo) . '</a></div>' : '');
+
+				/* Acceso al sistema: el usuario de DigiSports Core, si lo tiene. */
+				if ($rows['usuario_estado'] === 'A') {
+					$acceso = '<span class="badge text-bg-success">Con acceso</span>';
+				} elseif ($rows['usuario_estado'] === 'I') {
+					$acceso = '<span class="badge text-bg-secondary">Usuario inactivo</span>';
+				} else {
+					$acceso = '<span class="text-body-secondary small">Sin usuario</span>'
+						. ($accesoCore ? ' <a href="' . DS_HUB_URL . 'ds_core/admin/usuarioForm/?empleado=' . $id . '" class="btn btn-secondary btn-sm ms-1" target="_blank" rel="noopener" title="Crear su usuario en DigiSports Core"><i class="fas fa-user-plus me-1" aria-hidden="true"></i>Asignar</a>' : '');
 				}
 
-				/* Por defecto, sin usuario. Sin esto, un empleado marcado con
-				   empleado_sistema distinto de 'N' pero sin fila en
-				   seguridad_usuario dejaba las variables sin definir, o con
-				   los valores de la fila anterior. */
-				$asignarsistema = "Asignar";
-				$botonasignar = "btn-secondary";
-				$habilitado = "";
-				if($rows['usuario_estado']=='A'){			
-					$asignarsistema = "Activo";
-					$botonasignar = "btn-info";
-					$habilitado = "disabled";
-				}
-				if($rows['usuario_estado']=='I'){				
-					$asignarsistema = "Inactivo";
-					$botonasignar = "btn-danger";
-					$habilitado = "disabled";
-				}
+				$botones = '<a href="' . APP_URL . 'empleadoIE/' . $id . '/" class="btn btn-primary btn-sm ds-ficha__primario"><i class="fas fa-dollar-sign me-1" aria-hidden="true"></i>Honorarios</a>';
+				$botones .= $this->siPuede('editar', 'empleadoList',
+					'<a href="' . APP_URL . 'empleadoList/' . $id . '/#empleado-form" class="btn btn-info btn-sm" title="Editar" aria-label="Editar a ' . $h($nombre) . '"><i class="fas fa-pen" aria-hidden="true"></i></a>'
+					. '<form class="FormularioAjax" action="' . APP_URL . 'app/ajax/empleadoAjax.php" method="POST" autocomplete="off">
+						<input type="hidden" name="modulo_empleado" value="actualizarestado">
+						<input type="hidden" name="empleado_id" value="' . $id . '">
+						<button type="submit" class="btn btn-sm ' . ($activo ? 'btn-secondary' : 'btn-success') . '" title="' . ($activo ? 'Inactivar' : 'Activar') . '" aria-label="' . ($activo ? 'Inactivar' : 'Activar') . ' a ' . $h($nombre) . '"><i class="fas ' . ($activo ? 'fa-user-slash' : 'fa-user-check') . '" aria-hidden="true"></i></button>
+					</form>');
+				$botones .= $this->siPuede('eliminar', 'empleadoList',
+					'<form class="FormularioAjax" action="' . APP_URL . 'app/ajax/empleadoAjax.php" method="POST" autocomplete="off">
+						<input type="hidden" name="modulo_empleado" value="eliminar">
+						<input type="hidden" name="empleado_id" value="' . $id . '">
+						' . ds_boton_eliminar('a ' . $nombre) . '
+					</form>');
 
-				$tabla.='
+				$tabla .= '
 					<tr>
-						<td>'.$rows['SEDE'].'</td>						
-						<td>'.$rows['empleado_identificacion'].'</td>
-						<td>'.$rows['empleado_nombre'].'</td>
-						<td>'.$rows['empleado_correo'].'</td>
-						<td>'.$rows['empleado_celular'].'</td>
-						<td>
-							<a href="'.APP_URL.'empleadoIE/'.$rows['empleado_id'].'/" class="btn float-start btn-warning btn-sm" style="margin-right: 5px;" target="_blank">Registrar</a>
-					    </td>
-						<td>
-							'.($accesoCore ? '<a href="'.DS_HUB_URL.'ds_core/admin/usuarioForm/?empleado='.$rows['empleado_id'].'" class="btn float-start '.$botonasignar.' '.$habilitado.' btn-sm" style="margin-right: 5px;" target="_blank"> '.$asignarsistema.'</a>' : '').'
+						<td class="ds-ficha__principal" data-order="' . $h($nombre) . '">
+							<div class="ds-ficha__con-imagen">' . $imagen . '
+								<div class="min-w-0">
+									<div class="ds-ficha__nombre">' . $h($nombre) . '</div>
+									<div class="ds-ficha__meta"><i class="fas fa-id-card" aria-hidden="true"></i> ' . $h($rows['empleado_identificacion']) . ($puesto !== '' ? ' · ' . $puesto : '') . '</div>
+								</div>
+							</div>
 						</td>
-						<td>
-							'.$this->siPuede('eliminar','empleadoList','<form class="FormularioAjax" action="'.APP_URL.'app/ajax/empleadoAjax.php" method="POST" autocomplete="off" >
-								<input type="hidden" name="modulo_empleado" value="eliminar">
-								<input type="hidden" name="empleado_id" value="'.$rows['empleado_id'].'">						
-								<button type="submit" class="btn float-end btn-danger btn-sm" style="margin-right: 5px;" title="Eliminar" aria-label="Eliminar"><i class="fas fa-trash"></i></button>
-							</form>').'
-							
-							'.$this->siPuede('editar','empleadoList','<form class="FormularioAjax" action="'.APP_URL.'app/ajax/empleadoAjax.php" method="POST" autocomplete="off" >
-								<input type="hidden" name="modulo_empleado" value="actualizarestado">
-								<input type="hidden" name="empleado_id" value="'.$rows['empleado_id'].'">						
-								<button type="submit" class="btn float-end '.$boton.' btn-sm" style="margin-right: 5px;"> '.$texto.' </button>
-							</form>').'
-
-							'.$this->siPuede('editar','empleadoList','<a href="'.APP_URL.'empleadoList/'.$rows['empleado_id'].'/" class="btn float-end btn-success btn-sm" style="margin-right: 5px;" title="Editar" aria-label="Editar"><i class="fas fa-pen"></i></a>').'
-						</td>
-						</td>
-					</tr>';	
+						<td class="ds-ficha__dato ds-col-opcional" data-etiqueta="Sede">' . $h($rows['sede_nombre']) . '</td>
+						<td class="ds-ficha__dato" data-etiqueta="Contacto">' . ($contacto !== '' ? $contacto : '<span class="text-body-secondary">—</span>') . '</td>
+						<td class="ds-ficha__dato" data-etiqueta="Acceso al sistema">' . $acceso . '</td>
+						<td class="ds-ficha__estado" data-order="' . ($activo ? '0' : '1') . '"><span class="badge ' . ($activo ? 'text-bg-success' : 'text-bg-secondary') . '">' . ($activo ? 'Activo' : 'Inactivo') . '</span></td>
+						<td class="ds-tabla-acciones ds-ficha__acciones"><div class="ds-ficha__botones">' . $botones . '</div></td>
+					</tr>';
 			}
 			return $tabla;
 		}
-		
+
 		public function OptionTipoIdentificacion($tipoidentificacion){
 			$option="";
 
@@ -2119,149 +2135,101 @@
 			return $datos;
 		}
 
-		public function BuscarUsuario($identificacion){		
-			$consulta_datos="SELECT empleado_id, empleado_identificacion, empleado_nombre, empleado_correo, empleado_celular, 
-									empleado_direccion, empleado_fechaingreso, empleado_foto, CASE WHEN empleado_estado = 'A' THEN 'Activo' WHEN empleado_estado = 'I' THEN 'Inactivo' ELSE 'Sin definir' END Estado, 
-									sede_nombre, catalogo_descripcion AS Especialidad
-								FROM sujeto_empleado
-								INNER JOIN general_sede ON sede_id = empleado_sedeid
-								INNER JOIN general_tabla_catalogo ON catalogo_valor = empleado_especialidadid
-								INNER JOIN general_tabla ON tabla_id = catalogo_tablaid
-								where empleado_estado = 'A'
-									AND empleado_identificacion = :identificacion";
-				
-			$datos = $this->ejecutarConsulta($consulta_datos, [':identificacion' => $identificacion]);				
-			return $datos;
+		/*==============================================================
+		| Marcar entrada y salida (vista empleadoEntrada)
+		|
+		| QUIÉN MARCA
+		|
+		| El empleado sale SIEMPRE de la sesión: empleado_actual(), el
+		| usuario_empleadoid que guarda el login. ANTES la vista buscaba
+		| $_SESSION['identificacion'], que nadie guarda, así que nunca
+		| encontraba al empleado; y el servidor registraba la marcación
+		| para el «empleadoid» y el «estado_es» que llegaran en campos
+		| ocultos: bastaba cambiarlos para marcar a nombre de otro.
+		|
+		| QUÉ SE MARCA
+		|
+		| Lo decide el servidor: si la última marcación de HOY es una
+		| entrada, toca salida; si no, entrada.
+		|==============================================================*/
+
+		/** El empleado ACTIVO vinculado al usuario de la sesión, o null. */
+		public function empleadoDeLaSesion(): ?array {
+			$id = empleado_actual();
+			if ($id <= 0) { return null; }
+			$fila = $this->ejecutarConsulta("SELECT E.empleado_id, E.empleado_identificacion, E.empleado_nombre, E.empleado_foto,
+						E.empleado_fechaingreso, S.sede_nombre, ES.catalogo_descripcion AS especialidad
+					FROM sujeto_empleado E
+					LEFT JOIN general_sede S ON S.sede_id = E.empleado_sedeid
+					LEFT JOIN general_tabla_catalogo ES ON ES.catalogo_valor = E.empleado_especialidadid
+					       AND ES.catalogo_tablaid = (SELECT tabla_id FROM general_tabla WHERE tabla_nombre = 'especialidad_empleado' LIMIT 1)
+					WHERE E.empleado_id = :id AND E.empleado_estado = 'A'", [':id' => $id])->fetch();
+			return $fila ?: null;
+		}
+
+		/** Las marcaciones de hoy del empleado, en orden. «Hoy» lo dice PHP
+		    (America/Guayaquil), no CURDATE(): MySQL puede estar en otra zona. */
+		public function marcacionesDeHoy(int $empleadoId): array {
+			return $this->ejecutarConsulta("SELECT asistencia_hora, asistencia_tipo, asistencia_latitud, asistencia_longitud
+					FROM empleado_asistencia
+					WHERE asistencia_empleadoid = :empleado AND asistencia_hora >= :desde AND asistencia_hora < :hasta
+					ORDER BY asistencia_hora, asistencia_id",
+				[':empleado' => $empleadoId, ':desde' => date('Y-m-d 00:00:00'), ':hasta' => date('Y-m-d 00:00:00', strtotime('+1 day'))])->fetchAll();
 		}
 
 		public function AsistenciaCoordenadas(){
-			// Capturar coordenadas del formulario
-			$latitude  = $this->limpiarCadena($_POST['latitude']);
-			$longitude = $this->limpiarCadena($_POST['longitude']);			
-			$empleadoid= $this->limpiarCadena($_POST['empleadoid']);
-			$estado_es = $this->limpiarCadena($_POST['estado_es']);
+			$aviso = static fn(string $titulo, string $texto, string $icono = 'error') =>
+				json_encode(["tipo" => "simple", "titulo" => $titulo, "texto" => $texto, "icono" => $icono]);
+
+			$empleado = $this->empleadoDeLaSesion();
+			if ($empleado === null) {
+				return $aviso("Sin ficha de empleado", "Su usuario no está vinculado a un empleado activo. Pida a administración que lo vincule.");
+			}
+			$empleadoid = (int)$empleado['empleado_id'];
+
+			/* Coordenadas: números dentro del rango, y no el 0,0 que deja
+			   un formulario enviado sin ubicación. */
+			$latitude  = filter_var($_POST['latitude'] ?? '', FILTER_VALIDATE_FLOAT);
+			$longitude = filter_var($_POST['longitude'] ?? '', FILTER_VALIDATE_FLOAT);
+			if ($latitude === false || $longitude === false || abs($latitude) > 90 || abs($longitude) > 180
+				|| (abs($latitude) < 0.0001 && abs($longitude) < 0.0001)) {
+				return $aviso("Falta la ubicación", "No se recibió su ubicación. Permita el acceso a la ubicación y vuelva a intentarlo.");
+			}
+
+			/* Entrada o salida según la última marcación de hoy. Un doble
+			   toque en el botón marcaba dos veces seguidas: se ignora lo que
+			   llegue menos de un minuto después de la anterior. */
+			$hoy    = $this->marcacionesDeHoy($empleadoid);
+			$ultima = $hoy ? end($hoy) : null;
+			if ($ultima && time() - strtotime($ultima['asistencia_hora']) < 60) {
+				return $aviso("Ya registrado", "Su " . ($ultima['asistencia_tipo'] === 'E' ? "entrada" : "salida")
+					. " quedó registrada a las " . date('H:i', strtotime($ultima['asistencia_hora'])) . ".", 'info');
+			}
+			$estado_es = ($ultima && $ultima['asistencia_tipo'] === 'E') ? 'S' : 'E';
 
 			$fechahora = date('Y-m-d H:i:s');
-
 			$googleMapsLink = "https://www.google.com/maps?q={$latitude},{$longitude}";
-		
-			if($latitude=="" || $longitude=="" || $fechahora=="" || $empleadoid=="" || $estado_es==""){
-				$alerta=[
-					"tipo"=>"simple",
-					"titulo"=>"Error",
-					"texto"=>"No se han obtenido todos los campos obligatorios",
-					"icono"=>"error"
-				];
-				return json_encode($alerta);
-			}			
 
 			$empleadoasistencia_reg=[
-				[
-					"campo_nombre"=>"asistencia_empleadoid",
-					"campo_marcador"=>":Empleadoid",
-					"campo_valor"=>$empleadoid
-				],
-				[
-					"campo_nombre"=>"asistencia_hora",
-					"campo_marcador"=>":Hora",
-					"campo_valor"=>$fechahora
-				],
-				[
-					"campo_nombre"=>"asistencia_tipo",
-					"campo_marcador"=>":Tipo",
-					"campo_valor"=>$estado_es
-				],
-				[
-					"campo_nombre"=>"asistencia_latitud",
-					"campo_marcador"=>":Latitud",
-					"campo_valor"=>$latitude
-				],				
-				[
-					"campo_nombre"=>"asistencia_longitud",
-					"campo_marcador"=>":Longitud",
-					"campo_valor"=>$longitude
-				],
-				[
-					"campo_nombre"=>"asistencia_ubicacion",
-					"campo_marcador"=>":Ubicacion",
-					"campo_valor"=>$googleMapsLink
-				]
-
+				["campo_nombre"=>"asistencia_empleadoid", "campo_marcador"=>":Empleadoid", "campo_valor"=>$empleadoid],
+				["campo_nombre"=>"asistencia_hora",       "campo_marcador"=>":Hora",       "campo_valor"=>$fechahora],
+				["campo_nombre"=>"asistencia_tipo",       "campo_marcador"=>":Tipo",       "campo_valor"=>$estado_es],
+				["campo_nombre"=>"asistencia_latitud",    "campo_marcador"=>":Latitud",    "campo_valor"=>$latitude],
+				["campo_nombre"=>"asistencia_longitud",   "campo_marcador"=>":Longitud",   "campo_valor"=>$longitude],
+				["campo_nombre"=>"asistencia_ubicacion",  "campo_marcador"=>":Ubicacion",  "campo_valor"=>$googleMapsLink],
 			];
 
 			$registrar_asistenciaempleado=$this->guardarDatos("empleado_asistencia",$empleadoasistencia_reg);
 
 			if($registrar_asistenciaempleado->rowCount()==1){
-				$alerta=[
-					"tipo"=>"redireccionar",
-					"url"=>APP_URL.'empleadoEntrada/',
-					"titulo"=>"Empleado registrado",
-					"texto"=>"Asistencia registrada correctamente",
-					"icono"=>"success"
-				];
-			}else{
-				$alerta=[
-					"tipo"=>"simple",
-					"titulo"=>"Error",
-					"texto"=>"No se pudo registrar su asistencia, por favor intente nuevamente",
-					"icono"=>"error"
-				];
+				return json_encode([
+					"tipo"   => "redireccionar",
+					"url"    => APP_URL . 'empleadoEntrada/',
+					"titulo" => $estado_es === 'E' ? "Entrada registrada" : "Salida registrada",
+					"texto"  => ($estado_es === 'E' ? "Entrada" : "Salida") . " a las " . date('H:i', strtotime($fechahora)) . ".",
+					"icono"  => "success"
+				]);
 			}
-			return json_encode($alerta);
+			return $aviso("Error", "No se pudo registrar su asistencia, por favor intente nuevamente");
 		}
-		
-		
-		public function listarMarcaciones($empleado_id, $fecha){
-			$tabla="";
-			// Convertir fecha a formato MySQL (YYYY-MM-DD) si no lo está
-			$fechaFormatoMysql = DateTime::createFromFormat('d/m/Y', $fecha);
-			if($fechaFormatoMysql === false){ return ""; }
-			$fecha = $fechaFormatoMysql->format('Y-m-d');
-
-			$consulta_datos="SELECT DATE(asistencia_hora) AS fecha,
-    								TIME(asistencia_hora) AS hora,
-									asistencia_tipo, asistencia_ubicacion
-							 FROM empleado_asistencia 
-							 WHERE asistencia_empleadoid = :empleado 
-							 AND asistencia_hora >= :fecha";	
-					
-			$datos = $this->ejecutarConsulta($consulta_datos, [':empleado' => (int)$empleado_id, ':fecha' => $fecha]);
-			$datos = $datos->fetchAll();
-			foreach($datos as $rows){
-				if($rows['asistencia_tipo']=='E'){
-					$asistencia_tipo = "Entrada";
-				}else{
-					$asistencia_tipo = "Salida";
-				}	
-
-				$tabla.='
-					<tr>
-						<td>'.$rows['fecha'].'</td>						
-						<td>'.$rows['hora'].'</td>
-						<td>'.$asistencia_tipo.'</td>
-						<td><a href="'.$rows['asistencia_ubicacion'].'" target="_blank"> Lugar de marcación</a></td>													
-					</tr>';	
-			}
-			return $tabla;
-		}		
-		public function BuscarMarcacion($identificacion){	
-			
-			$fechaFormatoMysql = DateTime::createFromFormat('d/m/Y', date("d/m/Y"));
-			$fecha = $fechaFormatoMysql->format('Y-m-d');			
-
-			$consulta_datos="SELECT asistencia_hora, asistencia_tipo
-							FROM empleado_asistencia
-							WHERE asistencia_hora = (
-								SELECT MAX(asistencia_hora)
-								FROM empleado_asistencia
-								WHERE asistencia_empleadoid = (SELECT empleado_id FROM sujeto_empleado WHERE empleado_identificacion = :identificacion)
-								AND asistencia_hora >= :fecha
-							)
-							LIMIT 1";
-				
-			$datos = $this->ejecutarConsulta($consulta_datos, [':identificacion' => $identificacion, ':fecha' => $fecha]);				
-			return $datos;
-		}
-
-
 	}

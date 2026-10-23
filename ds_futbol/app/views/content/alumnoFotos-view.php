@@ -7,6 +7,10 @@
 	$sedeSel  = isset($_GET['sede'])   ? $insFoto->limpiarCadena($_GET['sede'])   : '';
 	$estadoF  = isset($_GET['estado']) ? $insFoto->limpiarCadena($_GET['estado']) : '';
 
+	/* Estado del ALUMNO (no de la foto): activos salvo que se pida otra cosa. */
+	$alumnoEstado = in_array($_GET['alumno_estado'] ?? '', ['A', 'I', 'T'], true) ? $_GET['alumno_estado'] : 'A';
+	$ESTADOS = ['A' => 'Activos', 'I' => 'Inactivos', 'T' => 'Todos'];
+
 	/*
 	| El resumen se calcula sobre TODOS los alumnos del alcance, no sobre lo
 	| que queda tras filtrar por estado.
@@ -29,7 +33,7 @@
 	| midio: 307 comprobaciones de disco cuestan 5,86 ms. Lo caro nunca fue
 	| mirar el disco, sino mandar el HTML.
 	*/
-	$todos   = $insFoto->listar($busqueda, $sedeSel, '');
+	$todos   = $insFoto->listar($busqueda, $sedeSel, '', $alumnoEstado);
 	$resumen = $insFoto->resumen($todos);
 
 	$sedes         = $insFoto->sedes();
@@ -63,12 +67,12 @@
 
 		<div class="app-content-header">
 			<div class="container-fluid">
-				<div class="row">
-					<div class="col-sm-6"><h3 class="mb-0">Fotos de alumnos</h3></div>
-					<div class="col-sm-6">
-						<ol class="breadcrumb float-sm-end">
+				<div class="row mb-2 g-2 align-items-center">
+					<div class="col-sm-7"><h4 class="m-0">Fotos de alumnos</h4></div>
+					<div class="col-sm-5">
+						<ol class="breadcrumb float-sm-end mb-0">
 							<li class="breadcrumb-item"><a href="<?php echo APP_URL; ?>dashboard/">Inicio</a></li>
-							<li class="breadcrumb-item active">Fotos de alumnos</li>
+							<li class="breadcrumb-item active" aria-current="page">Fotos de alumnos</li>
 						</ol>
 					</div>
 				</div>
@@ -76,13 +80,13 @@
 		</div>
 
 		<div class="app-content">
-			<div class="container-fluid">
+			<div class="container-fluid ds-crud">
 
 				<!-- ==================== El diagnóstico ==================== -->
 				<div class="row">
 					<?php
 					$tarjetas = [
-						['Alumnos',          $resumen['TOTAL'],                              'primary',  'fa-users',              ''],
+						['Alumnos' . ['A' => ' activos', 'I' => ' inactivos', 'T' => ''][$alumnoEstado], $resumen['TOTAL'],                             'primary',  'fa-users',              ''],
 						['Con foto',         $resumen[fotoAlumnoController::OK],             'success',  'fa-circle-check',       fotoAlumnoController::OK],
 						['Sin foto',         $resumen[fotoAlumnoController::SIN],            'secondary','fa-user',               fotoAlumnoController::SIN],
 						['Archivo ausente',  $resumen[fotoAlumnoController::AUSENTE],         'danger',   'fa-triangle-exclamation', fotoAlumnoController::AUSENTE],
@@ -92,10 +96,10 @@
 						   alumnos que lo componen, que es lo que se quiere
 						   hacer justo después de leerlo. */
 						$destino = $filtro === ''
-							? '?' . http_build_query(array_filter(['q' => $busqueda, 'sede' => $sedeSel]))
-							: '?' . http_build_query(array_filter(['q' => $busqueda, 'sede' => $sedeSel, 'estado' => $filtro]));
+							? '?' . http_build_query(array_filter(['q' => $busqueda, 'sede' => $sedeSel, 'alumno_estado' => $alumnoEstado]))
+							: '?' . http_build_query(array_filter(['q' => $busqueda, 'sede' => $sedeSel, 'alumno_estado' => $alumnoEstado, 'estado' => $filtro]));
 					?>
-						<div class="col-12 col-sm-6 col-lg-3">
+						<div class="col-6 col-lg-3">
 							<a href="<?php echo $destino; ?>" class="text-decoration-none">
 								<div class="small-box text-bg-<?php echo $color; ?>
 								            <?php echo ($estadoF === $filtro && $filtro !== '') ? 'shadow-lg' : ''; ?>">
@@ -135,32 +139,46 @@
 					</div>
 				<?php endif; ?>
 
-				<!-- ==================== Filtros ==================== -->
-				<div class="card">
+				<!-- ==================== Criterios de búsqueda ==================== -->
+				<form method="GET" autocomplete="off" class="card ds-alumnos__filtros">
+					<div class="card-header">
+						<h3 class="card-title"><i class="fas fa-filter me-2" aria-hidden="true"></i>Criterios de búsqueda</h3>
+						<div class="card-tools">
+							<button type="button" class="btn btn-tool" data-lte-toggle="card-collapse" title="Plegar o desplegar" aria-label="Plegar o desplegar"><i data-lte-icon="expand" class="fas fa-plus"></i><i data-lte-icon="collapse" class="fas fa-minus"></i></button>
+						</div>
+					</div>
 					<div class="card-body">
-						<form method="GET" class="row g-2 align-items-end">
-							<div class="col-12 col-md-4">
-								<label for="q" class="form-label small mb-1">Buscar</label>
-								<input type="search" class="form-control form-control-sm" id="q" name="q"
+						<div class="row g-3">
+							<div class="col-12 col-lg-4 col-xl">
+								<label for="q" class="form-label">Buscar</label>
+								<input type="search" class="form-control" id="q" name="q"
 								       value="<?php echo htmlspecialchars($busqueda, ENT_QUOTES, 'UTF-8'); ?>"
 								       placeholder="Cédula, nombre o apellido">
 							</div>
-							<div class="col-6 col-md-3">
-								<label for="sede" class="form-label small mb-1">Sede</label>
-								<select class="form-select form-select-sm" id="sede" name="sede">
+							<div class="col-6 col-lg-4 col-xl-2">
+								<label for="alumno_estado" class="form-label">Estado</label>
+								<select class="form-select" id="alumno_estado" name="alumno_estado">
+									<?php foreach ($ESTADOS as $valor => $texto): ?>
+										<option value="<?php echo $valor; ?>" <?php echo $alumnoEstado === $valor ? 'selected' : ''; ?>><?php echo $texto; ?></option>
+									<?php endforeach; ?>
+								</select>
+							</div>
+							<div class="col-6 col-lg-4 col-xl-2">
+								<label for="sede" class="form-label">Sede</label>
+								<select class="form-select" id="sede" name="sede">
 									<option value="">Todas</option>
 									<?php foreach ($sedes as $s): ?>
 										<option value="<?php echo (int)$s['sede_id']; ?>"
 											<?php echo ((string)$sedeSel === (string)$s['sede_id']) ? 'selected' : ''; ?>>
-											<?php echo htmlspecialchars($s['sede_nombre'], ENT_QUOTES, 'UTF-8'); ?>
+											<?php echo htmlspecialchars(html_entity_decode((string)$s['sede_nombre'], ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8'); ?>
 										</option>
 									<?php endforeach; ?>
 								</select>
 							</div>
-							<div class="col-6 col-md-3">
-								<label for="estado" class="form-label small mb-1">Estado de la foto</label>
-								<select class="form-select form-select-sm" id="estado" name="estado">
-									<option value="">Todos</option>
+							<div class="col-12 col-sm-6 col-lg-4 col-xl-2">
+								<label for="estado" class="form-label">Foto</label>
+								<select class="form-select" id="estado" name="estado">
+									<option value="">Todas</option>
 									<?php foreach ($PINTA as $clave => $p): ?>
 										<option value="<?php echo $clave; ?>"
 											<?php echo $estadoF === $clave ? 'selected' : ''; ?>>
@@ -169,19 +187,20 @@
 									<?php endforeach; ?>
 								</select>
 							</div>
-							<div class="col-12 col-md-2 d-grid">
-								<button type="submit" class="btn btn-sm btn-primary">
-									<i class="fas fa-filter me-1"></i>Filtrar
-								</button>
+							<div class="col-12 col-sm-6 col-lg-4 col-xl-auto d-flex align-items-end">
+								<div class="w-100">
+									<?php echo ds_boton_buscar(); ?>
+								</div>
 							</div>
-						</form>
+						</div>
 					</div>
-				</div>
+				</form>
 
-				<!-- ==================== La tabla ==================== -->
-				<div class="card">
-					<div class="card-header">
-						<h3 class="card-title mb-0">
+				<!-- ==================== Resultado de la búsqueda ==================== -->
+				<div class="card ds-crud__lista" id="fotos-resultado">
+					<div class="card-header d-flex flex-wrap align-items-center gap-2">
+						<h3 class="card-title me-auto">
+							<i class="fas fa-camera me-2" aria-hidden="true"></i>Resultado de la búsqueda
 							<?php
 							/*
 							| $filas ya no existe: la tabla la sirve el endpoint. El
@@ -194,26 +213,24 @@
 								? count(array_filter($todos, static fn($f) => $f['foto_estado'] === $estadoF))
 								: count($todos);
 							?>
-							<?php echo $cuantos; ?> alumno<?php echo $cuantos === 1 ? '' : 's'; ?>
+							<span class="badge text-bg-secondary ms-1" title="<?php echo $ESTADOS[$alumnoEstado]; ?>"><?php echo $cuantos; ?></span>
 							<?php if ($estadoF !== ''): ?>
 								<span class="badge text-bg-<?php echo $PINTA[$estadoF]['color']; ?> ms-1">
 									<?php echo $PINTA[$estadoF]['etiqueta']; ?>
 								</span>
 							<?php endif; ?>
 						</h3>
+						<button type="button" class="btn btn-tool" data-lte-toggle="card-collapse" title="Plegar o desplegar" aria-label="Plegar o desplegar"><i data-lte-icon="expand" class="fas fa-plus"></i><i data-lte-icon="collapse" class="fas fa-minus"></i></button>
 					</div>
 					<div class="card-body">
-						<div class="table-responsive">
-							<table class="table table-hover table-sm align-middle" id="tablaFotos">
+							<table class="table table-hover align-middle ds-crud__tabla" id="tablaFotos" style="width:100%">
 								<thead>
 									<tr>
-										<th style="width:64px;">Foto</th>
-										<th>Identificación</th>
 										<th>Alumno</th>
-										<th class="d-none d-md-table-cell">Sede</th>
-										<th class="d-none d-lg-table-cell text-end">Edad</th>
-										<th>Estado</th>
-										<?php if ($puedeEditar): ?><th class="text-end">Acción</th><?php endif; ?>
+										<th class="ds-col-opcional">Sede</th>
+										<th>Fecha de ingreso</th>
+										<th>Foto</th>
+										<?php if ($puedeEditar): ?><th class="text-end"><span class="visually-hidden">Acciones</span></th><?php endif; ?>
 									</tr>
 								</thead>
 								<?php
@@ -227,7 +244,6 @@
 								<tbody>
 								</tbody>
 							</table>
-						</div>
 					</div>
 				</div>
 
@@ -305,21 +321,29 @@
 document.addEventListener('DOMContentLoaded', function () {
 
 	/*
-	| La tabla ordena y pagina en el navegador.
+	| «Mostrar N» elige cuántos alumnos por página (10 a 100) y se recuerda.
+	| No hay «Todos» a propósito: con cientos de filas a la vez el navegador
+	| pediría todas las miniaturas de golpe, y cada una entra por
+	| app/media.php, que arranca la sesión para servirla.
 	|
-	| Se pagina de 25 en 25 a propósito: con las cientos de filas visibles a la
-	| vez, el navegador pediría todas las miniaturas de golpe y cada una entra
-	| por app/media.php, que arranca la sesión para servirla.
-	|
-	| La columna de la foto y la de acciones no se ordenan: una imagen y un
-	| botón no tienen orden que signifique nada.
+	| Sin Responsive: en el teléfono cada alumno es una ficha (futbol.css,
+	| .ds-crud); className y data-etiqueta dan a cada celda su papel.
 	*/
 	if (document.getElementById('tablaFotos')) {
-		var columnas = document.querySelectorAll('#tablaFotos thead th').length;
-		var sinOrden = [0];
-		if (columnas > 6) { sinOrden.push(columnas - 1); }
+		var CLAVE = 'ds-fotos-por-pagina', LARGOS = [10, 25, 50, 100], largo = 25;
+		try { var g = parseInt(localStorage.getItem(CLAVE), 10); if (LARGOS.indexOf(g) !== -1) { largo = g; } } catch (e) {}
+		var etiqueta = function (texto) { return function (td) { td.setAttribute('data-etiqueta', texto); }; };
+		var columnas = [
+			{ targets: 0, className: 'ds-ficha__principal' },
+			{ targets: 1, className: 'ds-ficha__dato ds-col-opcional', createdCell: etiqueta('Sede') },
+			{ targets: 2, className: 'ds-ficha__dato', createdCell: etiqueta('Fecha de ingreso') },
+			{ targets: 3, className: 'ds-ficha__dato', createdCell: etiqueta('Foto') }
+		];
+		if (document.querySelectorAll('#tablaFotos thead th').length > 4) {
+			columnas.push({ targets: 4, className: 'ds-tabla-acciones ds-ficha__acciones', orderable: false });
+		}
 
-		new DataTable('#tablaFotos', {
+		var tabla = new DataTable('#tablaFotos', {
 			/*
 			| serverSide: la pagina llega armada del servidor.
 			|
@@ -334,9 +358,8 @@ document.addEventListener('DOMContentLoaded', function () {
 			| cada peticion; si no, el resumen de arriba y la tabla dirian cosas
 			| distintas sobre los mismos alumnos.
 			|
-			| El orden va desactivado: las columnas son foto, insignias y
-			| botones ya armados, y ordenarlas exigiria trasladar el criterio al
-			| endpoint. El filtrado cubre lo que aqui se necesita.
+			| El orden lo resuelve también el endpoint, sobre todo el alcance
+			| (alumno, sede, fecha de ingreso y foto).
 			*/
 			serverSide: true,
 			processing: true,
@@ -344,32 +367,44 @@ document.addEventListener('DOMContentLoaded', function () {
 				url: '<?php echo APP_URL; ?>app/ajax/fotoAlumnoTablaAjax.php',
 				type: 'GET',
 				data: function (d) {
-					d.q      = <?php echo json_encode($busqueda, JSON_UNESCAPED_UNICODE); ?>;
-					d.sede   = <?php echo json_encode($sedeSel,  JSON_UNESCAPED_UNICODE); ?>;
-					d.estado = <?php echo json_encode($estadoF,  JSON_UNESCAPED_UNICODE); ?>;
+					d.q             = <?php echo json_encode($busqueda, JSON_UNESCAPED_UNICODE); ?>;
+					d.sede          = <?php echo json_encode($sedeSel,  JSON_UNESCAPED_UNICODE); ?>;
+					d.estado        = <?php echo json_encode($estadoF,  JSON_UNESCAPED_UNICODE); ?>;
+					d.alumno_estado = <?php echo json_encode($alumnoEstado); ?>;
 				}
 			},
-			ordering: false,
-			pageLength: 25,
+			order: [[0, 'asc']],
+			pageLength: largo,
+			lengthMenu: LARGOS,
 			autoWidth: false,
-			columnDefs: [{ orderable: false, targets: sinOrden }],
+			columnDefs: columnas,
+			layout: {
+				topStart: 'pageLength',
+				topEnd: 'search',
+				bottomStart: 'info',
+				bottomEnd: { paging: { firstLast: false } }
+			},
 			language: {
-				emptyTable:  'No hay alumnos que mostrar',
-				info:        'Mostrando _START_ a _END_ de _TOTAL_ alumnos',
-				infoEmpty:   'Mostrando 0 a 0 de 0 alumnos',
-				/* Faltaba, y no se notaba: sin serverSide la tabla nunca
-				   decia «filtrado de N», asi que al buscar salia la frase en
-				   ingles de fabrica. */
-				infoFiltered: '(filtrado de _MAX_ alumnos en total)',
-				lengthMenu:  'Mostrar _MENU_ alumnos',
-				/* Decía «Buscar en la página» porque era verdad: DataTables
-				   buscaba en lo ya cargado. Ahora la búsqueda la resuelve el
-				   servidor sobre todos los alumnos, así que la advertencia
-				   sobraba y además engañaba. */
-				search:      'Buscar:',
-				zeroRecords: 'Ningún alumno coincide',
-				paginate: { first: 'Primero', last: 'Último', next: 'Siguiente', previous: 'Anterior' }
+				emptyTable:   'No hay alumnos con estos criterios',
+				info:         '_START_ a _END_ de _TOTAL_ alumnos',
+				infoEmpty:    'Sin alumnos',
+				infoFiltered: '(de _MAX_)',
+				lengthMenu:   'Mostrar _MENU_',
+				processing:   'Cargando…',
+				/* La búsqueda la resuelve el servidor sobre todos los
+				   alumnos, no sólo sobre la página que se ve. */
+				search:       '',
+				searchPlaceholder: 'Filtrar por nombre o cédula…',
+				zeroRecords:  'Ningún alumno coincide con el filtro',
+				paginate: { next: 'Siguiente', previous: 'Anterior' },
+				aria: {
+					sortAscending: ': ordenar de forma ascendente',
+					sortDescending: ': ordenar de forma descendente'
+				}
 			}
+		});
+		tabla.on('length', function (e, s, nuevo) {
+			try { localStorage.setItem(CLAVE, String(nuevo)); } catch (err) {}
 		});
 	}
 
@@ -378,22 +413,27 @@ document.addEventListener('DOMContentLoaded', function () {
 
 	var modal = new bootstrap.Modal(modalEl);
 
-	document.querySelectorAll('.btn-subir').forEach(function (b) {
-		b.addEventListener('click', function () {
-			document.getElementById('foto_alumno_id').value = this.dataset.id;
-			document.getElementById('foto_alumno_nombre').textContent = this.dataset.nombre;
-			document.getElementById('modalFotoTitulo').textContent = 'Foto de ' + this.dataset.nombre;
+	/*
+	| Delegado en la tabla: las filas llegan del endpoint DESPUÉS de este
+	| código, en cada página. Antes se enlazaba con querySelectorAll al
+	| cargar, cuando aún no había ningún botón, y «Subir» no abría nada.
+	*/
+	document.getElementById('tablaFotos').addEventListener('click', function (ev) {
+		var b = ev.target.closest('.btn-subir');
+		if (!b) { return; }
+		document.getElementById('foto_alumno_id').value = b.dataset.id;
+		document.getElementById('foto_alumno_nombre').textContent = b.dataset.nombre;
+		document.getElementById('modalFotoTitulo').textContent = 'Foto de ' + b.dataset.nombre;
 
-			/* El formulario se limpia al abrir: sin esto, abrir el modal de
-			   otro alumno conserva el archivo elegido para el anterior y se
-			   sube la foto equivocada sin que nada lo delate. */
-			document.getElementById('alumno_foto').value = '';
-			var prev = document.getElementById('vistaPrevia');
-			prev.classList.add('d-none');
-			prev.removeAttribute('src');
+		/* El formulario se limpia al abrir: sin esto, abrir el modal de
+		   otro alumno conserva el archivo elegido para el anterior y se
+		   sube la foto equivocada sin que nada lo delate. */
+		document.getElementById('alumno_foto').value = '';
+		var prev = document.getElementById('vistaPrevia');
+		prev.classList.add('d-none');
+		prev.removeAttribute('src');
 
-			modal.show();
-		});
+		modal.show();
 	});
 
 	/* Ver la foto antes de guardarla: es la única forma de darse cuenta de

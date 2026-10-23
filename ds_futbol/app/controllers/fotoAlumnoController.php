@@ -133,11 +133,12 @@
 		 * caché; si algún día son decenas de miles habrá que paginar, y por
 		 * eso $tope existe y no es infinito.
 		 *
-		 * @param string $estado  '', 'OK', 'AUSENTE' o 'SIN'
+		 * @param string $estado        '', 'OK', 'AUSENTE' o 'SIN' (estado de la FOTO)
+		 * @param string $alumnoEstado  A, I o T (estado del ALUMNO; T = activos e inactivos)
 		 */
-		public function listar(string $busqueda = '', $sede = '', string $estado = '', int $tope = 2000): array {
+		public function listar(string $busqueda = '', $sede = '', string $estado = '', string $alumnoEstado = 'T', int $tope = 2000): array {
 
-			$condiciones = ["a.alumno_estado <> 'E'"];
+			$condiciones = [$this->condicionEstadoAlumno('a.alumno_estado', $alumnoEstado)];
 			$parametros  = [];
 
 			/*
@@ -169,7 +170,7 @@
 			$sql = "SELECT a.alumno_id, a.alumno_identificacion, a.alumno_tipoidentificacion,
 			               a.alumno_primernombre, a.alumno_segundonombre,
 			               a.alumno_apellidopaterno, a.alumno_apellidomaterno,
-			               a.alumno_fechanacimiento, a.alumno_estado, a.alumno_imagen,
+			               a.alumno_fechanacimiento, a.alumno_fechaingreso, a.alumno_estado, a.alumno_imagen,
 			               a.alumno_sedeid, s.sede_nombre,
 			               TIMESTAMPDIFF(YEAR, a.alumno_fechanacimiento, CURDATE()) AS edad
 			          FROM sujeto_alumno a
@@ -301,10 +302,12 @@
 			$q      = isset($peticion['q'])      ? $this->limpiarCadena($peticion['q'])      : '';
 			$sede   = isset($peticion['sede'])   ? $this->limpiarCadena($peticion['sede'])   : '';
 			$estado = isset($peticion['estado']) ? $this->limpiarCadena($peticion['estado']) : '';
+			/* Estado del ALUMNO: activos salvo que se pida otra cosa (desde el 2026-10-23). */
+			$alumnoEstado = in_array($peticion['alumno_estado'] ?? '', ['A', 'I', 'T'], true) ? $peticion['alumno_estado'] : 'A';
 
 			/* El alcance por sede lo aplica listar(), no este método: es la
 			   única forma de que no se pueda saltar pidiendo otra cosa. */
-			$filas = $this->listar($q, $sede, $estado);
+			$filas = $this->listar($q, $sede, $estado, $alumnoEstado);
 			$total = count($filas);
 
 			/* La búsqueda, sobre el conjunto ya resuelto. Sin tildes y en
@@ -321,55 +324,91 @@
 				}));
 			}
 
+			/*
+			| El orden, también sobre el conjunto completo (columnas de la
+			| vista: 0 Alumno, 1 Sede, 2 Fecha de ingreso, 3 Foto). Antes la
+			| tabla no ordenaba: las celdas ya venían armadas.
+			*/
+			$ORDEN = [
+				0 => static fn($f) => ds_sin_tildes(mb_strtolower($f['alumno_apellidopaterno'] . ' ' . $f['alumno_apellidomaterno'] . ' ' . $f['alumno_primernombre'], 'UTF-8')),
+				1 => static fn($f) => ds_sin_tildes(mb_strtolower((string)$f['sede_nombre'], 'UTF-8')),
+				2 => static fn($f) => (string)$f['alumno_fechaingreso'],
+				3 => static fn($f) => [self::AUSENTE => 0, self::SIN => 1, self::OK => 2][$f['foto_estado']],
+			];
+			$columna = (int)($peticion['order'][0]['column'] ?? 0);
+			if (isset($ORDEN[$columna])) {
+				$clave  = $ORDEN[$columna];
+				$sentido = strtolower((string)($peticion['order'][0]['dir'] ?? 'asc')) === 'desc' ? -1 : 1;
+				/* El nombre desempata: con la misma fecha o sede, alfabético. */
+				usort($filas, static fn($a, $b) => (($clave($a) <=> $clave($b)) * $sentido) ?: ($ORDEN[0]($a) <=> $ORDEN[0]($b)));
+			}
+
 			$filtrados = count($filas);
 			$pagina    = array_slice($filas, $inicio, $largo);
 
 			$PINTA       = $this->pinta();
 			$puedeEditar = puede('editar', 'alumnoFotos');
-			$h           = static fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
+			$h           = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+			$fecha       = static fn($v) => $v && !str_starts_with((string)$v, '0000') ? (string)$v : '';
 
+			/*
+			| Cada fila son las celdas de una ficha (.ds-crud): la foto va
+			| dentro de la celda del alumno, que en el teléfono encabeza la
+			| ficha; className y data-etiqueta los pone la vista.
+			*/
 			$datos = [];
 			foreach ($pagina as $f) {
 				$p = $PINTA[$f['foto_estado']];
-				$nombre = trim($f['alumno_apellidopaterno'] . ' ' . $f['alumno_apellidomaterno']
-				             . ' ' . $f['alumno_primernombre'] . ' ' . $f['alumno_segundonombre']);
+				$nombre = preg_replace('/\s+/', ' ', trim($f['alumno_primernombre'] . ' ' . $f['alumno_segundonombre']
+				             . ' ' . $f['alumno_apellidopaterno'] . ' ' . $f['alumno_apellidomaterno']));
 
 				/* loading="lazy" sigue haciendo falta: cada foto entra por
 				   app/media.php, que arranca la sesión entera para servirla. */
 				$foto = $f['foto_estado'] === self::OK
 					? '<img src="' . $h(media_url('alumno', $f['alumno_imagen'])) . '" alt="" loading="lazy"'
-					  . ' width="44" height="44" class="rounded-circle"'
-					  . ' style="object-fit:cover; background:var(--bs-tertiary-bg);">'
-					: '<span class="d-inline-flex align-items-center justify-content-center rounded-circle'
-					  . ' text-bg-' . $p['color'] . '" style="width:44px; height:44px;"'
-					  . ' title="' . $h($p['ayuda']) . '"><i class="fas ' . $p['icono'] . '"></i></span>';
+					  . ' width="44" height="44" class="ds-ficha__imagen">'
+					: '<span class="ds-ficha__imagen d-inline-flex align-items-center justify-content-center rounded-circle'
+					  . ' text-bg-' . $p['color'] . '" title="' . $h($p['ayuda']) . '"><i class="fas ' . $p['icono'] . '" aria-hidden="true"></i></span>';
 
 				$insignia = '<span class="badge text-bg-' . $p['color'] . '" title="' . $h($p['ayuda']) . '">'
 				          . $h($p['etiqueta']) . '</span>';
 
 				if ($f['foto_estado'] === self::AUSENTE) {
-					$insignia .= '<br><code class="small text-danger">' . $h($f['alumno_imagen']) . '</code>';
+					$insignia .= '<code class="d-block small text-danger text-break">' . $h($f['alumno_imagen']) . '</code>';
 				}
 
-				$nombreCelda = $h($nombre)
-					. ($f['alumno_estado'] !== 'A'
-						? ' <span class="badge text-bg-warning ms-1">Inactivo</span>' : '');
+				$edad = $f['edad'] !== null ? (int)$f['edad'] : null;
+				$alumno = '<div class="ds-ficha__con-imagen">' . $foto
+					. '<div class="min-w-0"><div class="ds-ficha__nombre">' . $h($nombre) . '</div>'
+					. '<div class="ds-ficha__meta"><i class="fas fa-id-card" aria-hidden="true"></i> ' . $h($f['alumno_identificacion'])
+					. ($edad !== null ? ' · ' . $edad . ($edad === 1 ? ' año' : ' años') : '')
+					. ($f['alumno_estado'] !== 'A' ? ' · <span class="badge text-bg-secondary">Inactivo</span>' : '')
+					. '</div></div></div>';
+
+				/* Fecha de ingreso, con la antigüedad. */
+				$ingreso = $fecha($f['alumno_fechaingreso']);
+				if ($ingreso !== '') {
+					$antig = (new \DateTime($ingreso))->diff(new \DateTime('today'));
+					$tiempo = $antig->y > 0 ? $antig->y . ($antig->y === 1 ? ' año' : ' años')
+						: ($antig->m > 0 ? $antig->m . ($antig->m === 1 ? ' mes' : ' meses') : 'Este mes');
+					$celdaIngreso = date('d/m/Y', strtotime($ingreso)) . '<span class="d-block small text-body-secondary">' . $tiempo . '</span>';
+				} else {
+					$celdaIngreso = '<span class="text-body-secondary">Sin fecha</span>';
+				}
 
 				$fila = [
-					$foto,
-					$h($f['alumno_identificacion']),
-					$nombreCelda,
+					$alumno,
 					$h((string)$f['sede_nombre']),
-					$f['edad'] !== null ? (int)$f['edad'] : '',
+					$celdaIngreso,
 					$insignia,
 				];
 
 				if ($puedeEditar) {
-					$fila[] = '<button type="button" class="btn btn-sm btn-primary btn-subir"'
+					$fila[] = '<div class="ds-ficha__botones"><button type="button" class="btn btn-sm btn-primary btn-subir ds-ficha__primario"'
 					        . ' data-id="' . (int)$f['alumno_id'] . '"'
 					        . ' data-nombre="' . $h($nombre) . '">'
-					        . '<i class="fas fa-camera me-1"></i>'
-					        . ($f['foto_estado'] === self::OK ? 'Cambiar' : 'Subir') . '</button>';
+					        . '<i class="fas fa-camera me-1" aria-hidden="true"></i>'
+					        . ($f['foto_estado'] === self::OK ? 'Cambiar foto' : 'Subir foto') . '</button></div>';
 				}
 
 				$datos[] = $fila;

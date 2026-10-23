@@ -935,3 +935,9 @@
     .ds-toma__resumen .btn { width: 100%; min-height: 2.75rem; display: inline-flex; align-items: center; justify-content: center; gap: .25rem; }
     .ds-toma__hoy { width: 100%; }
 }
+
+/* =========================================================================
+   FOTOS DE ALUMNOS (alumnoFotos). Fichas de .ds-crud; la foto, algo más
+   grande que la inicial de otros listados: es lo que se revisa aquí.
+   ========================================================================= */
+#tablaFotos .ds-ficha__imagen { width: 3rem; height: 3rem; }

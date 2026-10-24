@@ -970,3 +970,126 @@
 @media (max-width: 575.98px) {
     .ds-marca__quien .badge { margin-left: 0 !important; }
 }
+
+/* =========================================================================
+   PANEL OPERATIVO del dashboard (inc/dashboard-operativo.php): el del
+   profesor. Todo con variables del tema: antes eran colores fijos y en el
+   tema claro los días «sin clase» (#ced4da sobre #f8f9fa) no se veían.
+   ========================================================================= */
+.ds-op__titulo { font-size: .95rem; font-weight: 600; color: var(--bs-secondary-color); margin-bottom: .6rem; }
+.ds-op__mes { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 1rem 2rem; }
+.ds-op__calendario { flex: 1 1 18rem; max-width: 26rem; }
+
+/* Semana de L a D y, debajo, los días en su columna. */
+.ds-op__semana,
+.ds-op__dias { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .3rem; }
+.ds-op__semana { margin-bottom: .3rem; }
+.ds-op__semana span { text-align: center; font-size: .75rem; font-weight: 600; color: var(--bs-secondary-color); }
+.ds-op__dias { list-style: none; padding: 0; margin: 0; }
+.ds-op__dia {
+    aspect-ratio: 1 / 1; min-height: 2.25rem;
+    display: grid; place-items: center;
+    border-radius: var(--bs-border-radius);
+    border: 1px solid transparent;
+    font-size: .9rem; font-weight: 600; font-variant-numeric: tabular-nums;
+    cursor: default;
+}
+/* Registrada: verde lleno. Sin registrar: rojo suave con borde (lo que falta
+   hacer, sin confundirse con el amarillo de la marca). Próxima: contorno.
+   Sin clase: sólo el número, en gris legible. */
+.ds-op__dia--registrada { background: var(--bs-success); border-color: var(--bs-success); color: #fff; }
+.ds-op__dia--pendiente  { background: var(--bs-danger-bg-subtle); border-color: var(--bs-danger-border-subtle); color: var(--bs-danger-text-emphasis); }
+.ds-op__dia--proxima    { background: var(--bs-body-bg); border-color: var(--bs-border-color); color: var(--bs-body-color); }
+.ds-op__dia--sin-clase  { background: transparent; color: var(--bs-secondary-color); font-weight: 400; }
+/* Hoy: un anillo del color de énfasis (el primario es amarillo y sobre
+   blanco no se ve). */
+.ds-op__dia--hoy { box-shadow: 0 0 0 2px var(--bs-body-bg), 0 0 0 4px var(--bs-emphasis-color); }
+
+.ds-op__leyenda { display: flex; flex-wrap: wrap; flex-direction: column; gap: .45rem; margin: 2rem 0 0; font-size: .85rem; }
+.ds-op__leyenda li { display: flex; align-items: center; gap: .5rem; }
+.ds-op__muestra { width: 1rem; height: 1rem; border-radius: .25rem; border-width: 1px; border-style: solid; flex: none; }   /* el color del borde, el de cada estado */
+.ds-op__muestra.ds-op__dia--sin-clase { border: 1px dashed var(--bs-border-color); }
+.ds-op__muestra.ds-op__dia--hoy { box-shadow: 0 0 0 1px var(--bs-body-bg), 0 0 0 3px var(--bs-emphasis-color); }
+
+/* Días de clase de cada horario. */
+.ds-op__chips { display: inline-flex; flex-wrap: wrap; gap: .2rem; }
+.ds-op__chips .ds-op__chip {
+    display: inline-grid; place-items: center; width: 1.5rem; height: 1.5rem; border-radius: 50%;
+    font-size: .72rem; font-weight: 700; text-decoration: none; cursor: help;
+    background: var(--bs-info-bg-subtle); color: var(--bs-info-text-emphasis);
+}
+@media (max-width: 767.98px) {
+    .ds-op__calendario { max-width: none; flex-basis: 100%; }
+    .ds-op__leyenda { flex-direction: row; gap: .35rem 1rem; margin-top: 0; }
+}
+/* Cifras del panel en el teléfono: dos por fila, con el icono más chico y el
+   rótulo en dos líneas (antes se cortaba «Alumnos a cargo» y el icono se
+   aplastaba). */
+@media (max-width: 575.98px) {
+    .ds-op .info-box { min-height: 0; height: 100%; padding: .5rem; gap: .5rem; }
+    .ds-op .info-box-icon { width: 2.5rem; height: 2.5rem; min-width: 2.5rem; font-size: 1.1rem; align-self: center; }
+    .ds-op .info-box-content { padding: 0; min-width: 0; }
+    .ds-op .info-box-text { white-space: normal; font-size: .8rem; line-height: 1.2; }
+    .ds-op .info-box-number { font-size: 1.15rem; }
+}
+
+/* =========================================================================
+   TOMAR ASISTENCIA (asistenciaAlumno). Una ficha por alumno con cuatro
+   botones grandes; arriba, fijo, el avance y si todo está guardado.
+   ========================================================================= */
+.ds-toma { max-width: 52rem; margin: 0 auto; }
+.ds-toma__cabecera { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem 1.5rem; }
+.ds-toma__horario { font-weight: 600; font-size: 1.05rem; overflow-wrap: anywhere; }
+.ds-toma__fecha { min-width: 0; }
+.ds-toma__hoy { font-size: .9rem; font-weight: 600; padding: .5rem .75rem; }
+
+/* El avance queda a la vista al recorrer la lista. */
+.ds-toma__barra {
+    position: sticky; top: 3.5rem; z-index: 5;
+    background: var(--bs-body-bg); border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius-lg); padding: .65rem .9rem; margin-bottom: .75rem;
+    box-shadow: 0 .25rem .75rem rgba(0, 0, 0, .06);
+}
+.ds-toma__totales { color: var(--bs-secondary-color); }
+.ds-toma__buscar { flex: 1 1 14rem; min-height: 2.75rem; }
+#toma-todos { min-height: 2.75rem; }
+
+.ds-toma__lista { display: grid; gap: .6rem; margin: 0; }
+.ds-toma__alumno {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: .5rem 1rem;
+    background: var(--bs-body-bg); border: 1px solid var(--bs-border-color);
+    border-left: 4px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius-lg); padding: .65rem .85rem;
+}
+.ds-toma__alumno--marcado { border-left-color: var(--bs-success); }
+.ds-toma__nombre { font-weight: 600; overflow-wrap: anywhere; }
+.ds-toma__meta { display: flex; flex-wrap: wrap; gap: .25rem .75rem; font-size: .8rem; color: var(--bs-secondary-color); }
+.ds-toma__guardado { font-weight: 600; }
+
+/* Cuatro botones de igual ancho. Sin marcar: contorno con el color de
+   énfasis del tema (los outline de Bootstrap no llegan al contraste en
+   oscuro). Marcado: el color del estado, lleno. */
+.ds-toma__opciones { display: grid; grid-template-columns: repeat(4, minmax(5.5rem, 1fr)); gap: .3rem; }
+.ds-toma__opcion {
+    min-height: 2.75rem; padding: .25rem .4rem; border-radius: var(--bs-border-radius);
+    border: 1px solid var(--bs-border-color); background: var(--bs-body-bg); color: var(--bs-emphasis-color);
+    font-size: .875rem; font-weight: 600; line-height: 1.1;
+}
+.ds-toma__opcion:hover { background: var(--bs-tertiary-bg); }
+.ds-toma__opcion:focus-visible { outline: 2px solid var(--bs-emphasis-color); outline-offset: 2px; }
+.ds-toma__opcion[aria-pressed="true"][data-estado="P"] { background: var(--bs-success); border-color: var(--bs-success); color: #fff; }
+.ds-toma__opcion[aria-pressed="true"][data-estado="A"] { background: var(--bs-warning); border-color: var(--bs-warning); color: #000; }
+.ds-toma__opcion[aria-pressed="true"][data-estado="F"] { background: var(--bs-danger); border-color: var(--bs-danger); color: #fff; }
+.ds-toma__opcion[aria-pressed="true"][data-estado="J"] { background: var(--bs-info); border-color: var(--bs-info); color: #000; }
+.ds-toma__corto { display: none; }
+
+@media (max-width: 767.98px) {
+    .ds-toma__alumno { grid-template-columns: minmax(0, 1fr); }
+    .ds-toma__opciones { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .ds-toma__fecha { width: 100%; }
+    #toma-todos { flex: 1 1 100%; }
+}
+@media (max-width: 399.98px) {
+    .ds-toma__largo { display: none; }
+    .ds-toma__corto { display: inline; }
+}

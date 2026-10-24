@@ -51,6 +51,11 @@
 		if($_POST['modulo_asistencia']=="asistencia"){
 			echo $insPago->registro_asistencia();
 		}
+		/* Lista del horario para otra fecha, sin recargar la página
+		   («cargar…» es una lectura para el guardia: permiso de ver). */
+		if($_POST['modulo_asistencia']=="cargar_lista"){
+			echo $insPago->listaAsistenciaJson();
+		}
 	}else{
 		session_destroy();
 		header("Location: ".APP_URL."login/");

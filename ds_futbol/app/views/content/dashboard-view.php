@@ -140,8 +140,8 @@
 						</div><!-- /.col -->
 						<div class="col-sm-6">
 						<ol class="breadcrumb float-sm-end">
-							<li class="breadcrumb-item"><a href="#">Inicio</a></li>
-							<li class="breadcrumb-item active">Dashboard v1</li>
+							<li class="breadcrumb-item"><a href="<?php echo APP_URL; ?>dashboard/">Inicio</a></li>
+							<li class="breadcrumb-item active" aria-current="page">Panel</li>
 						</ol>
 						</div><!-- /.col -->
 					</div><!-- /.row -->

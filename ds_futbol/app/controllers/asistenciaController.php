@@ -1733,179 +1733,143 @@
 			return json_encode($alerta);
 		} 
 
-		public function registro_asistencia(){
+		/*==============================================================
+		| Tomar asistencia de un horario (vista asistenciaAlumno)
+		|
+		| La pantalla marca cada alumno con fetch, sin recargar, y lee la
+		| respuesta: { ok: true, estado } o { ok: false, texto }. ANTES la
+		| respuesta era «recargar_directo», la pantalla no la leía y pintaba
+		| el botón como guardado aunque la sesión hubiese caducado o se
+		| cortara la señal: la marca se perdía sin que nadie lo supiera.
+		|
+		| Y el servidor aceptaba cualquier estado, fecha y alumno: un profesor
+		| podía reescribir días pasados o marcar a alumnos que no son suyos.
+		| Ahora (puedeTomarAsistencia):
+		|   · estado P, A, F o J;
+		|   · el alumno, activo y asignado a ESE horario;
+		|   · el horario, suyo (lo dicta), de una de sus sedes o, para
+		|     administración (roles 1 y 2), cualquiera;
+		|   · la fecha, hoy, salvo administración, que puede corregir otros días
+		|     (no futuros).
+		|==============================================================*/
 
-			$estado 	= $this->limpiarCadena($_POST['estado']);
-			$fecha		= $this->limpiarCadena($_POST['fecha']);
-			$alumno_id	= $this->limpiarCadena($_POST['alumno_id']);
+		/** Los alumnos activos del horario con su marca del día ('' si no la tiene). */
+		public function alumnosParaAsistencia(int $horarioId, string $fecha): array {
+			$t = strtotime($fecha);
+			if ($t === false) { return []; }
+			$columna = 'asistencia_D' . date('d', $t);      /* un entero de date(), no del usuario */
+			return $this->ejecutarConsulta("SELECT A.alumno_id,
+						TRIM(CONCAT_WS(' ', A.alumno_apellidopaterno, A.alumno_apellidomaterno)) AS apellidos,
+						TRIM(CONCAT_WS(' ', A.alumno_primernombre, A.alumno_segundonombre)) AS nombres,
+						YEAR(A.alumno_fechanacimiento) AS categoria,
+						COALESCE(E.marca, '') AS marca
+					FROM (SELECT DISTINCT asignahorario_alumnoid FROM asistencia_asignahorario WHERE asignahorario_horarioid = :horario) H
+					INNER JOIN sujeto_alumno A ON A.alumno_id = H.asignahorario_alumnoid AND A.alumno_estado = 'A'
+					LEFT JOIN (SELECT asistencia_alumnoid, MAX(NULLIF($columna, '')) AS marca FROM asistencia_asistencia
+					            WHERE asistencia_aniomes = :aniomes GROUP BY asistencia_alumnoid) E ON E.asistencia_alumnoid = A.alumno_id
+					ORDER BY apellidos, nombres", [':horario' => $horarioId, ':aniomes' => (int)date('Ym', $t)])->fetchAll();
+		}
 
-			$anio 		= date('Y', strtotime($fecha)); // Obtiene el año
-			$mes 		= date('m', strtotime($fecha));  // Obtiene el mes
-			$dia 		= date('d', strtotime($fecha)); // Obtiene el día
+		/** Cabecera de la pantalla: nombre, sede, días y hora del horario activo, o null. */
+		public function resumenHorario(int $horarioId): ?array {
+			$fila = $this->ejecutarConsulta("SELECT H.horario_id, H.horario_nombre, H.horario_detalle, S.sede_nombre,
+						GROUP_CONCAT(DISTINCT D.detalle_dia ORDER BY D.detalle_dia) AS dias,
+						MIN(HR.hora_inicio) AS inicio, MAX(HR.hora_fin) AS fin,
+						GROUP_CONCAT(DISTINCT L.lugar_nombre ORDER BY L.lugar_nombre SEPARATOR ', ') AS lugares
+					FROM asistencia_horario H
+					LEFT JOIN general_sede S ON S.sede_id = H.horario_sedeid
+					LEFT JOIN asistencia_horario_detalle D ON D.detalle_horarioid = H.horario_id
+					LEFT JOIN asistencia_hora HR ON HR.hora_id = D.detalle_horaid
+					LEFT JOIN asistencia_lugar L ON L.lugar_id = D.detalle_lugarid
+					WHERE H.horario_id = :horario AND H.horario_estado = 'A'
+					GROUP BY H.horario_id, H.horario_nombre, H.horario_detalle, S.sede_nombre", [':horario' => $horarioId])->fetch();
+			return $fila ?: null;
+		}
 
-			switch ($dia) {
-				case 1:
-					$dia='asistencia_D01';
-					break;
-				case 2:
-					$dia='asistencia_D02';
-					break;
-				case 3:
-					$dia='asistencia_D03';
-					break;
-				case 4:
-					$dia='asistencia_D04';
-					break;
-				case 5:
-					$dia='asistencia_D05';
-					break;
-				case 6:
-					$dia='asistencia_D06';
-					break;
-				case 7:
-					$dia='asistencia_D07';
-					break;
-				case 8:
-					$dia='asistencia_D08';
-					break;
-				case 9:
-					$dia='asistencia_D09';
-					break;
-				case 10:
-					$dia='asistencia_D10';
-					break;
-				case 11:
-					$dia='asistencia_D11';
-					break;
-				case 12:
-					$dia='asistencia_D12';
-					break;
-				case 13:
-					$dia='asistencia_D13';
-					break;
-				case 14:
-					$dia='asistencia_D14';
-					break;
-				case 15:
-					$dia='asistencia_D15';
-					break;
-				case 16:
-					$dia='asistencia_D16';
-					break;
-				case 17:
-					$dia='asistencia_D17';
-					break;
-				case 18:
-					$dia='asistencia_D18';
-					break;
-				case 19:
-					$dia='asistencia_D19';
-					break;
-				case 20:
-					$dia='asistencia_D20';
-					break;
-				case 21:
-					$dia='asistencia_D21';
-					break;
-				case 22:
-					$dia='asistencia_D22';
-					break;
-				case 23:
-					$dia='asistencia_D23';
-					break;
-				case 24:
-					$dia='asistencia_D24';
-					break;
-				case 25:
-					$dia='asistencia_D25';
-					break;
-				case 26:
-					$dia='asistencia_D26';
-					break;
-				case 27:
-					$dia='asistencia_D27';
-					break;
-				case 28:
-					$dia='asistencia_D28';
-					break;
-				case 29:
-					$dia='asistencia_D29';
-					break;
-				case 30:
-					$dia='asistencia_D30';
-					break;
-				case 31:
-					$dia='asistencia_D31';
-					break;
+		/** ¿Puede la sesión tomar asistencia en este horario? Administración, quien lo dicta o quien tiene su sede. */
+		public function puedeTomarAsistencia(int $horarioId): bool {
+			if ($this->sedesDeLaSesion() === null) { return true; }          /* roles 1 y 2 */
+			$fila = $this->ejecutarConsulta("SELECT H.horario_sedeid,
+						SUM(D.detalle_profesorid = :empleado) AS dicta
+					FROM asistencia_horario H
+					LEFT JOIN asistencia_horario_detalle D ON D.detalle_horarioid = H.horario_id
+					WHERE H.horario_id = :horario AND H.horario_estado = 'A'
+					GROUP BY H.horario_sedeid", [':horario' => $horarioId, ':empleado' => empleado_actual()])->fetch();
+			if (!$fila) { return false; }
+			return (int)$fila['dicta'] > 0 || in_array((int)$fila['horario_sedeid'], $this->sedesDeLaSesion(), true);
+		}
+
+		/** La fecha pedida, como Y-m-d, si la sesión puede marcarla; si no, ''. */
+		private function fechaDeMarca(string $fecha): string {
+			$fecha = trim($fecha);
+			$d = \DateTime::createFromFormat('!Y-m-d', $fecha) ?: \DateTime::createFromFormat('!d-m-Y', $fecha);
+			if (!$d) { return ''; }
+			$f = $d->format('Y-m-d');
+			if ($f > date('Y-m-d')) { return ''; }                            /* nunca días futuros */
+			if ($this->sedesDeLaSesion() !== null && $f !== date('Y-m-d')) { return ''; }   /* profesor: sólo hoy */
+			return $f;
+		}
+
+		/** Lista del horario para una fecha, en JSON (cambio de fecha sin recargar). */
+		public function listaAsistenciaJson(): string {
+			$horario = (int)($_POST['horario_id'] ?? 0);
+			$fecha   = $this->fechaDeMarca((string)($_POST['fecha'] ?? ''));
+			if ($horario <= 0 || !$this->puedeTomarAsistencia($horario)) {
+				return json_encode(['ok' => false, 'texto' => 'No puede tomar asistencia en este horario.']);
 			}
+			if ($fecha === '') {
+				return json_encode(['ok' => false, 'texto' => 'Esa fecha no se puede registrar.']);
+			}
+			$h = static fn($v) => html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+			return json_encode(['ok' => true, 'fecha' => $fecha, 'alumnos' => array_map(static fn($a) => [
+				'id' => (int)$a['alumno_id'], 'apellidos' => $h($a['apellidos']), 'nombres' => $h($a['nombres']),
+				'categoria' => (string)$a['categoria'], 'marca' => (string)$a['marca'],
+			], $this->alumnosParaAsistencia($horario, $fecha))], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+		}
 
+		public function registro_asistencia(){
+			$error = static fn(string $texto) => json_encode(["ok" => false, "tipo" => "simple", "titulo" => "No se guardó",
+				"texto" => $texto, "icono" => "error"], JSON_UNESCAPED_UNICODE);
 
-			# Verificando usuario #
-		    $datos=$this->ejecutarConsulta("SELECT asistencia_id FROM asistencia_asistencia WHERE asistencia_alumnoid = :alumno AND asistencia_aniomes = :aniomes", [':alumno' => (int)$alumno_id, ':aniomes' => $anio . $mes]);
-		    if($datos->rowCount()<=0){
-				//insert
+			$estado    = strtoupper(trim((string)($_POST['estado'] ?? '')));
+			$alumno_id = (int)($_POST['alumno_id'] ?? 0);
+			$horario   = (int)($_POST['horario_id'] ?? 0);
+			$fecha     = $this->fechaDeMarca((string)($_POST['fecha'] ?? ''));
 
-				$asistencia_reg=[
-					[
-						"campo_nombre"=>"asistencia_alumnoid",
-						"campo_marcador"=>":Alumnoid",
-						"campo_valor"=>$alumno_id
-					],
-					[
-						"campo_nombre"=>"asistencia_aniomes",
-						"campo_marcador"=>":Aniomes",
-						"campo_valor"=> "$anio$mes"
-					],
-					[
-						"campo_nombre"=>$dia,
-						"campo_marcador"=>":Estado",
-						"campo_valor"=> $estado
-					]
-				];		
-	
-				$registrar_hora=$this->guardarDatos("asistencia_asistencia",$asistencia_reg);
-	
-				if($registrar_hora->rowCount()>0){
-					$alerta=[
-						"tipo"=>"recargar_directo"
-					];	
-				}
-				return json_encode($alerta);
+			if (!in_array($estado, ['P', 'A', 'F', 'J'], true)) { return $error("Estado de asistencia no válido."); }
+			if ($fecha === '')                                  { return $error("Esa fecha no se puede registrar."); }
+			if ($horario <= 0 || !$this->puedeTomarAsistencia($horario)) {
+				return $error("No puede tomar asistencia en este horario.");
+			}
+			$asignado = (int)$this->ejecutarConsulta("SELECT COUNT(*) FROM asistencia_asignahorario H
+					INNER JOIN sujeto_alumno A ON A.alumno_id = H.asignahorario_alumnoid AND A.alumno_estado = 'A'
+					WHERE H.asignahorario_horarioid = :horario AND H.asignahorario_alumnoid = :alumno",
+				[':horario' => $horario, ':alumno' => $alumno_id])->fetchColumn();
+			if ($asignado === 0) { return $error("El alumno no está en la lista de este horario."); }
 
-		    }else{
-		    	$datos=$datos->fetch();
-				//update
+			$t       = strtotime($fecha);
+			$aniomes = date('Ym', $t);
+			$dia     = 'asistencia_D' . date('d', $t);
 
-				$asistencia_reg=[					
-					[
-						"campo_nombre"=>$dia,
-						"campo_marcador"=>":Estado",
-						"campo_valor"=> $estado
-					]
-				];
-				
-				$condicion=[
-					"condicion_campo"=>"asistencia_id",
-					"condicion_marcador"=>":Asistencia_id",
-					"condicion_valor"=>$datos['asistencia_id']
-				];
+			$datos = $this->ejecutarConsulta("SELECT asistencia_id FROM asistencia_asistencia WHERE asistencia_alumnoid = :alumno AND asistencia_aniomes = :aniomes ORDER BY asistencia_id LIMIT 1",
+				[':alumno' => $alumno_id, ':aniomes' => $aniomes])->fetch();
+			if (!$datos) {
+				$ok = $this->guardarDatos("asistencia_asistencia", [
+					["campo_nombre" => "asistencia_alumnoid", "campo_marcador" => ":Alumnoid", "campo_valor" => $alumno_id],
+					["campo_nombre" => "asistencia_aniomes",  "campo_marcador" => ":Aniomes",  "campo_valor" => $aniomes],
+					["campo_nombre" => $dia,                  "campo_marcador" => ":Estado",   "campo_valor" => $estado],
+				])->rowCount() > 0;
+			} else {
+				/* actualizarDatos devuelve el statement: un UPDATE que no cambia
+				   nada (la misma marca otra vez) también es un éxito. */
+				$ok = (bool)$this->actualizarDatos("asistencia_asistencia",
+					[["campo_nombre" => $dia, "campo_marcador" => ":Estado", "campo_valor" => $estado]],
+					["condicion_campo" => "asistencia_id", "condicion_marcador" => ":Asistencia_id", "condicion_valor" => $datos['asistencia_id']]);
+			}
+			if (!$ok) { return $error("No se pudo guardar la asistencia, intente de nuevo."); }
 
-				if($this->actualizarDatos("asistencia_asistencia",$asistencia_reg,$condicion)){
-
-					$alerta=[
-						"tipo"=>"recargar_directo"
-					];
-				}else{
-					$alerta=[
-						"tipo"=>"simple",
-						"titulo"=>"Ocurrió un error inesperado",
-						"texto"=>"No hemos podido actualizar la asistencia del alumno, por favor intente nuevamente",
-						"icono"=>"error"
-					];
-				}
-				return json_encode($alerta);
-
-		    }		
+			return json_encode(["ok" => true, "icono" => "success", "estado" => $estado, "alumno_id" => $alumno_id, "fecha" => $fecha,
+				"texto" => "Asistencia guardada"], JSON_UNESCAPED_UNICODE);
 		}
 
 		public function BuscarAlumno($alumnoid){		

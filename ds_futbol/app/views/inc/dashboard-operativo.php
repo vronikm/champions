@@ -13,6 +13,12 @@
 |     caso de quien acompaña la operación de una sede sin dar clase.
 |
 | Espera recibir $insDashboard ya instanciado.
+|
+| Desde el 2026-10-23 los colores salen del tema (futbol.css, «PANEL
+| OPERATIVO»): antes eran fijos en un <style> propio y en el tema claro
+| los días «sin clase» casi no se veían; «pendiente» usaba el amarillo de
+| la marca y el mes entero parecía un botón. El calendario es una
+| cuadrícula de semanas (L a D) y la tabla, fichas en el teléfono.
 */
 
 $empleadoSesion = empleado_actual();
@@ -41,8 +47,8 @@ $asistencia = $idsHorario ? $insDashboard->diasConAsistencia($idsHorario, $aniom
 
 /* Días de la semana en los que hay clase, según las franjas del horario. */
 $diasProgramados = [];
-foreach ($horarios as $h) {
-    foreach (explode(',', (string)$h['dias']) as $d) {
+foreach ($horarios as $fila) {
+    foreach (explode(',', (string)$fila['dias']) as $d) {
         $d = (int)trim($d);
         if ($d >= 1 && $d <= 7) { $diasProgramados[$d] = true; }
     }
@@ -70,50 +76,36 @@ for ($d = 1; $d <= $diasMes; $d++) {
 
     $calendario[$d] = ['estado' => $estado, 'semana' => $semana, 'hoy' => ($d === $hoy)];
 }
+/* Huecos antes del día 1, para que cada día caiga bajo su columna (L a D). */
+$huecos = $calendario ? $calendario[1]['semana'] - 1 : 0;
 
 $totalAlumnos = 0;
-foreach ($horarios as $h) { $totalAlumnos += (int)$h['alumnos']; }
+foreach ($horarios as $fila) { $totalAlumnos += (int)$fila['alumnos']; }
 
 $nombreDia   = [1 => 'L', 2 => 'M', 3 => 'X', 4 => 'J', 5 => 'V', 6 => 'S', 7 => 'D'];
+$nombreDiaLargo = [1 => 'lunes', 2 => 'martes', 3 => 'miércoles', 4 => 'jueves', 5 => 'viernes', 6 => 'sábado', 7 => 'domingo'];
 $nombreMes   = [1 => 'enero', 2 => 'febrero', 3 => 'marzo', 4 => 'abril', 5 => 'mayo',
                 6 => 'junio', 7 => 'julio', 8 => 'agosto', 9 => 'septiembre',
                 10 => 'octubre', 11 => 'noviembre', 12 => 'diciembre'];
+$ESTADOS = [
+    'registrada' => 'asistencia registrada',
+    'pendiente'  => 'con clase, sin registrar',
+    'proxima'    => 'clase próxima',
+    'sin-clase'  => 'sin clase',
+];
 
 $puedeRegistrar = puede('ver', 'asistencia');
-$h = static fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
+/* Se decodifica antes de escapar: limpiarHtml() guarda lo escrito ya escapado. */
+$h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
 ?>
 
-<style>
-.op-dia {
-    display:flex; flex-direction:column; align-items:center; justify-content:center;
-    width:38px; height:44px; border-radius:.35rem; font-size:.75rem; line-height:1.1;
-    border:1px solid #dee2e6; background:#fff; color:#6c757d;
-}
-.op-dia .op-num { font-weight:700; font-size:.9rem; }
-.op-dia.registrada { background:#28a745; border-color:#28a745; color:#fff; }
-.op-dia.pendiente  { background:#ffc107; border-color:#ffc107; color:#212529; }
-.op-dia.proxima    { background:#fff; border-color:#adb5bd; color:#495057; }
-.op-dia.sin-clase  { background:#f8f9fa; border-color:#e9ecef; color:#ced4da; }
-.op-dia.hoy        { box-shadow:0 0 0 2px #007bff; }
-.op-leyenda span   { display:inline-flex; align-items:center; margin-right:1rem; font-size:.8rem; }
-.op-leyenda i      { width:12px; height:12px; border-radius:3px; margin-right:.35rem; display:inline-block; }
-.op-chip-dia {
-    display:inline-block; width:20px; height:20px; line-height:20px; text-align:center;
-    border-radius:50%; font-size:.7rem; font-weight:700; margin-right:2px;
-    background:#e9ecef; color:#adb5bd;
-}
-.op-chip-dia.activo { background:#17a2b8; color:#fff; }
-</style>
-
-<div class="card card-outline card-primary">
-    <div class="card-header">
-        <h3 class="card-title">
-            <i class="fas fa-clipboard-list me-2"></i>
+<div class="card card-outline card-primary ds-op">
+    <div class="card-header d-flex flex-wrap align-items-center gap-2">
+        <h3 class="card-title me-auto">
+            <i class="fas fa-clipboard-list me-2" aria-hidden="true"></i>
             <?php echo $vistaPropia ? 'Mis horarios y asistencia' : 'Horarios de mis sedes'; ?>
         </h3>
-        <div class="card-tools text-muted" style="font-size:.85rem;">
-            <?php echo $nombreMes[$mesActual] . ' ' . $anioActual; ?>
-        </div>
+        <span class="text-body-secondary small"><?php echo ucfirst($nombreMes[$mesActual]) . ' ' . $anioActual; ?></span>
     </div>
 
     <div class="card-body">
@@ -121,7 +113,7 @@ $h = static fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
         <?php if (!$horarios): ?>
 
             <div class="alert alert-info mb-0">
-                <i class="fas fa-info-circle me-1"></i>
+                <i class="fas fa-info-circle me-1" aria-hidden="true"></i>
                 <?php if ($empleadoSesion === 0): ?>
                     Su usuario no está vinculado a una ficha de empleado, así que no se pueden
                     determinar sus horarios. Solicite al administrador que haga la vinculación.
@@ -134,38 +126,39 @@ $h = static fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 
         <?php else: ?>
 
-            <div class="row">
-                <div class="col-md-3 col-6 mb-3">
-                    <div class="info-box">
-                        <span class="info-box-icon text-bg-info shadow-sm"><i class="fas fa-calendar-alt"></i></span>
+            <!-- =================== Cifras del mes =================== -->
+            <div class="row g-3 mb-3">
+                <div class="col-6 col-xl-3">
+                    <div class="info-box mb-0">
+                        <span class="info-box-icon text-bg-info shadow-sm"><i class="fas fa-calendar-alt" aria-hidden="true"></i></span>
                         <div class="info-box-content">
                             <span class="info-box-text">Horarios</span>
                             <span class="info-box-number"><?php echo count($horarios); ?></span>
                         </div>
                     </div>
                 </div>
-                <div class="col-md-3 col-6 mb-3">
-                    <div class="info-box">
-                        <span class="info-box-icon text-bg-primary shadow-sm"><i class="fas fa-users"></i></span>
+                <div class="col-6 col-xl-3">
+                    <div class="info-box mb-0">
+                        <span class="info-box-icon text-bg-primary shadow-sm"><i class="fas fa-users" aria-hidden="true"></i></span>
                         <div class="info-box-content">
                             <span class="info-box-text">Alumnos a cargo</span>
                             <span class="info-box-number"><?php echo $totalAlumnos; ?></span>
                         </div>
                     </div>
                 </div>
-                <div class="col-md-3 col-6 mb-3">
-                    <div class="info-box">
-                        <span class="info-box-icon text-bg-success shadow-sm"><i class="fas fa-check"></i></span>
+                <div class="col-6 col-xl-3">
+                    <div class="info-box mb-0">
+                        <span class="info-box-icon text-bg-success shadow-sm"><i class="fas fa-check" aria-hidden="true"></i></span>
                         <div class="info-box-content">
                             <span class="info-box-text">Días con asistencia</span>
                             <span class="info-box-number"><?php echo $conRegistro; ?></span>
                         </div>
                     </div>
                 </div>
-                <div class="col-md-3 col-6 mb-3">
-                    <div class="info-box">
-                        <span class="info-box-icon shadow-sm <?php echo $pendientes ? 'text-bg-warning' : 'text-bg-secondary'; ?>">
-                            <i class="fas fa-exclamation"></i>
+                <div class="col-6 col-xl-3">
+                    <div class="info-box mb-0">
+                        <span class="info-box-icon shadow-sm <?php echo $pendientes ? 'text-bg-danger' : 'text-bg-secondary'; ?>">
+                            <i class="fas fa-exclamation" aria-hidden="true"></i>
                         </span>
                         <div class="info-box-content">
                             <span class="info-box-text">Días sin registrar</span>
@@ -175,109 +168,103 @@ $h = static fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
                 </div>
             </div>
 
-            <!-- Calendario del mes: un vistazo a qué días quedó registrada la lista -->
-            <h6 class="text-muted mb-2">
-                Asistencia de <?php echo $nombreMes[$mesActual]; ?>
-            </h6>
-            <div class="d-flex flex-wrap" style="gap:4px;">
-                <?php foreach ($calendario as $dia => $info): ?>
-                    <div class="op-dia <?php echo $info['estado']; ?><?php echo $info['hoy'] ? ' hoy' : ''; ?>"
-                         title="<?php
-                            echo $dia . ' · ' . [
-                                'registrada' => 'asistencia registrada',
-                                'pendiente'  => 'con clase, sin registrar',
-                                'proxima'    => 'clase próxima',
-                                'sin-clase'  => 'sin clase',
-                            ][$info['estado']];
-                         ?>">
-                        <span class="op-num"><?php echo $dia; ?></span>
-                        <span><?php echo $nombreDia[$info['semana']]; ?></span>
+            <!-- =================== Calendario del mes =================== -->
+            <div class="ds-op__mes">
+                <div class="ds-op__calendario">
+                    <h4 class="ds-op__titulo">Asistencia de <?php echo $nombreMes[$mesActual]; ?></h4>
+                    <div class="ds-op__semana" aria-hidden="true">
+                        <?php foreach ($nombreDia as $letra): ?><span><?php echo $letra; ?></span><?php endforeach; ?>
                     </div>
-                <?php endforeach; ?>
+                    <ol class="ds-op__dias" aria-label="Días de <?php echo $nombreMes[$mesActual]; ?>">
+                        <?php for ($i = 0; $i < $huecos; $i++): ?><li class="ds-op__hueco" aria-hidden="true"></li><?php endfor; ?>
+                        <?php foreach ($calendario as $dia => $info): ?>
+                            <li class="ds-op__dia ds-op__dia--<?php echo $info['estado']; ?><?php echo $info['hoy'] ? ' ds-op__dia--hoy' : ''; ?>"
+                                title="<?php echo $nombreDiaLargo[$info['semana']] . ' ' . $dia . ' · ' . $ESTADOS[$info['estado']]; ?>"
+                                <?php echo $info['hoy'] ? 'aria-current="date"' : ''; ?>>
+                                <span class="visually-hidden"><?php echo $nombreDiaLargo[$info['semana']]; ?></span>
+                                <span class="ds-op__num"><?php echo $dia; ?></span>
+                                <span class="visually-hidden">: <?php echo $ESTADOS[$info['estado']]; ?></span>
+                            </li>
+                        <?php endforeach; ?>
+                    </ol>
+                </div>
+
+                <ul class="ds-op__leyenda list-unstyled">
+                    <li><span class="ds-op__muestra ds-op__dia--registrada"></span>Registrada</li>
+                    <li><span class="ds-op__muestra ds-op__dia--pendiente"></span>Sin registrar</li>
+                    <li><span class="ds-op__muestra ds-op__dia--proxima"></span>Próxima clase</li>
+                    <li><span class="ds-op__muestra ds-op__dia--sin-clase"></span>Sin clase</li>
+                    <li><span class="ds-op__muestra ds-op__dia--proxima ds-op__dia--hoy"></span>Hoy</li>
+                </ul>
             </div>
 
-            <div class="op-leyenda mt-2 text-muted">
-                <span><i style="background:#28a745;"></i> Registrada</span>
-                <span><i style="background:#ffc107;"></i> Pendiente</span>
-                <span><i style="background:#fff;border:1px solid #adb5bd;"></i> Próxima</span>
-                <span><i style="background:#f8f9fa;border:1px solid #e9ecef;"></i> Sin clase</span>
-            </div>
-
-            <hr>
-
-            <div class="table-responsive">
-                <table class="table table-sm table-hover mb-0">
-                    <thead>
-                        <tr>
-                            <th>Sede</th>
-                            <th>Horario</th>
-                            <th style="width:130px;">Días</th>
-                            <th style="width:110px;">Hora</th>
-                            <th>Lugar</th>
-                            <?php if (!$vistaPropia): ?><th>Profesor</th><?php endif; ?>
-                            <th class="text-center" style="width:80px;">Alumnos</th>
-                            <th class="text-center" style="width:110px;">Último registro</th>
-                            <th style="width:150px;"></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    <?php foreach ($horarios as $fila):
-                        $id     = (int)$fila['horario_id'];
-                        $suyos  = $asistencia[$id] ?? [];
-                        $ultimo = $suyos ? max(array_keys($suyos)) : 0;
-                        $dias   = array_map('intval', array_filter(explode(',', (string)$fila['dias']), 'strlen'));
-                    ?>
-                        <tr>
-                            <td><?php echo $h($fila['sede_nombre']); ?></td>
-                            <td>
-                                <?php echo $h($fila['horario_nombre']); ?>
-                                <?php if ($fila['horario_detalle']): ?>
-                                    <br><small class="text-muted"><?php echo $h($fila['horario_detalle']); ?></small>
-                                <?php endif; ?>
-                            </td>
-                            <td>
-                                <?php for ($d = 1; $d <= 5; $d++): ?>
-                                    <span class="op-chip-dia <?php echo in_array($d, $dias, true) ? 'activo' : ''; ?>">
-                                        <?php echo $nombreDia[$d]; ?>
-                                    </span>
-                                <?php endfor; ?>
-                            </td>
-                            <td>
-                                <?php echo substr((string)$fila['hora_inicio'], 0, 5); ?>
-                                – <?php echo substr((string)$fila['hora_fin'], 0, 5); ?>
-                            </td>
-                            <td><small><?php echo $h($fila['lugares']); ?></small></td>
-                            <?php if (!$vistaPropia): ?>
-                                <td><small><?php echo $h($fila['profesores'] ?? ''); ?></small></td>
+            <!-- =================== Horarios =================== -->
+            <h4 class="ds-op__titulo mt-4">Horarios</h4>
+            <table class="table table-hover align-middle ds-crud__tabla mb-0">
+                <thead>
+                    <tr>
+                        <th>Horario</th>
+                        <th>Días y hora</th>
+                        <?php if (!$vistaPropia): ?><th class="ds-col-opcional">Profesor</th><?php endif; ?>
+                        <th class="text-center">Alumnos</th>
+                        <th>Último registro</th>
+                        <th class="text-end"><span class="visually-hidden">Acciones</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($horarios as $fila):
+                    $id     = (int)$fila['horario_id'];
+                    $suyos  = $asistencia[$id] ?? [];
+                    $ultimo = $suyos ? max(array_keys($suyos)) : 0;
+                    $dias   = array_map('intval', array_filter(explode(',', (string)$fila['dias']), 'strlen'));
+                    $sitio  = implode(' · ', array_filter([$h($fila['sede_nombre']), $h($fila['lugares'])], 'strlen'));
+                ?>
+                    <tr>
+                        <td class="ds-ficha__principal">
+                            <div class="ds-ficha__nombre"><?php echo $h($fila['horario_nombre']); ?>
+                                <?php if ($fila['horario_detalle']): ?><span class="fw-normal text-body-secondary">· <?php echo $h($fila['horario_detalle']); ?></span><?php endif; ?>
+                            </div>
+                            <?php if ($sitio !== ''): ?>
+                                <div class="ds-ficha__meta"><i class="fas fa-location-dot" aria-hidden="true"></i> <?php echo $sitio; ?></div>
                             <?php endif; ?>
-                            <td class="text-center">
-                                <span class="badge text-bg-<?php echo (int)$fila['alumnos'] ? 'primary' : 'secondary'; ?>">
-                                    <?php echo (int)$fila['alumnos']; ?>
-                                </span>
-                            </td>
-                            <td class="text-center">
-                                <?php if ($ultimo): ?>
-                                    <span class="text-success"><?php echo $ultimo; ?> de <?php echo $nombreMes[$mesActual]; ?></span>
-                                <?php else: ?>
-                                    <span class="text-muted">—</span>
-                                <?php endif; ?>
-                            </td>
-                            <td class="text-end">
-                                <a href="<?php echo APP_URL; ?>asistenciaVerHorario/<?php echo $id; ?>/"
-                                   class="btn btn-sm btn-outline-secondary" target="_blank">
-                                    <i class="fas fa-eye"></i> Ver
+                        </td>
+                        <td class="ds-ficha__dato" data-etiqueta="Días y hora">
+                            <span class="ds-op__chips">
+                                <?php foreach ($dias as $d): if (!isset($nombreDia[$d])) { continue; } ?>
+                                    <abbr title="<?php echo $nombreDiaLargo[$d]; ?>" class="ds-op__chip"><?php echo $nombreDia[$d]; ?></abbr>
+                                <?php endforeach; ?>
+                            </span>
+                            <span class="d-block small text-body-secondary">
+                                <?php echo substr((string)$fila['hora_inicio'], 0, 5); ?> – <?php echo substr((string)$fila['hora_fin'], 0, 5); ?>
+                            </span>
+                        </td>
+                        <?php if (!$vistaPropia): ?>
+                            <td class="ds-ficha__dato ds-col-opcional" data-etiqueta="Profesor"><?php echo $h($fila['profesores'] ?? ''); ?></td>
+                        <?php endif; ?>
+                        <td class="ds-ficha__dato text-center" data-etiqueta="Alumnos">
+                            <span class="badge rounded-pill <?php echo (int)$fila['alumnos'] ? 'text-bg-primary' : 'text-bg-secondary'; ?>"><?php echo (int)$fila['alumnos']; ?></span>
+                        </td>
+                        <td class="ds-ficha__dato" data-etiqueta="Último registro">
+                            <?php if ($ultimo): ?>
+                                <span class="text-success-emphasis"><i class="fas fa-check me-1" aria-hidden="true"></i><?php echo $ultimo . ' de ' . $nombreMes[$mesActual]; ?></span>
+                            <?php else: ?>
+                                <span class="text-body-secondary">Sin registro este mes</span>
+                            <?php endif; ?>
+                        </td>
+                        <td class="ds-tabla-acciones ds-ficha__acciones"><div class="ds-ficha__botones">
+                            <?php if ($puedeRegistrar): ?>
+                                <a href="<?php echo APP_URL; ?>asistenciaAlumno/<?php echo $id; ?>/" class="btn btn-primary btn-sm ds-ficha__primario">
+                                    <i class="fas fa-clipboard-check me-1" aria-hidden="true"></i>Registrar
                                 </a>
-                                <?php if ($puedeRegistrar): ?>
-                                    <a href="<?php echo APP_URL; ?>asistencia/" class="btn btn-sm btn-primary">
-                                        <i class="fas fa-clipboard-check"></i> Registrar
-                                    </a>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
+                            <?php endif; ?>
+                            <a href="<?php echo APP_URL; ?>asistenciaVerHorario/<?php echo $id; ?>/" class="btn btn-secondary btn-sm" title="Ver el horario" aria-label="Ver el horario <?php echo $h($fila['horario_nombre']); ?>">
+                                <i class="fas fa-eye" aria-hidden="true"></i>
+                            </a>
+                        </div></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
 
         <?php endif; ?>
     </div>

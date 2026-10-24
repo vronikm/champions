@@ -335,7 +335,8 @@
 								MAX(ho.hora_fin)    AS hora_fin,
 								GROUP_CONCAT(DISTINCT l.lugar_nombre ORDER BY l.lugar_nombre SEPARATOR ', ') AS lugares,
 								(SELECT COUNT(*) FROM asistencia_asignahorario a
-								  WHERE a.asignahorario_horarioid = h.horario_id) AS alumnos
+								   JOIN sujeto_alumno al ON al.alumno_id = a.asignahorario_alumnoid AND al.alumno_estado = 'A'
+								  WHERE a.asignahorario_horarioid = h.horario_id) AS alumnos   /* sólo activos, como «Registrar asistencia» */
 						   FROM asistencia_horario_detalle d
 						   JOIN asistencia_horario h ON h.horario_id = d.detalle_horarioid
 													AND h.horario_estado = 'A'
@@ -369,7 +370,8 @@
 								GROUP_CONCAT(DISTINCT l.lugar_nombre ORDER BY l.lugar_nombre SEPARATOR ', ') AS lugares,
 								GROUP_CONCAT(DISTINCT e.empleado_nombre ORDER BY e.empleado_nombre SEPARATOR ', ') AS profesores,
 								(SELECT COUNT(*) FROM asistencia_asignahorario a
-								  WHERE a.asignahorario_horarioid = h.horario_id) AS alumnos
+								   JOIN sujeto_alumno al ON al.alumno_id = a.asignahorario_alumnoid AND al.alumno_estado = 'A'
+								  WHERE a.asignahorario_horarioid = h.horario_id) AS alumnos   /* sólo activos, como «Registrar asistencia» */
 						   FROM asistencia_horario h
 						   LEFT JOIN asistencia_horario_detalle d ON d.detalle_horarioid = h.horario_id
 						   LEFT JOIN general_sede      s  ON s.sede_id  = h.horario_sedeid

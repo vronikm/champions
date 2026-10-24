@@ -54,7 +54,10 @@
 		for ($i = 0; $i < $length; $i += 2) {
 			$pairs[] = substr($first12Chars, $i, 2);
 		}
-		$recibo_hora = $pairs[4].":".$pairs[2].":".$pairs[0];
+		/* Un número de recibo más corto de lo esperado (registros
+		   antiguos o editados a mano) dejaba $pairs sin la posición 4.
+		   Sin la hora, el QR va con la fecha sola. */
+		$recibo_hora = isset($pairs[4]) ? $pairs[4].":".$pairs[2].":".$pairs[0] : '';
 		
 	} else {
 		/* El registro no existe: se vuelve al listado. Antes se
@@ -65,9 +68,13 @@
 	}
 
 	$sede=$insAlumno->informacionSede($datos["alumno_sedeid"]);
-	if($sede->rowCount()==1){
-		$sede=$sede->fetch();
-	}
+	/* Si la sede no se encuentra, $sede seguía siendo el PDOStatement y
+	   leerlo como array más abajo era un error fatal («No se pudo
+	   completar la operación»). Se usa lo que ya trae el recibo. */
+	$sede = $sede->rowCount() == 1 ? $sede->fetch() : [
+		'sede_id' => (int)$datos['alumno_sedeid'], 'sede_nombre' => $datos['sede_nombre'],
+		'sede_direccion' => '', 'sede_telefono' => '', 'sede_email' => '',
+	];
 
 	/*----------  Datos para enviar el recibo  ----------*/
 	/* Correo y WhatsApp salen del representante del alumno. Se limpian los

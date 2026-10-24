@@ -2032,7 +2032,7 @@
 						A.alumno_primernombre,
 						A.alumno_segundonombre,
 						A.alumno_fechanacimiento,
-						T.torneo_nombre,
+						TOR.torneo_nombre,
 						P.*,
 						A.*
 						FROM alumno_pago P	
@@ -2041,7 +2041,7 @@
 							INNER JOIN general_tabla_catalogo F ON F.catalogo_valor = P.pago_formapagoid
 							INNER JOIN general_sede S on S.sede_id = A.alumno_sedeid 
 							LEFT JOIN alumno_representante E on E.repre_id = A.alumno_repreid
-							LEFT JOIN torneo_torneo T ON T.torneo_id = P.pago_campeonatoid
+							LEFT JOIN torneo_torneo TOR ON TOR.torneo_id = P.pago_campeonatoid   /* TOR y no T: el alias T es el de las transacciones de abajo, y MariaDB / MySQL 5.7 rechazan un alias repetido */
 							LEFT JOIN(SELECT COUNT(1) total, PT.transaccion_pagoid, MIN(PT.transaccion_id) IDT
 								FROM alumno_pago_transaccion PT
 								WHERE PT.transaccion_estado = 'C'

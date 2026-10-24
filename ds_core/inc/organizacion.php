@@ -330,7 +330,61 @@ if (!function_exists('ds_organizacion')) {
         $h = $medidas[1] * $escala;
         $dx = $alinear === 'L' ? 0 : ($alinear === 'R' ? $ancho - $w : ($ancho - $w) / 2);
 
-        $pdf->Image($archivo, $x + $dx, $y + ($alto - $h) / 2, $w, $h);
+        /*
+        | PNG CON TRANSPARENCIA Y SIN ZLIB
+        |
+        | FPDF necesita la extensión zlib de PHP para el canal alfa de un PNG
+        | y, si no está, lanza «Zlib not available, can't handle alpha
+        | channel»: un logo de sede con fondo transparente bastaba para que
+        | ningún PDF con logo se generara. Sin zlib, el PNG se aplana sobre
+        | blanco en un JPEG (con GD) y se dibuja ése.
+        |
+        | Y si aun así FPDF no puede con la imagen (PNG entrelazado, de 16
+        | bits, dañado…), el documento sale sin ella en vez de no salir: un
+        | recibo sin logo sirve; una página de error, no.
+        */
+        $usar = $archivo;
+        if ($medidas[2] === IMAGETYPE_PNG && !function_exists('gzuncompress')) {
+            $usar = ds_pdf_png_aplanado($archivo);
+            if ($usar === '') { return false; }
+        }
+
+        try {
+            $pdf->Image($usar, $x + $dx, $y + ($alto - $h) / 2, $w, $h);
+        } catch (\Throwable $e) {
+            error_log('[DS pdf] imagen omitida (' . basename($archivo) . '): ' . $e->getMessage());
+            return false;
+        }
         return true;
+    }
+
+    /**
+     * Copia JPEG de un PNG, aplanada sobre blanco, para FPDF sin zlib.
+     *
+     * Se guarda en el temporal del sistema con el nombre derivado de la ruta
+     * y la fecha del archivo: se genera una vez por logo y se rehace sola si
+     * el logo cambia. Devuelve '' si no se puede (sin GD o sin escritura).
+     */
+    function ds_pdf_png_aplanado(string $archivo): string
+    {
+        if (!function_exists('imagecreatefrompng') || !function_exists('imagejpeg')) { return ''; }
+
+        $dir = rtrim(sys_get_temp_dir(), '/\\') . DIRECTORY_SEPARATOR . 'ds_pdf_imagenes';
+        $destino = $dir . DIRECTORY_SEPARATOR . md5($archivo . '|' . @filemtime($archivo)) . '.jpg';
+        if (is_file($destino)) { return $destino; }
+        if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) { return ''; }
+
+        $png = @imagecreatefrompng($archivo);
+        if ($png === false) { return ''; }
+        $ancho = imagesx($png);
+        $alto  = imagesy($png);
+        $lienzo = imagecreatetruecolor($ancho, $alto);
+        imagefill($lienzo, 0, 0, imagecolorallocate($lienzo, 255, 255, 255));
+        imagecopy($lienzo, $png, 0, 0, 0, 0, $ancho, $alto);
+        $ok = @imagejpeg($lienzo, $destino, 92);
+        imagedestroy($png);
+        imagedestroy($lienzo);
+
+        return $ok ? $destino : '';
     }
 }

@@ -71,9 +71,11 @@
 
         // Agregar un encabezado
         function Header() {
+            /* Por el ayudante común: sin zlib, un logo PNG con transparencia
+               rompía el PDF entero (ds_pdf_imagen_encajada lo aplana). */
             if (!empty($this->logoPath)) {
-                $this->Image($this->logoPath, 10, 8, 25);
-            }       
+                ds_pdf_imagen_encajada($this, $this->logoPath, 10, 8, 25, 25, 'L');
+            }
           
             $this->SetFont('Arial', 'B', 10);
             $this->Cell(0, 5, mb_convert_encoding('FORMULARIO DE CONSENTIMIENTO INFORMADO DE RECOLECCIÓN ', 'ISO-8859-1', 'UTF-8'), 0, 1, 'R');

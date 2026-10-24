@@ -129,7 +129,8 @@
 
 
 	/* Sin firma ni «FIRMA AUTORIZADA»: el QR va centrado en el recuadro derecho (100–200 × 88–121). */
-    $pdf->Image(APP_URL.$filename, 136.5, 91, 27, 27);
+    /* El QR, por la ruta en disco y no por URL: con la URL el servidor se descargaba su propia imagen por HTTP, y en el hosting eso falla («Missing or incorrect image file»). */
+    $pdf->Image($filename, 136.5, 91, 27, 27);
      
 	unlink($filename);
 

@@ -145,7 +145,8 @@
     $pdf->SetXY( 132, 85 ); $pdf->SetFont( "Arial", "", 8 ); $pdf->Cell( 20, 0, mb_convert_encoding($ProfesorPDF['Jueves']?? '', 'ISO-8859-1', 'UTF-8'), 0, 0, 'L');
     $pdf->SetXY( 167, 85 ); $pdf->SetFont( "Arial", "", 8 ); $pdf->Cell( 20, 0, mb_convert_encoding($ProfesorPDF['Viernes']?? '', 'ISO-8859-1', 'UTF-8'), 0, 0, 'L');
      
-    $pdf->Image(APP_URL.$filename, 171, 93, 23, 23);
+    /* El QR, por la ruta en disco y no por URL: con la URL el servidor se descargaba su propia imagen por HTTP, y en el hosting eso falla («Missing or incorrect image file»). */
+    $pdf->Image($filename, 171, 93, 23, 23);
       
     unlink($filename);
    

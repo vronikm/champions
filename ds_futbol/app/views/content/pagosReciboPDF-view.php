@@ -27,7 +27,8 @@
 	for ($i = 0; $i < $length; $i += 2) {
 		$pairs[] = substr($first12Chars, $i, 2);
 	}
-	$recibo_hora = $pairs[4].":".$pairs[2].":".$pairs[0];
+	/* Un número de recibo corto dejaba $pairs sin la posición 4. */
+	$recibo_hora = isset($pairs[4]) ? $pairs[4].":".$pairs[2].":".$pairs[0] : '';
 
         $filename .= $datos["pago_recibo"].".jpeg";
 
@@ -39,10 +40,13 @@
 		exit();
 	}
 
+	/* Sin la sede, $sede seguía siendo el PDOStatement y leerlo como
+	   array era un error fatal: se usa lo que ya trae el recibo. */
 	$sede=$insAlumno->informacionSede($datos["alumno_sedeid"]);
-	if($sede->rowCount()==1){
-		$sede=$sede->fetch(); 
-    }
+	$sede = $sede->rowCount() == 1 ? $sede->fetch() : [
+		'sede_id' => (int)$datos['alumno_sedeid'], 'sede_nombre' => $datos['sede_nombre'],
+		'sede_direccion' => '', 'sede_telefono' => '', 'sede_email' => '',
+	];
    											
     $data="Recibo ".$datos["pago_recibo"]. "\n".$datos["pago_fecharegistro"]. " | ".$recibo_hora."\n".$sede['sede_nombre']."\n".$sede["sede_telefono"]."\n".$sede["sede_email"];
 
@@ -133,7 +137,8 @@
 
     
     /* Sin firma ni «FIRMA AUTORIZADA»: el QR va centrado en el recuadro derecho (100–200 × 88–121). */
-    $pdf->Image(APP_URL.$filename, 136.5, 91, 27, 27);
+    /* El QR, por la ruta en disco y no por URL: con la URL el servidor se descargaba su propia imagen por HTTP, y en el hosting eso falla («Missing or incorrect image file»). */
+    $pdf->Image($filename, 136.5, 91, 27, 27);
 
      
     unlink($filename);

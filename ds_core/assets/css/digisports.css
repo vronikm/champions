@@ -512,12 +512,13 @@
 .ds-dot--warning { background: var(--ds-warning); }
 .ds-dot--danger  { background: var(--ds-danger);  }
 
-.ds-item__title { font-size: .88rem; font-weight: 600; }
+.ds-item__title { font-size: .88rem; font-weight: 600; display: block; }   /* título y detalle en dos líneas: en línea quedaban pegados */
 
 .ds-item__meta {
     font-size: .74rem;
     color: var(--ds-text-muted);
     margin-top: 2px;
+    display: block;
 }
 
 .ds-item__value { margin-left: auto; font-size: .84rem; font-weight: 700; }
@@ -628,7 +629,7 @@
 }
 
 @media (max-width: 460px) {
-    .ds-stats { grid-template-columns: 1fr; }
+    .ds-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }   /* dos por fila: una sola columna era una lista de cajas */
 }
 
 /* Respeta la preferencia de menos movimiento. */

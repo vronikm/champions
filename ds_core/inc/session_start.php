@@ -178,3 +178,8 @@
        URL de imagen, porque eso es entregarle la llave a un tercero y
        dejarla escrita en sus registros. */
     require_once __DIR__ . "/qr.php";
+
+    /* Contraseña puesta por otra persona (alta o restablecida): hasta que
+       se cambie, sólo se atiende la página de cambiarla y la de salir. Va
+       al final, con todo cargado; ver clave_exigir_cambio_si_pendiente(). */
+    clave_exigir_cambio_si_pendiente();

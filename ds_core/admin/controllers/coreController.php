@@ -507,9 +507,11 @@ class coreController
         return $this->filas(
             "SELECT u.usuario_id, u.usuario_usuario, u.usuario_rolid,
                     u.usuario_estado, u.usuario_tienebloqueo, u.usuario_fechacreacion,
-                    u.usuario_2fa_estado,
+                    u.usuario_2fa_estado, u.usuario_fechacambioclave,
                     r.rol_nombre,
                     COALESCE(e.empleado_nombre, '') AS empleado,
+                    COALESCE(e.empleado_correo, '') AS correo,
+                    COALESCE(e.empleado_celular, '') AS celular,
                     s.sede_nombre
                FROM seguridad_usuario u
                LEFT JOIN seguridad_rol   r ON r.rol_id      = u.usuario_rolid
@@ -530,7 +532,8 @@ class coreController
     {
         return $this->filas(
             "SELECT e.empleado_id,
-                    COALESCE(e.empleado_nombre, CONCAT('Empleado #', e.empleado_id)) AS nombre
+                    COALESCE(e.empleado_nombre, CONCAT('Empleado #', e.empleado_id)) AS nombre,
+                    COALESCE(e.empleado_correo, '') AS correo, COALESCE(e.empleado_celular, '') AS celular
                FROM sujeto_empleado e
               WHERE e.empleado_estado = 'A'
                 AND (NOT EXISTS (SELECT 1 FROM seguridad_usuario u
@@ -627,8 +630,26 @@ class coreController
                 : $this->alerta('simple', 'Error', 'No fue posible actualizar el usuario.', 'error');
         }
 
+        /*
+        | Alta con envío de credenciales (respuesta=json, el formulario de
+        | alta): sin contraseña escrita se genera una, los destinos se
+        | validan antes de crear nada, y la respuesta trae lo mismo que
+        | restablecerClave para mostrar el resultado y abrir WhatsApp. El
+        | usuario nace con usuario_cambiaclave = 'S': al entrar se le pide
+        | cambiarla (clave_exigir_cambio_si_pendiente).
+        */
+        $conEnvio = ($_POST['respuesta'] ?? '') === 'json';
+        if ($conEnvio && $clave === '') {
+            $clave = $this->claveAleatoria($usuario);
+        }
+
         if (!clave_valida($clave, $motivo, $usuario)) {
             return $this->alerta('simple', 'Contraseña no válida', $motivo, 'error');
+        }
+
+        $destinos = $conEnvio ? $this->destinosEnvio() : [];
+        if (isset($destinos['error'])) {
+            return $this->alerta('simple', $destinos['error'][0], $destinos['error'][1], 'error');
         }
 
         $n = $this->escribir(
@@ -642,10 +663,194 @@ class coreController
              ':s' => $estado, ':b' => $bloqueo]
         );
 
+        if ($n > 0 && $conEnvio) {
+            $nombre = $empleado > 0
+                ? (string)$this->escalar("SELECT empleado_nombre FROM sujeto_empleado WHERE empleado_id = :e", [':e' => $empleado])
+                : '';
+            error_log('[DS usuarios] ' . ($_SESSION['usuario'] ?? '?') . ' creó el usuario ' . $usuario
+                      . ($destinos['correo'] ? ' · correo' : '') . ($destinos['whatsapp'] ? ' · WhatsApp' : ''));
+            return json_encode($this->entregarCredenciales($usuario, $nombre, $clave, $destinos, true)
+                               + ['url' => APP_URL . 'usuarioList/'], JSON_UNESCAPED_UNICODE);
+        }
+
         return $n > 0
             ? $this->alerta('redireccionar', 'Usuario creado',
                 "El usuario $usuario fue creado correctamente.", 'success', APP_URL . 'usuarioList/')
             : $this->alerta('simple', 'Error', 'No fue posible crear el usuario.', 'error');
+    }
+
+    /*----------------------------------------------------------------------
+      Restablecer la contraseña de otro usuario y enviársela
+      ----------------------------------------------------------------------
+      Puerta AJAX «restablecerClave». La contraseña la escribe quien
+      administra o, si la deja vacía, se genera una aleatoria. Se guarda
+      (hash), se marca usuario_cambiaclave = 'S' y, si se pide:
+
+        · CORREO: sale desde el servidor con mail(), en UTF-8, a la
+          dirección indicada (por omisión, la de su ficha de empleado).
+        · WHATSAPP: el servidor NO envía nada; devuelve el enlace wa.me con
+          el mensaje escrito, y es el teléfono de quien administra el que
+          lo manda al pulsarlo.
+
+      La contraseña en claro vuelve UNA vez en la respuesta, sólo a quien
+      tiene permiso de editar usuarios, para copiarla o mandarla por
+      WhatsApp. No se guarda en ningún otro sitio.
+
+      Las mismas reglas que guardarUsuario: permiso de editar, la cuenta
+      de un Super Administrador sólo la toca otro, y la clave pasa por
+      clave_valida(). La propia no se restablece aquí: para eso está
+      «Cambiar contraseña», que pide la actual.
+      ----------------------------------------------------------------------*/
+    public function restablecerClave(): string
+    {
+        $error = fn (string $titulo, string $texto) => json_encode(
+            ['ok' => false, 'tipo' => 'simple', 'icono' => 'error', 'titulo' => $titulo, 'texto' => $texto],
+            JSON_UNESCAPED_UNICODE);
+
+        if (!puede_editar('usuarioList')) {
+            return $error('Acceso denegado', 'Su rol no puede cambiar contraseñas de usuarios.');
+        }
+
+        $id = (int)($_POST['usuario_id'] ?? 0);
+        if ($id === (int)($_SESSION['usuarioid'] ?? 0)) {
+            return $error('Es su propia cuenta', 'Para su contraseña use «Cambiar contraseña» en el menú de su usuario: pide la actual.');
+        }
+
+        $u = $this->fila("SELECT u.usuario_id, u.usuario_usuario, u.usuario_rolid, u.usuario_estado,
+                                 COALESCE(e.empleado_nombre, '') AS nombre
+                            FROM seguridad_usuario u
+                            LEFT JOIN sujeto_empleado e ON e.empleado_id = u.usuario_empleadoid
+                           WHERE u.usuario_id = :id AND u.usuario_estado <> 'E'", [':id' => $id]);
+        if (!$u) {
+            return $error('No encontrado', 'Ese usuario no existe o fue dado de baja.');
+        }
+        if ((int)$u['usuario_rolid'] === self_rol_superadmin() && !es_superadministrador()) {
+            return $error('Usuario protegido', 'Sólo un Super Administrador puede cambiar la contraseña de otro Super Administrador.');
+        }
+
+        $clave = (string)($_POST['clave'] ?? '');
+        if ($clave === '') {
+            $clave = $this->claveAleatoria((string)$u['usuario_usuario']);
+        }
+        if (!clave_valida($clave, $motivo, (string)$u['usuario_usuario'])) {
+            return $error('Contraseña no válida', (string)$motivo);
+        }
+
+        /* Destinos, validados ANTES de tocar la contraseña: con un correo
+           mal escrito no se cambia nada y se corrige. */
+        $destinos = $this->destinosEnvio();
+        if (isset($destinos['error'])) {
+            return $error($destinos['error'][0], $destinos['error'][1]);
+        }
+
+        $n = $this->escribir("UPDATE seguridad_usuario
+                                 SET usuario_clave = :c, usuario_fechacambioclave = NOW(),
+                                     usuario_cambiaclave = 'S', usuario_fechaactualizado = NOW()
+                               WHERE usuario_id = :id",
+                             [':c' => password_hash($clave, PASSWORD_DEFAULT), ':id' => $id]);
+        if ($n < 1) {
+            return $error('No se pudo guardar', 'La base de datos rechazó el cambio. Inténtelo de nuevo.');
+        }
+
+        /* Rastro de quién lo hizo, sin la contraseña. */
+        error_log('[DS usuarios] ' . ($_SESSION['usuario'] ?? '?') . ' restableció la contraseña de '
+                  . $u['usuario_usuario'] . ($destinos['correo'] ? ' · correo' : '') . ($destinos['whatsapp'] ? ' · WhatsApp' : ''));
+
+        return json_encode($this->entregarCredenciales((string)$u['usuario_usuario'], (string)$u['nombre'], $clave, $destinos, false),
+                           JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * Por dónde enviar una contraseña (POST enviar_correo/correo y
+     * enviar_whatsapp/celular), validado. ['error' => [título, texto]] si
+     * algo no sirve, para responder ANTES de guardar nada.
+     */
+    private function destinosEnvio(): array
+    {
+        $porCorreo   = ($_POST['enviar_correo'] ?? '') === 'S';
+        $porWhatsapp = ($_POST['enviar_whatsapp'] ?? '') === 'S';
+        $correo  = trim((string)($_POST['correo'] ?? ''));
+        $celular = preg_replace('/\D/', '', (string)($_POST['celular'] ?? ''));
+        if ($porCorreo && (!filter_var($correo, FILTER_VALIDATE_EMAIL) || preg_match('/[\r\n,;]/', $correo))) {
+            return ['error' => ['Correo no válido', 'Revise la dirección de correo.']];
+        }
+        /* Ecuador: 09XXXXXXXX (10 dígitos) o ya con el 593 delante. */
+        $internacional = preg_match('/^09\d{8}$/', $celular) ? '593' . substr($celular, 1)
+                       : (preg_match('/^5939\d{8}$/', $celular) ? $celular : '');
+        if ($porWhatsapp && $internacional === '') {
+            return ['error' => ['Celular no válido', 'Escriba un celular de 10 dígitos que empiece por 09.']];
+        }
+        return ['correo' => $porCorreo, 'a' => $correo, 'whatsapp' => $porWhatsapp, 'celular' => $internacional];
+    }
+
+    /**
+     * El mensaje con usuario y contraseña, enviado por correo si se pidió,
+     * y la respuesta para la pantalla: la contraseña (una vez, para
+     * copiarla), el resultado del correo y el enlace wa.me para WhatsApp.
+     * $nuevo: alta del usuario o contraseña restablecida.
+     */
+    private function entregarCredenciales(string $usuario, string $nombre, string $clave, array $destinos, bool $nuevo): array
+    {
+        $org    = ds_nombre_organizacion();
+        $nombre = trim(html_entity_decode($nombre, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        $mensaje = "Hola " . ($nombre !== '' ? $nombre : $usuario) . ",\n\n"
+                 . ($nuevo ? "Se creó su usuario de DigiSports" : "Se restableció su contraseña de DigiSports")
+                 . ($org !== '' ? " (" . $org . ")" : '') . ".\n\n"
+                 . "Usuario: " . $usuario . "\n"
+                 . "Contraseña: " . $clave . "\n"
+                 . "Ingrese en: " . DS_HUB_URL . "\n\n"
+                 . "Al ingresar, el sistema le pedirá cambiarla por una que sólo usted conozca. No la comparta.";
+
+        $enviado = $destinos['correo']
+            ? $this->enviarCorreoTexto($destinos['a'], $nuevo ? 'Su usuario de DigiSports' : 'Su contraseña de DigiSports', $mensaje)
+            : false;
+
+        return [
+            'ok'       => true,
+            'usuario'  => $usuario,
+            'clave'    => $clave,
+            'mensaje'  => $mensaje,
+            'nuevo'    => $nuevo,
+            'correo'   => ['pedido' => $destinos['correo'], 'enviado' => $enviado, 'a' => $destinos['correo'] ? $destinos['a'] : ''],
+            'whatsapp' => ['pedido' => $destinos['whatsapp'],
+                           'url'    => $destinos['whatsapp'] ? 'https://wa.me/' . $destinos['celular'] . '?text=' . rawurlencode($mensaje) : ''],
+        ];
+    }
+
+    /** Una contraseña aleatoria legible (sin 0/O, 1/l/I), en tres grupos: «Kp7m-W3xq-9Fhd». */
+    private function claveAleatoria(string $usuario): string
+    {
+        $letras = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        do {
+            $grupos = [];
+            for ($g = 0; $g < 3; $g++) {
+                $p = '';
+                for ($i = 0; $i < 4; $i++) { $p .= $letras[random_int(0, strlen($letras) - 1)]; }
+                $grupos[] = $p;
+            }
+            $clave = implode('-', $grupos);
+        } while (!clave_valida($clave, $motivo, $usuario) || !preg_match('/\d/', $clave));
+        return $clave;
+    }
+
+    /**
+     * Correo de texto en UTF-8 con mail(), como los recibos de Arena:
+     * asunto y remitente codificados (RFC 2047) para que una tilde no
+     * llegue rota. false si el servidor de correo no lo acepta.
+     */
+    private function enviarCorreoTexto(string $para, string $asunto, string $texto): bool
+    {
+        if (!function_exists('mail')) { return false; }
+        $org   = ds_nombre_organizacion() ?: 'DigiSports';
+        $desde = ds_email_organizacion() ?: (string)ini_get('sendmail_from');
+        $enc   = static fn (string $s): string => '=?UTF-8?B?' . base64_encode($s) . '?=';
+        $cabeceras = ($desde !== '' ? 'From: ' . $enc($org) . ' <' . $desde . ">\r\n" : '')
+                   . "MIME-Version: 1.0\r\n"
+                   . "Content-Type: text/plain; charset=UTF-8\r\n"
+                   . "Content-Transfer-Encoding: base64";
+        /* mail() avisa con un warning si no hay servidor de correo: no debe
+           colarse en la respuesta JSON. */
+        return (bool)@mail($para, $enc($asunto), chunk_split(base64_encode(str_replace("\n", "\r\n", $texto))), $cabeceras);
     }
 
     public function eliminarUsuario(): string

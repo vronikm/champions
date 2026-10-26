@@ -92,6 +92,20 @@ switch ($_POST['modulo_hub']) {
         echo $insHub->regenerarCodigosRecuperacion();
         break;
 
+    /* La propia contraseña (página ?p=clave). Siempre la de la sesión:
+       no hay id en la petición. Es lo único que se atiende mientras el
+       cambio sea obligatorio (clave_exigir_cambio_si_pendiente). */
+    case 'cambiarClave':
+        $ok = clave_cambiar_propia(usuario_actual_id(),
+                                   (string)($_POST['clave_actual'] ?? ''),
+                                   (string)($_POST['clave_nueva'] ?? ''),
+                                   (string)($_POST['clave_confirmar'] ?? ''), $motivo);
+        echo json_encode($ok
+            ? ['ok' => true, 'tipo' => 'simple', 'icono' => 'success', 'titulo' => 'Contraseña cambiada', 'texto' => 'La contraseña se cambió.']
+            : ['ok' => false, 'tipo' => 'simple', 'icono' => 'error', 'titulo' => 'No se cambió la contraseña', 'texto' => (string)$motivo],
+            JSON_UNESCAPED_UNICODE);
+        break;
+
     default:
         http_response_code(400);
         echo json_encode([

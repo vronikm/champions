@@ -40,6 +40,15 @@ $empleadoPre = (int)($_GET['empleado'] ?? 0);
 $empleadoSel = (int)($usuario['usuario_empleadoid'] ?? 0) ?: $empleadoPre;
 
 $rolActual = (int)($usuario['usuario_rolid'] ?? 0);
+
+/* Para el modal de contraseña: correo y celular de su ficha de empleado. */
+$esYo = !$esAlta && $id === (int)($_SESSION['usuarioid'] ?? 0);
+$contacto = ['empleado' => '', 'correo' => '', 'celular' => ''];
+if (!$esAlta) {
+    foreach ($insCore->usuarios() as $fila) {
+        if ((int)$fila['usuario_id'] === $id) { $contacto = $fila; break; }
+    }
+}
 $h = static fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 
 require_once __DIR__ . "/inc/layout-top.php";
@@ -59,7 +68,10 @@ require_once __DIR__ . "/inc/layout-top.php";
             </div>
         <?php endif; ?>
 
-        <form class="FormularioAjax" method="POST" action="<?php echo APP_URL; ?>ajax/coreAjax.php">
+        <?php /* El alta lo envía su propio script (abajo): responde en JSON con las
+                 credenciales para mostrarlas y mandarlas. La edición sigue con
+                 FormularioAjax. */ ?>
+        <form class="<?php echo $esAlta ? '' : 'FormularioAjax'; ?>" id="<?php echo $esAlta ? 'usuarioAlta' : 'usuarioEditar'; ?>" method="POST" action="<?php echo APP_URL; ?>ajax/coreAjax.php">
             <input type="hidden" name="modulo_core" value="guardarUsuario">
             <input type="hidden" name="usuario_id" value="<?php echo $id; ?>">
 
@@ -97,6 +109,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                                     <option value="0">Sin vincular</option>
                                     <?php foreach ($empleados as $e): ?>
                                         <option value="<?php echo (int)$e['empleado_id']; ?>"
+                                            data-correo="<?php echo $h($e['correo']); ?>" data-celular="<?php echo $h(preg_replace('/\D/', '', (string)$e['celular'])); ?>"
                                             <?php echo $empleadoSel === (int)$e['empleado_id'] ? 'selected' : ''; ?>>
                                             <?php echo $h($e['nombre']); ?>
                                         </option>
@@ -149,6 +162,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                             <?php endif; ?>
                         </div>
 
+                        <?php if ($esAlta): ?>
                         <div class="mb-3 col-md-6">
                             <label for="usuario_clave">
                                 Contraseña <?php echo $esAlta ? '<span class="text-danger">*</span>' : ''; ?>
@@ -166,6 +180,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                                        <?php echo $esAlta ? 'required' : ''; ?>>
                                                                 <button type="button" class="btn btn-outline-secondary" id="btnVerClave"
                                         title="Mostrar u ocultar"><i class="fas fa-eye"></i></button>
+                                <button type="button" class="btn btn-secondary" id="btnGenerarClave" title="Generar una aleatoria" aria-label="Generar una contraseña aleatoria"><i class="fas fa-rotate" aria-hidden="true"></i></button>
                             
                             </div>
                             <small class="text-muted">
@@ -175,6 +190,49 @@ require_once __DIR__ . "/inc/layout-top.php";
                                 <?php endif; ?>
                             </small>
                         </div>
+                        <?php /* Credenciales al usuario nuevo: el correo sale del servidor;
+                                 WhatsApp lo manda quien administra desde su teléfono. */ ?>
+                        <fieldset class="col-12 mb-3 ds-clave__envio" id="altaEnvio">
+                            <legend class="form-label mb-2">Enviarle usuario y contraseña por</legend>
+                            <div class="row g-2">
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" role="switch" id="altaCorreoSi" name="enviar_correo" value="S">
+                                        <label class="form-check-label" for="altaCorreoSi"><i class="fas fa-envelope me-1" aria-hidden="true"></i>Correo</label>
+                                    </div>
+                                    <input type="email" class="form-control mt-1" id="altaCorreo" name="correo" placeholder="correo@ejemplo.com" inputmode="email" aria-label="Correo del usuario" disabled>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" role="switch" id="altaWaSi" name="enviar_whatsapp" value="S">
+                                        <label class="form-check-label" for="altaWaSi"><i class="fab fa-whatsapp me-1" aria-hidden="true"></i>WhatsApp</label>
+                                    </div>
+                                    <input type="tel" class="form-control mt-1" id="altaCelular" name="celular" placeholder="09…" inputmode="numeric" maxlength="13" aria-label="Celular del usuario" disabled>
+                                </div>
+                            </div>
+                            <div class="form-text">Se rellenan con los de la persona vinculada. Al ingresar por primera vez, el sistema le pedirá cambiar la contraseña.</div>
+                        </fieldset>
+                        <?php else: ?>
+                        <?php /* Al editar, la contraseña se cambia en el modal: genera una
+                                 aleatoria y la envía por correo o WhatsApp
+                                 (inc/modal-clave.php). La propia, desde «Cambiar
+                                 contraseña», que pide la actual. */ ?>
+                        <div class="mb-3 col-md-6">
+                            <span class="form-label d-block">Contraseña</span>
+                            <?php if ($esYo): ?>
+                                <p class="text-muted small mb-0">Para cambiar la suya use «Cambiar contraseña» en el menú de su usuario.</p>
+                            <?php else: ?>
+                                <button type="button" class="btn btn-warning js-clave"
+                                        data-id="<?php echo $id; ?>" data-usuario="<?php echo $h($usuario['usuario_usuario']); ?>"
+                                        data-nombre="<?php echo $h(html_entity_decode((string)$contacto['empleado'], ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?>"
+                                        data-correo="<?php echo $h($contacto['correo']); ?>"
+                                        data-celular="<?php echo $h(preg_replace('/\D/', '', (string)$contacto['celular'])); ?>">
+                                    <i class="fas fa-key me-1" aria-hidden="true"></i>Cambiar contraseña y enviarla
+                                </button>
+                                <small class="text-muted d-block mt-1">Se guarda al momento, aparte del resto del formulario.</small>
+                            <?php endif; ?>
+                        </div>
+                        <?php endif; ?>
                     </div>
 
                     <div class="row g-2">
@@ -217,5 +275,75 @@ require_once __DIR__ . "/inc/layout-top.php";
     });
 })();
 </script>
+
+<?php if ($esAlta || !$esYo) { require __DIR__ . "/inc/modal-clave.php"; } ?>
+
+<?php if ($esAlta): ?>
+<script>
+/*
+| Alta con envío de credenciales.
+|
+| Correo y celular se toman de la persona vinculada (data-* de cada
+| opción) y los interruptores se marcan si los tiene. Al guardar, el
+| servidor (guardarUsuario con respuesta=json) crea el usuario, envía el
+| correo si se pidió y devuelve el mensaje: el modal de contraseña muestra
+| el resultado y el botón de WhatsApp; al cerrarlo se vuelve al listado.
+*/
+document.addEventListener('DOMContentLoaded', function () {
+    var form = document.getElementById('usuarioAlta');
+    if (!form) { return; }
+    var $ = function (id) { return document.getElementById(id); };
+    var persona = $('usuario_empleadoid'), clave = $('usuario_clave');
+
+    function sincronizar() {
+        $('altaCorreo').disabled = !$('altaCorreoSi').checked;
+        $('altaCelular').disabled = !$('altaWaSi').checked;
+    }
+    function rellenar() {
+        var o = persona.options[persona.selectedIndex] || {}, d = o.dataset || {};
+        $('altaCorreo').value = d.correo || '';
+        $('altaCelular').value = d.celular || '';
+        $('altaCorreoSi').checked = !!d.correo;
+        $('altaWaSi').checked = !!d.celular;
+        sincronizar();
+    }
+    persona.addEventListener('change', rellenar);
+    $('altaCorreoSi').addEventListener('change', sincronizar);
+    $('altaWaSi').addEventListener('change', sincronizar);
+    rellenar();
+
+    /* Una aleatoria de partida, visible para poder anotarla. */
+    function generar() {
+        if (window.dsClaveGenerar) { clave.value = window.dsClaveGenerar(); clave.type = 'text'; }
+    }
+    $('btnGenerarClave').addEventListener('click', generar);
+    if (!clave.value) { generar(); }
+
+    form.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        if (!form.reportValidity()) { return; }
+        var fd = new FormData(form);
+        fd.append('respuesta', 'json');
+        var boton = form.querySelector('[type="submit"]'); if (boton) { boton.disabled = true; }
+        fetch(form.action, { method: 'POST', body: fd, credentials: 'same-origin' })
+            .then(function (r) { return r.text(); })
+            .then(function (t) {
+                var j = null; try { j = JSON.parse(t); } catch (e) {}
+                if (j && j.ok) {
+                    window.dsClaveResultado(j, function () { location.href = j.url; });
+                    return;
+                }
+                if (boton) { boton.disabled = false; }
+                Swal.fire({ icon: (j && j.icono) || 'error', title: (j && j.titulo) || 'No se pudo crear',
+                            text: (j && j.texto) || 'Su sesión pudo caducar. Vuelva a entrar.' });
+            })
+            .catch(function () {
+                if (boton) { boton.disabled = false; }
+                Swal.fire({ icon: 'error', title: 'Sin conexión', text: 'No se pudo contactar con el servidor. No se creó nada.' });
+            });
+    });
+});
+</script>
+<?php endif; ?>
 
 <?php require_once __DIR__ . "/inc/layout-bottom.php"; ?>

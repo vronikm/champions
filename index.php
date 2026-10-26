@@ -38,6 +38,9 @@ $paginas = [
        tiene que poder hacerlo cualquiera que entre al sistema. */
     'seguridad'     => 'seguridad-view.php',
     'seguridadAjax' => 'seguridadAjax.php',
+    /* Cambiar la propia contraseña; obligatoria si la puso otra persona
+       (clave_exigir_cambio_si_pendiente manda aquí). */
+    'clave'         => 'clave-view.php',
 ];
 
 $pagina = (string)($_GET['p'] ?? 'hub');

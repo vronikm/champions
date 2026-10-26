@@ -933,3 +933,53 @@ td.ds-tabla-acciones .ds-hueco {
     max-width: min(90vw, 34rem);
     margin: 0;
 }
+
+/* =========================================================================
+   USUARIOS (admin/usuarioList). Tabla en escritorio; por debajo de 992 px,
+   una ficha por usuario. Mismo enfoque que .ds-crud de Fútbol, con
+   nombres propios porque futbol.css no se carga en el módulo Core.
+   ========================================================================= */
+.ds-usuarios__quien { display: flex; align-items: center; gap: .65rem; }
+.ds-usuarios__inicial {
+    flex: none; width: 2.5rem; height: 2.5rem; border-radius: 50%;
+    display: grid; place-items: center;
+    background: var(--bs-tertiary-bg); color: var(--bs-emphasis-color);
+    font-weight: 700; font-size: .85rem;
+}
+.ds-usuarios__usuario { font-weight: 600; overflow-wrap: anywhere; }
+.ds-usuarios__persona { font-size: .85rem; color: var(--bs-secondary-color); }
+.ds-usuarios__botones { display: flex; justify-content: flex-end; align-items: center; gap: .35rem; flex-wrap: wrap; }
+.ds-usuarios__botones form { margin: 0; }
+.ds-usuarios__buscar { max-width: 24rem; min-height: 2.5rem; }
+.ds-clave__resultado li { overflow-wrap: anywhere; }
+
+@media (min-width: 992px) and (max-width: 1199.98px) {
+    .ds-usuarios__tabla .ds-usuarios__opcional { display: none; }
+}
+@media (max-width: 991.98px) {
+    .ds-usuarios__tabla, .ds-usuarios__tabla > tbody { display: block; }
+    .ds-usuarios__tabla > thead { display: none; }
+    .ds-usuarios__tabla > tbody > tr {
+        display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .25rem .75rem;
+        padding: .85rem; margin-bottom: .75rem;
+        border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius-lg);
+        background: var(--bs-body-bg);
+    }
+    .ds-usuarios__tabla > tbody > tr[hidden] { display: none; }
+    .ds-usuarios__tabla > tbody > tr > td { display: block; padding: 0; border: 0; background: transparent; }
+    .ds-usuarios__tabla td.ds-usuarios__principal { grid-column: 1; grid-row: 1; min-width: 0; }
+    .ds-usuarios__tabla td.ds-usuarios__estado { grid-column: 2; grid-row: 1; align-self: start; }
+    .ds-usuarios__tabla td.ds-usuarios__dato { grid-column: 1 / -1; font-size: .875rem; }
+    .ds-usuarios__tabla td.ds-usuarios__dato[data-rotulo]::before { content: attr(data-rotulo) ": "; color: var(--bs-secondary-color); }
+    .ds-usuarios__tabla td.ds-usuarios__acciones {
+        grid-column: 1 / -1; margin-top: .5rem; padding-top: .6rem;
+        border-top: 1px solid var(--bs-border-color-translucent);
+    }
+    /* Botones de dedo: 44 px; «Contraseña» ocupa el ancho libre. */
+    .ds-usuarios__botones { justify-content: stretch; }
+    .ds-usuarios__botones .btn { min-height: 2.75rem; min-width: 2.75rem; display: inline-flex; align-items: center; justify-content: center; }
+    .ds-usuarios__botones .ds-usuarios__primario { flex: 1 1 auto; }
+    .ds-usuarios__buscar { max-width: none; }
+}
+.ds-clave__envio { border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius); padding: .75rem 1rem; }
+.ds-clave__envio legend { float: none; width: auto; font-size: .95rem; font-weight: 600; padding: 0 .25rem; margin-bottom: .25rem; }

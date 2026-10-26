@@ -101,6 +101,8 @@ switch ($_POST['modulo_core']) {
     case 'guardarPermisos':  echo $insCore->guardarPermisos();    break;
     case 'guardarUsuario':   echo $insCore->guardarUsuario();     break;
     case 'eliminarUsuario':  echo $insCore->eliminarUsuario();    break;
+    /* Nueva contraseña para OTRO usuario y su envío por correo o WhatsApp. */
+    case 'restablecerClave': echo $insCore->restablecerClave();   break;
     case 'guardarMenu':      echo $insCore->guardarMenu();        break;
     case 'eliminarMenu':     echo $insCore->eliminarMenu();       break;
 

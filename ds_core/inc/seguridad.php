@@ -184,6 +184,25 @@ if (!function_exists('usuario_autenticado')) {
             return false;
         }
 
+        /*
+        | PALABRA PREVISIBLE CON ADORNO
+        |
+        | La lista sólo guarda contraseñas de 8 caracteres o más, así que
+        | «password123», «admin123» o «Champions2024» pasaban: la palabra
+        | está en la lista (o es corta, o es el nombre de la escuela) y el
+        | adorno numérico es justo lo que prueban primero los ataques. Se
+        | quita el adorno del principio y del final, se deshacen los
+        | disfraces y las tildes, y si lo que queda es una contraseña común
+        | o está hecho SÓLO de palabras previsibles, se rechaza.
+        */
+        $base = clave_sin_disfraz(clave_sin_tildes(preg_replace('/^[\d\W_]+|[\d\W_]+$/u', '', mb_strtolower(trim($clave), 'UTF-8'))));
+        if ($base !== '' && (isset($comunes[$base]) || clave_solo_palabras_previsibles($base))) {
+            $motivo = 'Esa contraseña es una palabra fácil de adivinar con números o símbolos '
+                    . 'alrededor (como «admin123» o el nombre de la escuela con el año). '
+                    . 'Elija una frase o una combinación que no se pueda deducir.';
+            return false;
+        }
+
         /* Un solo caracter repetido, aunque llegue a los 8. */
         if (preg_match('/^(.)\1+$/u', $normal)) {
             $motivo = 'La contraseña no puede ser un solo carácter repetido.';
@@ -212,7 +231,64 @@ if (!function_exists('usuario_autenticado')) {
     {
         return 'Mínimo ' . clave_longitud_minima() . ' caracteres. Se admite cualquier '
              . 'carácter, incluidos espacios y símbolos. No se aceptan contraseñas '
-             . 'de uso común, secuencias, ni el propio nombre de usuario.';
+             . 'de uso común, secuencias, el propio nombre de usuario, ni palabras '
+             . 'previsibles con números alrededor (como «admin123» o el nombre de la escuela).';
+    }
+
+    /** Sin tildes ni eñes: «Fútbol» y «futbol» son la misma palabra para quien ataca. */
+    function clave_sin_tildes(string $texto): string
+    {
+        return strtr($texto, ['á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ü' => 'u', 'ñ' => 'n',
+                              'Á' => 'a', 'É' => 'e', 'Í' => 'i', 'Ó' => 'o', 'Ú' => 'u', 'Ü' => 'u', 'Ñ' => 'n']);
+    }
+
+    /**
+     * Palabras que nadie debería usar como contraseña aquí: las genéricas
+     * más cortas que la lista común (que sólo guarda las de 8 o más) y las
+     * de ESTA organización —el nombre de la escuela y de cada sede—, que
+     * es lo primero que prueba quien ataca un sistema concreto.
+     */
+    function clave_palabras_previsibles(): array
+    {
+        static $lista = null;
+        if ($lista !== null) { return $lista; }
+
+        $lista = ['admin', 'administrador', 'usuario', 'user', 'root', 'test', 'prueba', 'clave', 'contrasena',
+                  'pass', 'password', 'welcome', 'bienvenido', 'hola', 'amor', 'love', 'dios', 'temporal', 'cambiar',
+                  'qwerty', 'asdf', 'abc', 'abcd', 'futbol', 'football', 'soccer', 'deporte', 'deportes', 'balon',
+                  'gol', 'campeon', 'campeones', 'champion', 'champions', 'escuela', 'academia', 'club', 'liga',
+                  'equipo', 'ecuador', 'quito', 'guayaquil', 'cuenca', 'loja', 'digisports', 'digitech', 'sistema'];
+
+        $con = seguridad_conexion();
+        if ($con !== null) {
+            try {
+                $nombres = $con->query("SELECT escuela_nombre FROM general_escuela
+                                        UNION ALL SELECT sede_nombre FROM general_sede")->fetchAll(PDO::FETCH_COLUMN);
+                foreach ($nombres as $n) {
+                    foreach (preg_split('/[^a-z0-9]+/', clave_sin_tildes(mb_strtolower(html_entity_decode((string)$n, ENT_QUOTES | ENT_HTML5, 'UTF-8'), 'UTF-8'))) as $p) {
+                        if (strlen($p) >= 4) { $lista[] = $p; }
+                    }
+                }
+            } catch (\Throwable $e) {
+                // Sin la base, quedan las genéricas: mejor eso que no validar.
+            }
+        }
+        /* Las largas primero: así «champions» se quita entera antes que «champion». */
+        $lista = array_values(array_unique($lista));
+        usort($lista, static fn($a, $b) => strlen($b) - strlen($a));
+        return $lista;
+    }
+
+    /** Si el texto (ya sin adorno ni disfraz) está hecho sólo de palabras previsibles. */
+    function clave_solo_palabras_previsibles(string $base): bool
+    {
+        $resto = preg_replace('/[^a-z]+/', '', $base);
+        if ($resto === '') { return false; }   /* sólo números o símbolos: lo cubren las otras reglas */
+        foreach (clave_palabras_previsibles() as $p) {
+            $resto = str_replace(clave_sin_disfraz($p), '', $resto);
+            if ($resto === '') { return true; }
+        }
+        return strlen($resto) <= 2;
     }
 
     /**
@@ -1065,5 +1141,124 @@ if (!function_exists('usuario_autenticado')) {
     function csrf_renovar(string $proposito = 'general'): void
     {
         unset($_SESSION['ds_csrf'][$proposito]);
+    }
+
+    /*======================================================================
+      Cambio de contraseña obligatorio
+      ======================================================================
+      Una contraseña que puso otra persona —la del alta, o la que se
+      restablece y se envía por correo o WhatsApp— queda marcada en
+      seguridad_usuario.usuario_cambiaclave = 'S'. El login lo pasa a la
+      sesión (debe_cambiar_clave) y, mientras siga, ninguna pantalla ni
+      petición del ecosistema se atiende salvo la de cambiarla y la de
+      salir. Antes la columna se guardaba al crear el usuario pero nadie la
+      leía: la «temporal» valía para siempre.
+      ====================================================================*/
+
+    /** Si la sesión tiene pendiente cambiar la contraseña. */
+    function clave_cambio_pendiente(): bool
+    {
+        return !empty($_SESSION['debe_cambiar_clave']);
+    }
+
+    /**
+     * Cambia la contraseña de la PROPIA cuenta, comprobando la actual.
+     *
+     * La nueva pasa por clave_valida() y no puede ser la misma: si no, el
+     * cambio obligatorio se cumpliría volviendo a escribir la temporal.
+     * Al cambiarla se quita la marca de cambio pendiente, en la base y en
+     * la sesión. Devuelve true, o false con el motivo.
+     */
+    function clave_cambiar_propia(int $usuarioid, string $actual, string $nueva,
+                                  string $confirmar, ?string &$motivo = null): bool
+    {
+        if ($usuarioid <= 0 || $actual === '' || $nueva === '' || $confirmar === '') {
+            $motivo = 'Complete los tres campos.';
+            return false;
+        }
+        if ($nueva !== $confirmar) {
+            $motivo = 'La nueva contraseña y su confirmación no coinciden.';
+            return false;
+        }
+        if (!clave_valida($nueva, $motivo, (string)($_SESSION['usuario'] ?? ''))) {
+            return false;
+        }
+
+        $con = seguridad_conexion();
+        if ($con === null) {
+            $motivo = 'No hay conexión con la base de datos. Inténtelo de nuevo.';
+            return false;
+        }
+        $st = $con->prepare("SELECT usuario_clave FROM seguridad_usuario WHERE usuario_id = :id AND usuario_estado <> 'E'");
+        $st->execute([':id' => $usuarioid]);
+        $hash = $st->fetchColumn();
+        if ($hash === false || !password_verify($actual, (string)$hash)) {
+            $motivo = 'La contraseña actual no es correcta.';
+            return false;
+        }
+        if (password_verify($nueva, (string)$hash)) {
+            $motivo = 'La nueva contraseña tiene que ser distinta de la actual.';
+            return false;
+        }
+
+        $up = $con->prepare("UPDATE seguridad_usuario
+                                SET usuario_clave = :c, usuario_fechacambioclave = NOW(), usuario_cambiaclave = 'N'
+                              WHERE usuario_id = :id");
+        $up->execute([':c' => password_hash($nueva, PASSWORD_DEFAULT), ':id' => $usuarioid]);
+
+        unset($_SESSION['debe_cambiar_clave']);
+        return true;
+    }
+
+    /**
+     * Si la sesión debe cambiar la contraseña, sólo deja pasar la página
+     * de cambiarla (Hub, ?p=clave), su envío y la salida. Lo demás se
+     * redirige allí; una petición AJAX recibe JSON, porque una redirección
+     * a HTML la leería el fetch() como un error de conexión.
+     *
+     * La llama session_start.php, que cargan TODOS los puntos de entrada
+     * de todos los módulos: no hay que acordarse de ponerla en cada uno.
+     */
+    function clave_exigir_cambio_si_pendiente(): void
+    {
+        if (PHP_SAPI === 'cli' || !clave_cambio_pendiente() || !defined('DS_HUB_URL')) {
+            return;
+        }
+
+        $script = str_replace('\\', '/', (string)(realpath($_SERVER['SCRIPT_FILENAME'] ?? '') ?: ''));
+        $hub    = defined('DS_HUB_PATH') ? str_replace('\\', '/', (string)(realpath(DS_HUB_PATH . 'index.php') ?: '')) : '';
+        if ($hub !== '' && $script === $hub) {
+            $p = (string)($_GET['p'] ?? '');
+            if ($p === 'clave') { return; }
+            if ($p === 'seguridadAjax' && ($_POST['modulo_hub'] ?? '') === 'cambiarClave') { return; }
+        }
+        /* Salir siempre se puede. */
+        if (stripos((string)($_GET['views'] ?? ''), 'logOut') === 0) { return; }
+
+        $destino = DS_HUB_URL . '?p=clave';
+        $esAjax  = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest'
+                || str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json')
+                || str_contains($_SERVER['REQUEST_URI'] ?? '', '/ajax/')
+                || stripos(basename($script), 'ajax') !== false
+                || ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST';
+
+        if ($esAjax) {
+            if (!headers_sent()) {
+                http_response_code(403);
+                header('Content-Type: application/json; charset=utf-8');
+            }
+            echo json_encode([
+                'ok'     => false,
+                'tipo'   => 'redireccionar',
+                'icono'  => 'warning',
+                'titulo' => 'Cambie su contraseña',
+                'texto'  => 'Antes de seguir tiene que cambiar la contraseña que le enviaron.',
+                'url'    => $destino,
+            ], JSON_UNESCAPED_UNICODE);
+            exit();
+        }
+
+        header('Location: ' . $destino);
+        exit();
     }
 }

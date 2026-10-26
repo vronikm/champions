@@ -104,6 +104,7 @@
 							usuario_usuario,
 							usuario_rolid,
 							usuario_clave,
+							usuario_cambiaclave,
 							usuario_id
 					FROM    seguridad_usuario
 					LEFT    JOIN sujeto_empleado ON empleado_id   = usuario_empleadoid
@@ -295,6 +296,9 @@
 				   del rol: eso era lo que hacia antes y por eso la cabecera
 				   saludaba con un "1" a quien no tuviera empleado asociado. */
 				'nombre'         => $user['empleado_nombre'] ?: $user['usuario_usuario'],
+				/* Contraseña puesta por otra persona: hasta cambiarla, sólo
+				   se atiende la página de cambiarla (clave_exigir_cambio_si_pendiente). */
+				'debe_cambiar_clave' => (($user['usuario_cambiaclave'] ?? 'N') === 'S'),
 			];
 
 			/* Todo usuario aterriza en el Hub del ecosistema, que vive en la
@@ -312,7 +316,7 @@
 					SELECT  usuario_empleadoid, empleado_identificacion, empleado_nombre,
 							empleado_foto, sede_nombre AS sede,
 							usuario_estado, usuario_tienebloqueo, usuario_usuario,
-							usuario_rolid, usuario_id
+							usuario_rolid, usuario_id, usuario_cambiaclave
 					FROM    seguridad_usuario
 					LEFT    JOIN sujeto_empleado ON empleado_id     = usuario_empleadoid
 					LEFT    JOIN general_sede    ON empleado_sedeid = sede_id

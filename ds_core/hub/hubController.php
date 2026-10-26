@@ -33,10 +33,22 @@ class hubController
             $modulos[$clave]['metricas'] = [];
         }
 
-        /* Metricas de los modulos construidos. */
-        $modulos['basketball']['metricas'] = $this->metricasBasketball();
-        $modulos['basketball']['url']      = DS_FUTBOL_URL . $this->entradaBasketball() . '/';
-        $modulos['core']['metricas']       = $this->metricasCore();
+        /* Metricas de los modulos construidos. Las globales (alumnos de
+           toda la escuela, por cobrar, usuarios) sólo para la vista gerencial. */
+        if ($this->vistaGerencial()) {
+            $modulos['basketball']['metricas'] = $this->metricasBasketball();
+            $modulos['core']['metricas']       = $this->metricasCore();
+        }
+        /* Sin vista gerencial, las tarjetas van sin cifras: las suyas están en
+           «Mi día», justo debajo (hub-view.php). */
+        $modulos['basketball']['url'] = DS_FUTBOL_URL . $this->entradaBasketball() . '/';
+
+        /* Accesos rápidos: sólo los que el rol puede abrir. Un profesor veía
+           «Alumnos» y «Mensualidades», que lo llevaban a «acceso denegado». */
+        foreach ($modulos as $clave => $m) {
+            $modulos[$clave]['accesos'] = array_values(array_filter($m['accesos'] ?? [],
+                static fn($ac) => usuario_tiene_permiso(trim((string)$ac['ruta'], '/'), $clave)));
+        }
 
         /* Un modulo construido solo se muestra si el rol tiene acceso. Los
            que aun no existen se dejan visibles como anticipo: no son
@@ -91,10 +103,124 @@ class hubController
         ];
     }
 
+    /*----------  Qué ve cada quien  ----------*/
+
+    /**
+     * Si la sesión ve la información gerencial: alumnos y sedes de toda la
+     * escuela, ingresos, pagos y avisos de cobranza.
+     *
+     * El mismo criterio que el dashboard de Fútbol (dashboard-view.php):
+     * superadministrador o permiso sobre el balance. Se apoya en un permiso
+     * y no en el número de rol para que siga valiendo con roles nuevos. Un
+     * profesor no lo tiene: ve sólo sus horarios, sus alumnos y la toma de
+     * asistencia (miDia).
+     */
+    public function vistaGerencial(): bool
+    {
+        return es_superadministrador() || usuario_tiene_permiso('balanceResultados', 'basketball');
+    }
+
+    /**
+     * El día de quien da clase: sus horarios activos, sus alumnos y cómo va
+     * la toma de asistencia. null si la sesión no tiene ficha de empleado.
+     *
+     * Por horario: días y hora, lugar, alumnos activos, si hoy tiene clase y
+     * cuántos están marcados hoy —Tomada / En curso / Pendiente, las mismas
+     * reglas que «Registrar asistencia»—. Y del mes: los días con clase,
+     * hasta hoy, en que no se marcó a nadie.
+     */
+    public function miDia(): ?array
+    {
+        static $cache = false;
+        if ($cache !== false) { return $cache; }
+
+        $emp = empleado_actual();
+        if ($emp <= 0) { return $cache = null; }
+
+        $hoyIso = (int)date('N');
+        $col    = 'asistencia_D' . date('d');           /* un entero de date(), no del usuario */
+        $aniomes = (int)date('Ym');
+
+        $horarios = $this->filas(
+            "SELECT H.horario_id, H.horario_nombre, H.horario_detalle, S.sede_nombre,
+                    GROUP_CONCAT(DISTINCT L.lugar_nombre ORDER BY L.lugar_nombre SEPARATOR ', ') AS lugares,
+                    GROUP_CONCAT(DISTINCT D.detalle_dia ORDER BY D.detalle_dia) AS dias,
+                    MIN(HR.hora_inicio) AS inicio, MAX(HR.hora_fin) AS fin
+               FROM asistencia_horario H
+               LEFT JOIN general_sede S ON S.sede_id = H.horario_sedeid
+               JOIN asistencia_horario_detalle D ON D.detalle_horarioid = H.horario_id
+               LEFT JOIN asistencia_lugar L ON L.lugar_id = D.detalle_lugarid
+               LEFT JOIN asistencia_hora HR ON HR.hora_id = D.detalle_horaid
+              WHERE H.horario_estado = 'A'
+                AND H.horario_id IN (SELECT detalle_horarioid FROM asistencia_horario_detalle WHERE detalle_profesorid = :emp)
+              GROUP BY H.horario_id, H.horario_nombre, H.horario_detalle, S.sede_nombre
+              ORDER BY inicio, H.horario_nombre",
+            [':emp' => $emp]);
+
+        $conteos = [];
+        foreach ($this->filas(
+            "SELECT AH.asignahorario_horarioid AS horario, COUNT(DISTINCT A.alumno_id) AS alumnos,
+                    COUNT(DISTINCT CASE WHEN AA.$col IS NOT NULL AND AA.$col <> '' THEN A.alumno_id END) AS hoy
+               FROM asistencia_asignahorario AH
+               JOIN sujeto_alumno A ON A.alumno_id = AH.asignahorario_alumnoid AND A.alumno_estado = 'A'
+               LEFT JOIN asistencia_asistencia AA ON AA.asistencia_alumnoid = A.alumno_id AND AA.asistencia_aniomes = :am
+              WHERE AH.asignahorario_horarioid IN (SELECT detalle_horarioid FROM asistencia_horario_detalle WHERE detalle_profesorid = :emp)
+              GROUP BY AH.asignahorario_horarioid",
+            [':am' => $aniomes, ':emp' => $emp]) as $c) {
+            $conteos[(int)$c['horario']] = $c;
+        }
+
+        $dias = []; $clasesHoy = 0; $pendientesHoy = 0;
+        foreach ($horarios as $i => $h) {
+            $id = (int)$h['horario_id'];
+            $n  = (int)($conteos[$id]['alumnos'] ?? 0);
+            $k  = (int)($conteos[$id]['hoy'] ?? 0);
+            $semana = array_map('intval', array_filter(explode(',', (string)$h['dias']), 'strlen'));
+            foreach ($semana as $d) { $dias[$d] = true; }
+            $claseHoy = in_array($hoyIso, $semana, true);
+            $estado = $n === 0 ? 'sin-alumnos' : ($k >= $n ? 'tomada' : ($k > 0 ? 'curso' : ($claseHoy ? 'pendiente' : 'sin-clase')));
+            if ($claseHoy) { $clasesHoy++; }
+            if ($estado === 'pendiente' || $estado === 'curso') { $pendientesHoy++; }
+            $horarios[$i] += ['alumnos' => $n, 'marcados' => $k, 'clase_hoy' => $claseHoy, 'estado' => $estado, 'semana' => $semana];
+        }
+
+        /* Alumnos distintos (uno puede estar en dos de sus horarios). */
+        $fila = $this->filas(
+            "SELECT COUNT(DISTINCT A.alumno_id) AS n FROM asistencia_asignahorario AH
+               JOIN sujeto_alumno A ON A.alumno_id = AH.asignahorario_alumnoid AND A.alumno_estado = 'A'
+              WHERE AH.asignahorario_horarioid IN (SELECT detalle_horarioid FROM asistencia_horario_detalle WHERE detalle_profesorid = :emp)",
+            [':emp' => $emp]);
+        $alumnos = (int)($fila[0]['n'] ?? 0);
+
+        /* Días del mes, hasta ayer, con clase y sin ninguna marca de sus alumnos. */
+        $sinRegistro = 0;
+        if ($horarios) {
+            $sumas = [];
+            for ($d = 1; $d <= 31; $d++) { $c = str_pad((string)$d, 2, '0', STR_PAD_LEFT); $sumas[] = "SUM(AA.asistencia_D$c IS NOT NULL AND AA.asistencia_D$c <> '') AS d$c"; }
+            $marcas = $this->filas(
+                "SELECT " . implode(', ', $sumas) . "
+                   FROM asistencia_asistencia AA
+                  WHERE AA.asistencia_aniomes = :am
+                    AND AA.asistencia_alumnoid IN (SELECT AH.asignahorario_alumnoid FROM asistencia_asignahorario AH
+                                                    WHERE AH.asignahorario_horarioid IN (SELECT detalle_horarioid FROM asistencia_horario_detalle WHERE detalle_profesorid = :emp))",
+                [':am' => $aniomes, ':emp' => $emp])[0] ?? [];
+            for ($d = 1; $d < (int)date('j'); $d++) {
+                $semana = (int)date('N', mktime(0, 0, 0, (int)date('n'), $d, (int)date('Y')));
+                if (isset($dias[$semana]) && (int)($marcas['d' . str_pad((string)$d, 2, '0', STR_PAD_LEFT)] ?? 0) === 0) { $sinRegistro++; }
+            }
+        }
+
+        return $cache = ['horarios' => $horarios, 'alumnos' => $alumnos, 'clasesHoy' => $clasesHoy,
+                         'pendientesHoy' => $pendientesHoy, 'sinRegistro' => $sinRegistro];
+    }
+
     /*----------  Resumen del ecosistema  ----------*/
 
     public function resumenHoy(): array
     {
+        /* Información gerencial: un profesor no la ve (vistaGerencial). */
+        if (!$this->vistaGerencial()) { return []; }
+
         $ingresosMes = (float)$this->escalar(
             "SELECT IFNULL(SUM(pago_valor),0) FROM alumno_pago
               WHERE YEAR(pago_fecha)=YEAR(CURDATE()) AND MONTH(pago_fecha)=MONTH(CURDATE())"
@@ -112,6 +238,9 @@ class hubController
 
     public function actividadReciente(int $limite = 5): array
     {
+        /* Información gerencial: un profesor no la ve (vistaGerencial). */
+        if (!$this->vistaGerencial()) { return []; }
+
         $sql = "SELECT p.pago_valor,
                        CONCAT(a.alumno_primernombre,' ',a.alumno_apellidopaterno) AS alumno
                   FROM alumno_pago   p
@@ -137,6 +266,9 @@ class hubController
 
     public function requiereAtencion(): array
     {
+        /* Información gerencial: un profesor no la ve (vistaGerencial). */
+        if (!$this->vistaGerencial()) { return []; }
+
         $avisos = [];
 
         /* Intentos de acceso fallidos.

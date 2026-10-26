@@ -84,21 +84,10 @@ class inscripcionController extends mainModel
         $rolid   = $_SESSION['rol'] ?? null;
         $usuario = $_SESSION['usuario'] ?? '';
 
-        if ($rolid != 1 && $rolid != 2) {
-            $consulta = $this->ejecutarConsulta(
-                "SELECT S.sede_id, S.sede_nombre
-                   FROM general_sede S
-                   INNER JOIN seguridad_usuario_sede US ON US.usuariosede_sedeid = S.sede_id
-                   INNER JOIN seguridad_usuario U ON U.usuario_id = US.usuariosede_usuarioid
-                  WHERE U.usuario_usuario = :usuario
-                  ORDER BY S.sede_nombre",
-                [":usuario" => $usuario]
-            );
-        } else {
-            $consulta = $this->ejecutarConsulta(
-                "SELECT sede_id, sede_nombre FROM general_sede ORDER BY sede_nombre"
-            );
-        }
+        /* Las sedes de la sesión: sedes_de_la_sesion() (ds_core/inc/seguridad.php). */
+        $consulta = $this->ejecutarConsulta(
+            "SELECT sede_id, sede_nombre FROM general_sede WHERE " . sql_sedes_de_la_sesion('sede_id') . " ORDER BY sede_nombre"
+        );
 
         return $consulta->fetchAll(\PDO::FETCH_ASSOC);
     }
@@ -173,14 +162,8 @@ class inscripcionController extends mainModel
         $rolid   = $_SESSION['rol'] ?? null;
         $usuario = $_SESSION['usuario'] ?? '';
 
-        if ($rolid != 1 && $rolid != 2) {
-            $interna .= " AND a.alumno_sedeid IN (
-                                SELECT US.usuariosede_sedeid
-                                  FROM seguridad_usuario_sede US
-                                  INNER JOIN seguridad_usuario U ON U.usuario_id = US.usuariosede_usuarioid
-                                 WHERE U.usuario_usuario = :usuario)";
-            $parametros[':usuario'] = $usuario;
-        }
+        /* Las sedes de la sesión: sedes_de_la_sesion() (ds_core/inc/seguridad.php). */
+			$interna .= " AND " . sql_sedes_de_la_sesion('a.alumno_sedeid');
 
         if ($sedeid !== '' && intval($sedeid) > 0) {
             $interna .= " AND a.alumno_sedeid = :sede";
@@ -217,21 +200,10 @@ class inscripcionController extends mainModel
         $rolid   = $_SESSION['rol'] ?? null;
         $usuario = $_SESSION['usuario'] ?? '';
 
-        if ($rolid != 1 && $rolid != 2) {
-            $consulta = $this->ejecutarConsulta(
-                "SELECT S.sede_nombre
-                   FROM general_sede S
-                   INNER JOIN seguridad_usuario_sede US ON US.usuariosede_sedeid = S.sede_id
-                   INNER JOIN seguridad_usuario U ON U.usuario_id = US.usuariosede_usuarioid
-                  WHERE S.sede_id = :sede AND U.usuario_usuario = :usuario",
-                [":sede" => $sede_id, ":usuario" => $usuario]
-            );
-        } else {
-            $consulta = $this->ejecutarConsulta(
-                "SELECT sede_nombre FROM general_sede WHERE sede_id = :sede",
-                [":sede" => $sede_id]
-            );
-        }
+        $consulta = $this->ejecutarConsulta(
+            "SELECT sede_nombre FROM general_sede WHERE sede_id = :sede AND " . sql_sedes_de_la_sesion('sede_id'),
+            [":sede" => $sede_id]
+        );
 
         $sede = $consulta->fetch(\PDO::FETCH_ASSOC);
 

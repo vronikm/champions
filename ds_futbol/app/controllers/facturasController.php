@@ -19,16 +19,9 @@
 			   administrador no lleva :usuario y PDO rechaza los sobrantes. */
 			$parametros=[];
 
-			if($rolid != 1 && $rolid != 2){
-				$consulta_datos="SELECT S.sede_id, S.sede_nombre
-									FROM general_sede S
-									INNER JOIN seguridad_usuario_sede US ON US.usuariosede_sedeid = S.sede_id
-									INNER JOIN seguridad_usuario U ON U.usuario_id = US.usuariosede_usuarioid
-									WHERE U.usuario_usuario = :usuario";
-				$parametros[':usuario'] = $usuario;
-			}else{
-				$consulta_datos="SELECT sede_id, sede_nombre FROM general_sede";
-			}
+			/* Las sedes de la sesión: sedes_de_la_sesion() (ds_core/inc/seguridad.php). */
+			$consulta_datos = "SELECT sede_id, sede_nombre FROM general_sede WHERE " . sql_sedes_de_la_sesion('sede_id') . " ORDER BY sede_nombre";
+			$parametros = [];
 
 			$datos = $this->ejecutarConsulta($consulta_datos, $parametros);
 			$datos = $datos->fetchAll();

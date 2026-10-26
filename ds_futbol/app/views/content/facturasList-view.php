@@ -25,7 +25,7 @@
 	$situacion = array_key_exists($criterio('situacion'), $insFactura->situacionesFacturacion()) ? $criterio('situacion') : '';
 
 	$opcionesSede = $insFactura->opcionesSedeFacturas($sedeId);
-	$ofrecerTodas = in_array(rol_actual(), [1, 2], true) || substr_count($opcionesSede, '<option') > 1;
+	$ofrecerTodas = sedes_de_la_sesion() === null || substr_count($opcionesSede, '<option') > 1;
 
 	$alumnos = $insFactura->alumnosParaFacturar(['busqueda' => $busqueda, 'anio' => $anio, 'sede' => $sedeId, 'situacion' => $situacion]);
 	$porFacturar = count(array_filter($alumnos, static fn($a) => (int)$a['pendientes'] > 0));

@@ -84,19 +84,12 @@
 		 *     misma pantalla.
 		 */
 		public function sedesPermitidas(): array {
-			if (function_exists('es_superadministrador') && es_superadministrador()) {
-				return [];
-			}
-
-			$id = (int)($_SESSION['usuarioid'] ?? 0);
-			if ($id <= 0) { return [-1]; }          /* sin sesión, nada */
-
-			$filas = $this->ejecutarConsulta(
-				"SELECT usuariosede_sedeid FROM seguridad_usuario_sede
-				  WHERE usuariosede_usuarioid = :u",
-				[':u' => $id])->fetchAll();
-
-			return array_map(static fn($f) => (int)$f['usuariosede_sedeid'], $filas);
+			/* Desde la migración 072 la regla es la de todo el ecosistema
+			   (sedes_de_la_sesion): «sin sedes» ya no es «todas». Esta función
+			   conserva su forma: [] = sin restricción, [-1] = ninguna. */
+			$permitidas = sedes_de_la_sesion();
+			if ($permitidas === null) { return []; }
+			return $permitidas ?: [-1];
 		}
 
 		/** Las sedes del desplegable, ya recortadas al alcance del usuario. */

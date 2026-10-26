@@ -46,7 +46,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                 <tr>
                     <th>Usuario</th>
                     <th>Rol</th>
-                    <th class="ds-usuarios__opcional">Sede</th>
+                    <th class="ds-usuarios__opcional">Sedes</th>
                     <th>Estado</th>
                     <th class="text-end"><span class="visually-hidden">Acciones</span></th>
                 </tr>
@@ -69,8 +69,11 @@ require_once __DIR__ . "/inc/layout-top.php";
                    equivaldría a entrar como él. */
                 $editable = $puedeEditar && (!$esSuper || es_superadministrador());
                 $bajable  = $puedeEliminar && !$esYo && !$esSuper;
+                /* Sedes que ve (migración 072): todas, las asignadas o ninguna. */
+                $todasSedes = $esSuper || ($u['usuario_todassedes'] ?? 'N') === 'S';
+                $sedesTexto = $todasSedes ? 'Todas las sedes' : trim((string)($u['sedes_nombres'] ?? ''));
             ?>
-                <tr data-buscar="<?php echo $h(mb_strtolower($u['usuario_usuario'] . ' ' . $persona . ' ' . $u['rol_nombre'] . ' ' . ($u['sede_nombre'] ?? ''))); ?>">
+                <tr data-buscar="<?php echo $h(mb_strtolower($u['usuario_usuario'] . ' ' . $persona . ' ' . $u['rol_nombre'] . ' ' . $sedesTexto)); ?>">
                     <td class="ds-usuarios__principal">
                         <div class="ds-usuarios__quien">
                             <span class="ds-usuarios__inicial" aria-hidden="true"><?php echo $h($inicial); ?></span>
@@ -93,7 +96,15 @@ require_once __DIR__ . "/inc/layout-top.php";
                         <?php echo $h($u['rol_nombre']); ?>
                         <?php if ($esSuper): ?><span class="badge text-bg-warning ms-1">Acceso total</span><?php endif; ?>
                     </td>
-                    <td class="ds-usuarios__dato ds-usuarios__opcional" data-rotulo="Sede"><?php echo trim((string)($u['sede_nombre'] ?? '')) !== '' ? $h($u['sede_nombre']) : '—'; ?></td>
+                    <td class="ds-usuarios__dato ds-usuarios__opcional" data-rotulo="Sedes">
+                        <?php if ($todasSedes): ?>
+                            <span class="badge text-bg-primary"><i class="fas fa-globe-americas me-1" aria-hidden="true"></i>Todas</span>
+                        <?php elseif ($sedesTexto === ''): ?>
+                            <span class="badge text-bg-danger" title="Sin sede no ve ninguna información"><i class="fas fa-exclamation-triangle me-1" aria-hidden="true"></i>Sin sede</span>
+                        <?php else: ?>
+                            <?php echo $h($sedesTexto); ?>
+                        <?php endif; ?>
+                    </td>
                     <td class="ds-usuarios__estado">
                         <span class="badge text-bg-<?php echo $u['usuario_estado'] === 'A' ? 'success' : 'secondary'; ?>">
                             <?php echo $u['usuario_estado'] === 'A' ? 'Activo' : 'Inactivo'; ?>

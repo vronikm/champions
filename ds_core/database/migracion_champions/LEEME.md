@@ -14,7 +14,7 @@ MYSQL=/ruta/a/mysql MYSQL_OPTS="-u USUARIO -pCLAVE" \
   ds_core/database/migracion_champions/aplicar_migracion.sh BASE
 ```
 
-Aplica los 73 archivos en el orden correcto y se detiene en el primer error.
+Aplica los 74 archivos en el orden correcto y se detiene en el primer error.
 Antes de empezar comprueba que `BASE` sea una copia de SoccerEasy **sin migrar**:
 si ya tiene `facturas_electronicas`, no aplica nada, porque varias migraciones no
 se pueden repetir.
@@ -76,6 +76,11 @@ en desarrollo y llevar el resultado a producción con un volcado (ver más abajo
     SRI para el estado del servicio (mantenimiento), el teléfono del emisor,
     el RUC del proveedor del sistema (NAC-DGERCGC26-00000027) y el correo
     por SMTP (clave cifrada). Por defecto, todo como antes. Repetible.
+13. `072_usuario_sedes.sql`: marca «todas las sedes» en `seguridad_usuario`
+    y una sede una sola vez por usuario. Desde aquí la regla de qué sedes ve
+    cada usuario es una (`sedes_de_la_sesion()`); para que nadie pierda
+    acceso, los roles 1 y 2 quedan con «todas» y quien no tenía sede recibe la
+    de su ficha de empleado. Se ajusta en Core › Usuarios. Repetible.
 
 ```bash
 mysql -u USUARIO -p --default-character-set=utf8mb4 BASE < ARCHIVO.sql

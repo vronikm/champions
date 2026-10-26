@@ -57,14 +57,8 @@
 			$rolid   = $_SESSION['rol'] ?? null;
 			$usuario = $_SESSION['usuario'] ?? '';
 
-			if ($rolid != 1 && $rolid != 2) {
-				$consulta .= " AND a.alumno_sedeid IN (
-									SELECT US.usuariosede_sedeid
-									  FROM seguridad_usuario_sede US
-									  INNER JOIN seguridad_usuario U ON U.usuario_id = US.usuariosede_usuarioid
-									 WHERE U.usuario_usuario = :usuario)";
-				$parametros[':usuario'] = $usuario;
-			}
+			/* Las sedes de la sesión: sedes_de_la_sesion() (ds_core/inc/seguridad.php). */
+			$consulta .= " AND " . sql_sedes_de_la_sesion('a.alumno_sedeid');
 
 			if ($sedeid !== '' && intval($sedeid) > 0) {
 				$consulta .= " AND a.alumno_sedeid = :sede";
@@ -171,14 +165,8 @@
 
 			$rolid = $_SESSION['rol'] ?? null;
 
-			if ($rolid != 1 && $rolid != 2) {
-				$consulta .= " AND alumno_sedeid IN (
-									SELECT US.usuariosede_sedeid
-									  FROM seguridad_usuario_sede US
-									  INNER JOIN seguridad_usuario U ON U.usuario_id = US.usuariosede_usuarioid
-									 WHERE U.usuario_usuario = :usuario)";
-				$parametros[':usuario'] = $_SESSION['usuario'] ?? '';
-			}
+			/* Las sedes de la sesión: sedes_de_la_sesion() (ds_core/inc/seguridad.php). */
+			$consulta .= " AND " . sql_sedes_de_la_sesion('alumno_sedeid');
 
 			$alumno = $this->ejecutarConsulta($consulta, $parametros);
 

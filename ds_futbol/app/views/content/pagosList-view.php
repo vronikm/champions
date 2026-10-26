@@ -27,7 +27,7 @@
 	   servidor acota siempre a las del usuario (condicionSede). Al abrir,
 	   todas: antes no salía ningún alumno hasta pulsar Buscar. */
 	$opcionesSede  = $insPago->listarOptionSede($criterio('alumno_sedeid'), $_SESSION['rol'], $_SESSION['usuario']);
-	$ofrecerTodas  = $rolid == 1 || $rolid == 2 || substr_count($opcionesSede, '<option') > 1;
+	$ofrecerTodas  = sedes_de_la_sesion() === null || substr_count($opcionesSede, '<option') > 1;
 	$alumno_sedeid = isset($_POST['alumno_sedeid']) ? (int)$criterio('alumno_sedeid') : 0;
 
 	$filas = $insPago->listarAlumnosPagos($alumno_identificacion, $alumno_apellidopaterno, $alumno_primernombre, $alumno_estado, $alumno_sedeid);

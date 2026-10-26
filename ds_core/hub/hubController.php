@@ -94,11 +94,11 @@ class hubController
     private function metricasBasketball(): array
     {
         return [
-            ['valor' => $this->escalar("SELECT COUNT(1) FROM sujeto_alumno WHERE alumno_estado='A'"),
+            ['valor' => $this->escalar("SELECT COUNT(1) FROM sujeto_alumno WHERE alumno_estado='A' AND " . sql_sedes_de_la_sesion('alumno_sedeid') . ""),
              'etiqueta' => 'Alumnos'],
-            ['valor' => $this->escalar("SELECT COUNT(1) FROM asistencia_horario WHERE horario_estado='A'"),
+            ['valor' => $this->escalar("SELECT COUNT(1) FROM asistencia_horario WHERE horario_estado='A' AND " . sql_sedes_de_la_sesion('horario_sedeid')),
              'etiqueta' => 'Horarios'],
-            ['valor' => $this->escalar("SELECT COUNT(1) FROM alumno_pago WHERE pago_saldo > 0"),
+            ['valor' => $this->escalar("SELECT COUNT(1) FROM alumno_pago WHERE pago_saldo > 0 AND pago_alumnoid IN (SELECT alumno_id FROM sujeto_alumno WHERE " . sql_sedes_de_la_sesion('alumno_sedeid') . ")"),
              'etiqueta' => 'Por cobrar'],
         ];
     }
@@ -223,14 +223,15 @@ class hubController
 
         $ingresosMes = (float)$this->escalar(
             "SELECT IFNULL(SUM(pago_valor),0) FROM alumno_pago
-              WHERE YEAR(pago_fecha)=YEAR(CURDATE()) AND MONTH(pago_fecha)=MONTH(CURDATE())"
+              WHERE YEAR(pago_fecha)=YEAR(CURDATE()) AND MONTH(pago_fecha)=MONTH(CURDATE())
+                AND pago_alumnoid IN (SELECT alumno_id FROM sujeto_alumno WHERE " . sql_sedes_de_la_sesion('alumno_sedeid') . ")"
         );
 
         return [
             ['valor' => '$' . number_format($ingresosMes, 0, ',', '.'), 'etiqueta' => 'Ingresos del mes'],
-            ['valor' => $this->escalar("SELECT COUNT(1) FROM sujeto_alumno WHERE alumno_estado='A'"), 'etiqueta' => 'Alumnos activos'],
-            ['valor' => $this->escalar("SELECT COUNT(1) FROM alumno_representante"),                  'etiqueta' => 'Representantes'],
-            ['valor' => $this->escalar("SELECT COUNT(1) FROM general_sede"),                          'etiqueta' => 'Sedes'],
+            ['valor' => $this->escalar("SELECT COUNT(1) FROM sujeto_alumno WHERE alumno_estado='A' AND " . sql_sedes_de_la_sesion('alumno_sedeid') . ""), 'etiqueta' => 'Alumnos activos'],
+            ['valor' => $this->escalar("SELECT COUNT(1) FROM alumno_representante R WHERE EXISTS (SELECT 1 FROM sujeto_alumno WHERE alumno_repreid = R.repre_id AND " . sql_sedes_de_la_sesion('alumno_sedeid') . ")"), 'etiqueta' => 'Representantes'],
+            ['valor' => $this->escalar("SELECT COUNT(1) FROM general_sede WHERE " . sql_sedes_de_la_sesion('sede_id')), 'etiqueta' => 'Sedes'],
         ];
     }
 
@@ -245,6 +246,7 @@ class hubController
                        CONCAT(a.alumno_primernombre,' ',a.alumno_apellidopaterno) AS alumno
                   FROM alumno_pago   p
                   JOIN sujeto_alumno a ON a.alumno_id = p.pago_alumnoid
+                 WHERE " . sql_sedes_de_la_sesion('a.alumno_sedeid') . "
                  ORDER BY p.pago_id DESC
                  LIMIT :limite";
 
@@ -299,7 +301,7 @@ class hubController
             }
         }
 
-        $pendientes = (int)$this->escalar("SELECT COUNT(1) FROM alumno_pago WHERE pago_saldo > 0");
+        $pendientes = (int)$this->escalar("SELECT COUNT(1) FROM alumno_pago WHERE pago_saldo > 0 AND pago_alumnoid IN (SELECT alumno_id FROM sujeto_alumno WHERE " . sql_sedes_de_la_sesion('alumno_sedeid') . ")");
         if ($pendientes > 0) {
             $avisos[] = [
                 'titulo' => $pendientes . ' ' . ($pendientes === 1 ? 'pago pendiente' : 'pagos pendientes'),
@@ -311,7 +313,7 @@ class hubController
 
         $sinHorario = (int)$this->escalar(
             "SELECT COUNT(1) FROM sujeto_alumno a
-              WHERE a.alumno_estado='A'
+              WHERE a.alumno_estado='A' AND " . sql_sedes_de_la_sesion('a.alumno_sedeid') . "
                 AND NOT EXISTS (SELECT 1 FROM asistencia_asignahorario ah
                                  WHERE ah.asignahorario_alumnoid = a.alumno_id)"
         );
@@ -326,7 +328,7 @@ class hubController
 
         $sinConsentimiento = (int)$this->escalar(
             "SELECT COUNT(1) FROM sujeto_alumno a
-              WHERE a.alumno_estado='A'
+              WHERE a.alumno_estado='A' AND " . sql_sedes_de_la_sesion('a.alumno_sedeid') . "
                 AND NOT EXISTS (SELECT 1 FROM alumno_consentimiento c
                                  WHERE c.consent_alumnoid = a.alumno_id)"
         );

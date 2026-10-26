@@ -28,6 +28,21 @@ if ($editaSuper && !es_superadministrador()) {
     exit();
 }
 
+/* Quien ve sólo algunas sedes administra sólo a los usuarios de esas sedes. */
+if (!$esAlta && !$insCore->usuarioEnMiAlcance($usuario)) {
+    http_response_code(403);
+    require_once __DIR__ . "/accesoDenegado-view.php";
+    exit();
+}
+
+/* Sedes: las que puede asignar quien edita, y las del usuario. Las suyas
+   que quien edita no administra no se muestran, pero se conservan. */
+$sedesAsignables = $insCore->sedesAsignables();
+$sedesUsuario    = $insCore->sedesDeUsuario($id);
+$puedeDarTodas   = sedes_de_la_sesion() === null;
+$sedesFuera      = count(array_diff($sedesUsuario['ids'], array_map('intval', array_keys($sedesAsignables))));
+if ($esAlta && count($sedesAsignables) === 1) { $sedesUsuario['ids'] = [(int)array_key_first($sedesAsignables)]; }
+
 $tituloVista = $esAlta ? 'Nuevo usuario' : 'Editar usuario';
 $vistaActual = 'usuarioList';
 
@@ -235,6 +250,56 @@ require_once __DIR__ . "/inc/layout-top.php";
                         <?php endif; ?>
                     </div>
 
+                    <hr>
+
+                    <!-- Sedes: qué información ve (sedes_de_la_sesion, migración 072) -->
+                    <h6 class="text-muted text-uppercase mb-2" style="font-size:.75rem;letter-spacing:.05em;" id="sedesTitulo">
+                        Sedes que ve
+                    </h6>
+                    <fieldset class="ds-sedes mb-3" aria-labelledby="sedesTitulo" id="sedesUsuario"
+                              data-super="<?php echo self_rol_superadmin(); ?>">
+                        <legend class="visually-hidden">Sedes que ve</legend>
+                        <p class="text-muted small mb-2">
+                            El usuario sólo verá alumnos, pagos, asistencia, reportes y facturas de estas sedes.
+                        </p>
+                        <p class="ds-sedes__super small mb-2" hidden>
+                            <i class="fas fa-globe-americas me-1" aria-hidden="true"></i>El Super Administrador ve siempre todas las sedes.
+                        </p>
+                        <div class="ds-sedes__modos" role="radiogroup" aria-label="Alcance">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="sedes_modo" id="sedesElegidas" value="elegidas"
+                                       <?php echo !$sedesUsuario['todas'] ? 'checked' : ''; ?>>
+                                <label class="form-check-label" for="sedesElegidas">Sedes elegidas</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="sedes_modo" id="sedesTodas" value="todas"
+                                       <?php echo $sedesUsuario['todas'] ? 'checked' : ''; ?>
+                                       <?php echo $puedeDarTodas ? '' : 'disabled'; ?>>
+                                <label class="form-check-label" for="sedesTodas">
+                                    Todas las sedes <span class="text-muted small">(también las que se creen)</span>
+                                </label>
+                            </div>
+                        </div>
+                        <?php if (!$puedeDarTodas): ?>
+                            <p class="small text-muted mb-2">Sólo quien ve todas las sedes puede dar «Todas las sedes». Usted puede asignar las suyas.</p>
+                        <?php endif; ?>
+                        <div class="ds-sedes__lista" id="sedesLista">
+                            <?php foreach ($sedesAsignables as $sid => $snombre): ?>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="sedes[]" value="<?php echo (int)$sid; ?>"
+                                           id="sede<?php echo (int)$sid; ?>"
+                                           <?php echo in_array((int)$sid, $sedesUsuario['ids'], true) ? 'checked' : ''; ?>>
+                                    <label class="form-check-label" for="sede<?php echo (int)$sid; ?>"><?php echo $h($snombre); ?></label>
+                                </div>
+                            <?php endforeach; ?>
+                            <?php if ($sedesFuera): ?>
+                                <p class="small text-muted mb-0 w-100">
+                                    Además tiene <?php echo $sedesFuera === 1 ? 'una sede' : $sedesFuera . ' sedes'; ?> que usted no administra: se conservan.
+                                </p>
+                            <?php endif; ?>
+                        </div>
+                    </fieldset>
+
                     <div class="row g-2">
                         <div class="mb-3 col-md-6 mb-0">
                             <label for="usuario_estado">Estado</label>
@@ -345,5 +410,27 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 <?php endif; ?>
+
+<script>
+/* Sedes: con «Todas las sedes» la lista no aplica; el Super Administrador
+   ve siempre todas, así que el bloque se sustituye por la nota. */
+(function () {
+    var caja = document.getElementById('sedesUsuario'), rol = document.getElementById('usuario_rolid');
+    if (!caja) { return; }
+    var lista = document.getElementById('sedesLista'), todas = document.getElementById('sedesTodas');
+    function aplicar() {
+        var esSuper = rol && rol.value === caja.dataset.super;
+        caja.querySelector('.ds-sedes__super').hidden = !esSuper;
+        caja.querySelector('.ds-sedes__modos').hidden = esSuper;
+        lista.hidden = esSuper;
+        var bloqueada = esSuper || (todas && todas.checked);
+        lista.classList.toggle('ds-sedes__lista--inactiva', bloqueada);
+        lista.querySelectorAll('input').forEach(function (i) { i.disabled = bloqueada; });
+    }
+    caja.addEventListener('change', aplicar);
+    if (rol) { rol.addEventListener('change', aplicar); }
+    aplicar();
+})();
+</script>
 
 <?php require_once __DIR__ . "/inc/layout-bottom.php"; ?>

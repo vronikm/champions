@@ -19,7 +19,7 @@
 	   condicionSede). Al abrir la pantalla, todas: antes no salía ningún
 	   alumno hasta pulsar Buscar. */
 	$opcionesSede = $insAlumno->listarSedebusqueda($campo('alumno_sedeid'), $_SESSION['rol'], $_SESSION['usuario']);
-	$ofrecerTodas = $rolid == 1 || $rolid == 2 || substr_count($opcionesSede, '<option') > 1;
+	$ofrecerTodas = sedes_de_la_sesion() === null || substr_count($opcionesSede, '<option') > 1;
 	$alumno_sedeid = isset($_POST['alumno_sedeid']) ? (int)$campo('alumno_sedeid') : 0;
 
 	$categoria = $alumno_anio === '' ? 0 : (int)$alumno_anio;

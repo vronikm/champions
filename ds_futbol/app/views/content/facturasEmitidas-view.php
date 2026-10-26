@@ -29,7 +29,7 @@
 	if ($desde > $hasta) { [$desde, $hasta] = [$hasta, $desde]; }
 
 	$opcionesSede = $insFactura->opcionesSedeFacturas($sedeId);
-	$ofrecerTodas = in_array((int)rol_actual(), [1, 2], true) || substr_count($opcionesSede, '<option') > 1;
+	$ofrecerTodas = sedes_de_la_sesion() === null || substr_count($opcionesSede, '<option') > 1;
 
 	$facturas = $insFactura->listarFacturasEmitidas(['sede' => $sedeId, 'estado' => $estado, 'busqueda' => $busqueda, 'desde' => $desde, 'hasta' => $hasta]);
 	$resumen  = $insFactura->resumenFacturasEmitidas($facturas);

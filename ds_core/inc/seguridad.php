@@ -307,6 +307,90 @@ if (!function_exists('usuario_autenticado')) {
         return 1;
     }
 
+    /*----------  Sedes que puede ver la sesion  ----------*/
+
+    /**
+     * Las sedes cuya informacion puede ver el usuario de la sesion.
+     *
+     *     null        todas (tambien las que se creen despues)
+     *     [1, 3]      solo esas
+     *     []          ninguna
+     *
+     * UNA SOLA REGLA PARA TODO EL ECOSISTEMA (migracion 072). Antes cada
+     * pantalla tenia la suya: los roles 1 y 2 «veian todo» porque el codigo
+     * lo decia, y en unas pantallas no tener sede era «todas» y en otras
+     * «ninguna». Ahora:
+     *   · el superadministrador ve todas;
+     *   · usuario_todassedes = 'S' ve todas;
+     *   · el resto, sus filas de seguridad_usuario_sede; sin ninguna, nada.
+     *     Se asignan en Core › Usuarios.
+     *
+     * Sin la columna (servidor sin la 072) se conserva el comportamiento
+     * anterior: los roles 1 y 2 ven todas.
+     */
+    function sedes_de_la_sesion(): ?array
+    {
+        static $cache = [];
+
+        $id      = usuario_actual_id();
+        $usuario = (string)($_SESSION['usuario'] ?? '');
+        $clave   = $id . '|' . $usuario;
+        if (array_key_exists($clave, $cache)) {
+            return $cache[$clave];
+        }
+        if (es_superadministrador()) {
+            return $cache[$clave] = null;
+        }
+
+        $con = seguridad_conexion();
+        if ($con === null || ($id <= 0 && $usuario === '')) {
+            return $cache[$clave] = [];
+        }
+
+        $donde  = $id > 0 ? 'usuario_id = :u' : 'usuario_usuario = :u';
+        $valor  = $id > 0 ? $id : $usuario;
+        try {
+            $st = $con->prepare("SELECT usuario_id, usuario_rolid, usuario_todassedes FROM seguridad_usuario WHERE $donde LIMIT 1");
+            $st->execute([':u' => $valor]);
+            $u = $st->fetch(PDO::FETCH_ASSOC);
+            if (!$u) { return $cache[$clave] = []; }
+            if (($u['usuario_todassedes'] ?? 'N') === 'S') { return $cache[$clave] = null; }
+        } catch (\Throwable $e) {
+            /* Sin la migracion 072: la regla de antes. */
+            if (in_array(rol_actual(), [1, 2], true)) { return $cache[$clave] = null; }
+            $st = $con->prepare("SELECT usuario_id FROM seguridad_usuario WHERE $donde LIMIT 1");
+            $st->execute([':u' => $valor]);
+            $u = $st->fetch(PDO::FETCH_ASSOC);
+            if (!$u) { return $cache[$clave] = []; }
+        }
+
+        $st = $con->prepare("SELECT usuariosede_sedeid FROM seguridad_usuario_sede WHERE usuariosede_usuarioid = :u");
+        $st->execute([':u' => (int)$u['usuario_id']]);
+        $ids = array_values(array_unique(array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN))));
+        sort($ids);
+        return $cache[$clave] = $ids;
+    }
+
+    /** ¿Puede la sesion ver la sede $sede? */
+    function sede_en_la_sesion(int $sede): bool
+    {
+        $permitidas = sedes_de_la_sesion();
+        return $permitidas === null || in_array($sede, $permitidas, true);
+    }
+
+    /**
+     * Condicion SQL de sede para una columna, con los ids en linea (salen de
+     * la base y pasan por intval, no del usuario). '1 = 1' si ve todas;
+     * '1 = 0' si ninguna.
+     */
+    function sql_sedes_de_la_sesion(string $columna): string
+    {
+        $permitidas = sedes_de_la_sesion();
+        if ($permitidas === null) { return '1 = 1'; }
+        if (!$permitidas)         { return '1 = 0'; }
+        return $columna . ' IN (' . implode(',', array_map('intval', $permitidas)) . ')';
+    }
+
     /*----------  Anti-CSRF por validacion de origen  ----------*/
 
     /**

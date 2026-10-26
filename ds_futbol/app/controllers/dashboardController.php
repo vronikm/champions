@@ -386,18 +386,17 @@
 			return $this->ejecutarConsulta($consulta, array_values($sedes))->fetchAll();
 		}
 
-		/** Sedes asignadas a un usuario. Vacío = sin restricción por sede. */
+		/**
+		 * Las sedes a cargo del usuario de la sesión, con la regla de todo el
+		 * ecosistema (sedes_de_la_sesion): con «todas las sedes», todas.
+		 * $usuarioid se conserva por compatibilidad; es siempre el de la sesión.
+		 */
 		public function sedesDelUsuario(int $usuarioid){
-			$filas = $this->ejecutarConsulta(
-				"SELECT us.usuariosede_sedeid AS sede_id, s.sede_nombre
-				   FROM seguridad_usuario_sede us
-				   LEFT JOIN general_sede s ON s.sede_id = us.usuariosede_sedeid
-				  WHERE us.usuariosede_usuarioid = :u
-				  ORDER BY s.sede_nombre",
-				[':u' => $usuarioid]
+			return $this->ejecutarConsulta(
+				"SELECT sede_id, sede_nombre FROM general_sede
+				  WHERE " . sql_sedes_de_la_sesion('sede_id') . "
+				  ORDER BY sede_nombre"
 			)->fetchAll();
-
-			return $filas;
 		}
 
 		/**

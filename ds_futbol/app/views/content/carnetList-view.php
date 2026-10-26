@@ -16,7 +16,7 @@
 	*/
 	$sedeId       = (int)($_GET['sede'] ?? 0);
 	$opcionesSede = $insCarnet->opcionesSedeCarnet($sedeId);
-	$ofrecerTodas = in_array(rol_actual(), [1, 2], true) || substr_count($opcionesSede, '<option') > 1;
+	$ofrecerTodas = sedes_de_la_sesion() === null || substr_count($opcionesSede, '<option') > 1;
 	if (!$ofrecerTodas && $sedeId === 0 && preg_match('/value="(\d+)"/', $opcionesSede, $m)) { $sedeId = (int)$m[1]; }
 	$nombreSede   = $sedeId > 0 && preg_match('/value="' . $sedeId . '"[^>]*>([^<]*)</', $opcionesSede, $m) ? html_entity_decode($m[1], ENT_QUOTES, 'UTF-8') : 'Todas las sedes';
 

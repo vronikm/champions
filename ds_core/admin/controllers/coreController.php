@@ -504,7 +504,7 @@ class coreController
 
     public function usuarios(): array
     {
-        return $this->filas(
+        $filas = $this->filas(
             "SELECT u.usuario_id, u.usuario_usuario, u.usuario_rolid,
                     u.usuario_estado, u.usuario_tienebloqueo, u.usuario_fechacreacion,
                     u.usuario_2fa_estado, u.usuario_fechacambioclave,
@@ -512,14 +512,18 @@ class coreController
                     COALESCE(e.empleado_nombre, '') AS empleado,
                     COALESCE(e.empleado_correo, '') AS correo,
                     COALESCE(e.empleado_celular, '') AS celular,
-                    s.sede_nombre
+                    " . ($this->columnaExiste('seguridad_usuario', 'usuario_todassedes') ? 'u.usuario_todassedes' : "IF(u.usuario_rolid IN (1, 2), 'S', 'N')") . " AS usuario_todassedes,
+                    (SELECT GROUP_CONCAT(sd.sede_nombre ORDER BY sd.sede_nombre SEPARATOR ', ')
+                       FROM seguridad_usuario_sede us JOIN general_sede sd ON sd.sede_id = us.usuariosede_sedeid
+                      WHERE us.usuariosede_usuarioid = u.usuario_id) AS sedes_nombres
                FROM seguridad_usuario u
                LEFT JOIN seguridad_rol   r ON r.rol_id      = u.usuario_rolid
                LEFT JOIN sujeto_empleado e ON e.empleado_id = u.usuario_empleadoid
-               LEFT JOIN general_sede    s ON s.sede_id     = e.empleado_sedeid
               WHERE u.usuario_estado <> 'E'
               ORDER BY u.usuario_usuario"
         );
+        /* Quien ve algunas sedes, sólo a los usuarios de esas sedes. */
+        return array_values(array_filter($filas, fn($u) => $this->usuarioEnMiAlcance($u)));
     }
 
     public function usuario(int $id): ?array
@@ -545,6 +549,114 @@ class coreController
               ORDER BY nombre",
             [':actual' => $usuarioActual]
         );
+    }
+
+    /*======================================================================
+      Sedes de los usuarios (migración 072)
+      ======================================================================
+      Cada usuario ve la información de sus sedes: una, varias o todas
+      (sedes_de_la_sesion() en ds_core/inc/seguridad.php). Aquí se asignan.
+
+      QUIÉN ADMINISTRA A QUIÉN
+      Quien sólo ve algunas sedes, sólo ve y administra a los usuarios de
+      esas sedes (y a los que aún no tienen ninguna, para poder asignarles
+      la suya). Nunca a quien ve todas ni al superadministrador. Y sólo
+      reparte sus sedes: «todas» la da únicamente quien ve todas. Sin esto,
+      un administrador de una sede se daría a sí mismo —o a otro— el resto.
+      ====================================================================*/
+
+    /** Ids de las sedes asignadas a un usuario. */
+    private function sedesAsignadas(int $id): array
+    {
+        return array_map('intval', array_column($this->filas(
+            "SELECT usuariosede_sedeid FROM seguridad_usuario_sede WHERE usuariosede_usuarioid = :id", [':id' => $id]),
+            'usuariosede_sedeid'));
+    }
+
+    /** ¿Ve todas las sedes? (superadministrador o «todas las sedes»). */
+    private function veTodas(array $u): bool
+    {
+        return (int)($u['usuario_rolid'] ?? 0) === self_rol_superadmin() || ($u['usuario_todassedes'] ?? 'N') === 'S';
+    }
+
+    /** ¿Puede la sesión ver y administrar a este usuario? */
+    public function usuarioEnMiAlcance(array $u): bool
+    {
+        $mias = sedes_de_la_sesion();
+        if ($mias === null) { return true; }
+        if ($this->veTodas($u)) { return false; }
+        $suyas = $this->sedesAsignadas((int)$u['usuario_id']);
+        return !$suyas || array_intersect($suyas, $mias);
+    }
+
+    /** Sedes que la sesión puede asignar: [sede_id => nombre]. */
+    public function sedesAsignables(): array
+    {
+        $filas = $this->filas("SELECT sede_id, sede_nombre FROM general_sede WHERE "
+                              . sql_sedes_de_la_sesion('sede_id') . " ORDER BY sede_nombre");
+        return array_column($filas, 'sede_nombre', 'sede_id');
+    }
+
+    /** Las sedes de un usuario para el formulario: ['todas' => bool, 'ids' => [...]]. */
+    public function sedesDeUsuario(int $id): array
+    {
+        $u = $this->usuario($id);
+        return ['todas' => $u ? $this->veTodas($u) : false, 'ids' => $id > 0 ? $this->sedesAsignadas($id) : []];
+    }
+
+    /**
+     * Lee y valida las sedes del formulario. Devuelve ['todas' => 'S'|'N',
+     * 'ids' => [...]] con las que quedarán, o ['error' => [título, texto]].
+     */
+    private function sedesDelFormulario(int $id, int $rolid): array
+    {
+        $mias  = sedes_de_la_sesion();
+        $todas = ($_POST['sedes_modo'] ?? '') === 'todas' || $rolid === self_rol_superadmin();
+        $existentes = array_map('intval', array_column($this->filas("SELECT sede_id FROM general_sede"), 'sede_id'));
+        $pedidas = array_values(array_intersect(array_unique(array_map('intval', (array)($_POST['sedes'] ?? []))), $existentes));
+
+        if ($todas && $mias !== null) {
+            return ['error' => ['Acción no permitida', 'Sólo quien ve todas las sedes puede asignar «Todas las sedes».']];
+        }
+        if ($mias !== null && array_diff($pedidas, $mias)) {
+            return ['error' => ['Acción no permitida', 'Sólo puede asignar las sedes que usted tiene.']];
+        }
+        /* Las sedes del usuario que quien edita no ve se conservan: no se
+           quitan sin saberlo. */
+        $ids = $pedidas;
+        if ($mias !== null && $id > 0) {
+            $ids = array_values(array_unique(array_merge(array_diff($this->sedesAsignadas($id), $mias), $pedidas)));
+        }
+        if (!$todas && !$ids) {
+            return ['error' => ['Falta la sede', 'Elija al menos una sede o «Todas las sedes»: sin sede el usuario no vería ninguna información.']];
+        }
+        sort($ids);
+        return ['todas' => $todas ? 'S' : 'N', 'ids' => $ids];
+    }
+
+    /** Guarda las sedes de un usuario (marca «todas» y filas). */
+    private function guardarSedesUsuario(int $id, array $sedes): void
+    {
+        try {
+            $this->escribir("UPDATE seguridad_usuario SET usuario_todassedes = :t WHERE usuario_id = :id",
+                            [':t' => $sedes['todas'], ':id' => $id]);
+        } catch (\Throwable $e) {
+            error_log('[DS usuarios] sin la migración 072: ' . $e->getMessage());
+        }
+        $this->escribir("DELETE FROM seguridad_usuario_sede WHERE usuariosede_usuarioid = :id", [':id' => $id]);
+        foreach ($sedes['ids'] as $sede) {
+            $this->escribir("INSERT INTO seguridad_usuario_sede (usuariosede_usuarioid, usuariosede_sedeid) VALUES (:u, :s)",
+                            [':u' => $id, ':s' => (int)$sede]);
+        }
+    }
+
+    /** ¿Existe la columna? (para funcionar antes y después de una migración) */
+    private function columnaExiste(string $tabla, string $columna): bool
+    {
+        static $cache = [];
+        return $cache["$tabla.$columna"] ??= (int)$this->escalar(
+            "SELECT COUNT(1) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = :t AND column_name = :c",
+            [':t' => $tabla, ':c' => $columna]) > 0;
     }
 
     public function guardarUsuario(): string
@@ -603,6 +715,15 @@ class coreController
                 return $this->alerta('simple', 'Usuario protegido',
                     'Sólo un Super Administrador puede modificar la cuenta de otro Super Administrador.', 'error');
             }
+            if (!$this->usuarioEnMiAlcance($actual)) {
+                return $this->alerta('simple', 'Fuera de sus sedes',
+                    'Ese usuario no es de sus sedes: no puede modificarlo.', 'error');
+            }
+        }
+
+        $sedes = $this->sedesDelFormulario($id, $rolid);
+        if (isset($sedes['error'])) {
+            return $this->alerta('simple', $sedes['error'][0], $sedes['error'][1], 'error');
         }
 
         if ($id > 0) {
@@ -623,6 +744,7 @@ class coreController
             }
 
             $n = $this->escribir("UPDATE seguridad_usuario SET $campos WHERE usuario_id = :id", $params);
+            if ($n >= 0) { $this->guardarSedesUsuario($id, $sedes); }
 
             return $n >= 0
                 ? $this->alerta('redireccionar', 'Usuario actualizado',
@@ -662,6 +784,9 @@ class coreController
              ':c' => password_hash($clave, PASSWORD_DEFAULT),
              ':s' => $estado, ':b' => $bloqueo]
         );
+        if ($n > 0) {
+            $this->guardarSedesUsuario((int)$this->escalar("SELECT usuario_id FROM seguridad_usuario WHERE usuario_usuario = :u", [':u' => $usuario]), $sedes);
+        }
 
         if ($n > 0 && $conEnvio) {
             $nombre = $empleado > 0
@@ -723,6 +848,10 @@ class coreController
                            WHERE u.usuario_id = :id AND u.usuario_estado <> 'E'", [':id' => $id]);
         if (!$u) {
             return $error('No encontrado', 'Ese usuario no existe o fue dado de baja.');
+        }
+        $completo = $this->usuario($id);
+        if (!$completo || !$this->usuarioEnMiAlcance($completo)) {
+            return $error('Fuera de sus sedes', 'Ese usuario no es de sus sedes.');
         }
         if ((int)$u['usuario_rolid'] === self_rol_superadmin() && !es_superadministrador()) {
             return $error('Usuario protegido', 'Sólo un Super Administrador puede cambiar la contraseña de otro Super Administrador.');
@@ -876,6 +1005,10 @@ class coreController
            es la que sostiene el sistema: si hace falta retirarla, primero se
            le cambia el rol y después se da de baja, de modo que la decisión
            quede en dos pasos deliberados y no en un clic. */
+        if (!$this->usuarioEnMiAlcance($datos)) {
+            return $this->alerta('simple', 'Fuera de sus sedes', 'Ese usuario no es de sus sedes.', 'error');
+        }
+
         if ((int)$datos['usuario_rolid'] === self_rol_superadmin()) {
             return $this->alerta('simple', 'Usuario protegido',
                 'Un Super Administrador no se puede dar de baja. Cámbiele antes el rol si necesita retirarlo.',

@@ -73,17 +73,14 @@ class insightsController
     */
     public function sedesDelUsuario(): array
     {
-        if (es_superadministrador()) {
+        /* La regla de todo el ecosistema (sedes_de_la_sesion, migración
+           072): sin sedes ya no es «sin límite». Se conserva la forma:
+           [] = sin límite, [-1] = ninguna (IN (-1) no casa con nada). */
+        $permitidas = sedes_de_la_sesion();
+        if ($permitidas === null) {
             return [];
         }
-
-        $filas = $this->filas(
-            "SELECT usuariosede_sedeid FROM seguridad_usuario_sede
-              WHERE usuariosede_usuarioid = :u",
-            [':u' => usuario_actual_id()]
-        );
-
-        return array_map('intval', array_column($filas, 'usuariosede_sedeid'));
+        return $permitidas ?: [-1];
     }
 
     /** El ambito, resuelto una sola vez por peticion. */

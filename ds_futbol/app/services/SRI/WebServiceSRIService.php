@@ -7,6 +7,11 @@ class WebServiceSRIService
     private array $config;
     private string $urlRecepcion;
     private string $urlAutorizacion;
+    /** Tiempos del ambiente (Core › Configuración SRI › Ambientes del SRI). */
+    private int $timeoutConexion = 30;
+    private int $timeoutRespuesta = 60;
+    private int $intentos = 4;
+    private int $espera = 3;
 
     private function normalizarEndpointSoap(string $url): string
     {
@@ -20,6 +25,11 @@ class WebServiceSRIService
         $ambiente = ((string)($this->config['ambiente'] ?? '1') === '2') ? 'produccion' : 'pruebas';
         $this->urlRecepcion = $this->config['webservices'][$ambiente]['recepcion'] ?? '';
         $this->urlAutorizacion = $this->config['webservices'][$ambiente]['autorizacion'] ?? '';
+        $ws = $this->config['webservices'][$ambiente] ?? [];
+        $this->timeoutConexion  = max(5, (int)($ws['timeout_conexion'] ?? 30));
+        $this->timeoutRespuesta = max(10, (int)($ws['timeout_respuesta'] ?? 60));
+        $this->intentos         = max(1, (int)($ws['intentos_autorizacion'] ?? 4));
+        $this->espera           = max(0, (int)($ws['espera_segundos'] ?? 3));
     }
 
     public function enviarComprobante(string $xmlFirmado): array
@@ -69,8 +79,10 @@ class WebServiceSRIService
         }
     }
 
-    public function procesarComprobante(string $xmlFirmado, string $claveAcceso, int $intentos = 4, int $espera = 3): array
+    public function procesarComprobante(string $xmlFirmado, string $claveAcceso, ?int $intentos = null, ?int $espera = null): array
     {
+        $intentos ??= $this->intentos;
+        $espera ??= $this->espera;
         $recepcion = $this->enviarComprobante($xmlFirmado);
         $this->registrarLog('recepcion', $claveAcceso, $recepcion);
 
@@ -141,23 +153,34 @@ class WebServiceSRIService
 
     public function verificarConectividad(): array
     {
-        $resultado = ['recepcion' => false, 'autorizacion' => false];
+        /* 'detalle' dice, por servicio, el código HTTP y cuánto tardó: con
+           eso se distingue un SRI caído de uno lento. La prueba usa el tiempo
+           de conexión del ambiente, pero nunca espera más de 15 s la respuesta. */
+        $resultado = ['recepcion' => false, 'autorizacion' => false, 'detalle' => []];
         foreach (['recepcion' => $this->urlRecepcion, 'autorizacion' => $this->urlAutorizacion] as $key => $url) {
+            $resultado['detalle'][$key] = ['http' => 0, 'segundos' => 0.0, 'error' => ''];
             try {
                 $ch = curl_init($url);
                 curl_setopt_array($ch, [
                     CURLOPT_RETURNTRANSFER => true,
                     CURLOPT_TIMEOUT => 15,
-                    CURLOPT_CONNECTTIMEOUT => 10,
+                    CURLOPT_CONNECTTIMEOUT => min(10, $this->timeoutConexion),
                     CURLOPT_HTTPGET => true,
                     CURLOPT_SSL_VERIFYPEER => false,
                     CURLOPT_SSL_VERIFYHOST => 0,
                 ]);
                 curl_exec($ch);
-                $resultado[$key] = curl_getinfo($ch, CURLINFO_HTTP_CODE) > 0;
+                $http = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $resultado[$key] = $http > 0;
+                $resultado['detalle'][$key] = [
+                    'http'     => $http,
+                    'segundos' => round((float)curl_getinfo($ch, CURLINFO_TOTAL_TIME), 2),
+                    'error'    => curl_error($ch),
+                ];
                 curl_close($ch);
             } catch (\Throwable $e) {
                 $resultado[$key] = false;
+                $resultado['detalle'][$key]['error'] = $e->getMessage();
             }
         }
         return $resultado;
@@ -181,8 +204,8 @@ class WebServiceSRIService
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => $soapRequest,
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 60,
-            CURLOPT_CONNECTTIMEOUT => 30,
+            CURLOPT_TIMEOUT => $this->timeoutRespuesta,
+            CURLOPT_CONNECTTIMEOUT => $this->timeoutConexion,
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS => 3,
             CURLOPT_POSTREDIR => CURL_REDIR_POST_ALL,

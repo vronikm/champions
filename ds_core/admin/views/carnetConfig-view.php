@@ -84,6 +84,186 @@ require_once __DIR__ . "/inc/layout-top.php";
     </div>
 </div>
 
+<?php
+/*==================================================================
+  DISEÑO DEL CARNET
+
+  Qué lleva el carnet y con qué medidas (ds_core/inc/carnet_diseno.php) y
+  sus dos imágenes (la de la franja y la línea decorativa). Lo usan los dos
+  PDF de Fútbol a través de app/lib/carnet_render.php.
+
+  La vista previa es HTML medido en milímetros (85,6 × 53,98 mm, escalado
+  con unidades de contenedor) y se redibuja con cada cambio, sin guardar.
+  «PDF de muestra» lo dibuja el renderizador real con lo GUARDADO: lo que
+  se ve en ese PDF es exactamente lo que se imprime.
+  ==================================================================*/
+$con          = seguridad_conexion();
+$diseno       = $con ? carnet_diseno_leer($con) : carnet_diseno_defecto();
+$disenoDef    = carnet_diseno_defecto();
+$rangos       = carnet_diseno_rangos();
+$imgCarnet    = $insCore->imagenesCarnet();
+$urlImgCarnet = DS_FUTBOL_URL . 'app/views/imagenes/carnet/';
+$mesHoy       = (int)date('n');
+$colorHoy     = $insCore->coloresCarnetPorMes($anioActual)[$mesHoy]['color_hex'] ?? '#CCCCCC';
+$disenoCambiado = $diseno != $disenoDef;
+$sedeEjemplo  = $con ? (string)$con->query("SELECT sede_nombre FROM general_sede ORDER BY sede_id LIMIT 1")->fetchColumn() : '';
+
+/* Interruptores de la sección: [clave, rótulo, ayuda]. */
+$camposVisibles = [
+    ['ci', 'Cédula', ''], ['horario', 'Horario', ''], ['edad', 'Edad', ''], ['sede', 'Sede', ''],
+    ['correo', 'Correo de la sede', ''], ['telefono', 'Teléfono de la sede', ''], ['fecha', 'Fecha de impresión', 'Abajo a la derecha'],
+];
+?>
+<div class="card ds-cdiseno" id="disenoCarnet">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-id-card me-2" aria-hidden="true"></i>Diseño del carnet</h3>
+        <span class="badge text-bg-warning ms-auto" id="cdSinGuardar" hidden>Cambios sin guardar</span>
+    </div>
+    <div class="card-body">
+        <div class="row g-4">
+            <!-- Vista previa: arriba y fija mientras se ajusta en el teléfono -->
+            <div class="col-lg-6 order-lg-2 ds-cdiseno__col-previa">
+                <div class="ds-cdiseno__previa">
+                    <div class="ds-cdiseno__marco">
+                        <div class="ds-cdiseno__carnet" id="cdCarnet" role="img"
+                             aria-label="Vista previa del carnet con datos de ejemplo"
+                             data-color="<?php echo $h($colorHoy); ?>"
+                             data-mes="<?php echo $h(mb_strtoupper($meses[$mesHoy], 'UTF-8')); ?>"
+                             data-sede="<?php echo $h($sedeEjemplo); ?>"
+                             data-correo="<?php echo $h(ds_email_organizacion()); ?>"
+                             data-telefono="<?php echo $h(ds_telefono_organizacion()); ?>">
+                            <img class="cd-fondo" alt="" src="<?php echo $h($urlImgCarnet . $imgCarnet['fondo']); ?>">
+                            <span class="cd-velo"></span>
+                            <img class="cd-linea" alt="" src="<?php echo $h($urlImgCarnet . $imgCarnet['linea']); ?>">
+                            <img class="cd-logo" alt="" src="<?php echo $h(ds_logo_url()); ?>">
+                            <span class="cd-qr" aria-hidden="true"><i class="fas fa-qrcode"></i></span>
+                            <span class="cd-foto" aria-hidden="true"><i class="fas fa-user"></i></span>
+                            <div class="cd-textos"></div>
+                        </div>
+                    </div>
+                    <p class="small text-body-secondary mt-2 mb-0">
+                        Vista previa con datos de ejemplo y el color de <?php echo $h(mb_strtolower($meses[$mesHoy], 'UTF-8')); ?>.
+                        <a href="<?php echo $h($ajaxCarnet . '?modulo_carnet=muestra_pdf'); ?>" target="_blank" rel="noopener" id="cdMuestra">
+                            <i class="fas fa-file-pdf me-1" aria-hidden="true"></i>PDF de muestra</a>
+                        <span class="d-block">El PDF usa el diseño <strong>guardado</strong>: es exactamente lo que se imprime.</span>
+                    </p>
+                </div>
+            </div>
+
+            <!-- Ajustes -->
+            <div class="col-lg-6 order-lg-1">
+                <h4 class="ds-cdiseno__grupo">Imágenes</h4>
+                <div class="ds-cdiseno__imagenes">
+                    <?php foreach (['fondo' => ['Franja lateral', 'Vertical; se recorta a la franja.'], 'linea' => ['Línea decorativa', 'Una tira vertical fina.']] as $tipo => [$rotulo, $ayuda]): ?>
+                        <div class="ds-cdiseno__imagen">
+                            <img src="<?php echo $h($urlImgCarnet . $imgCarnet[$tipo]); ?>" alt="<?php echo $h($rotulo); ?> actual">
+                            <div class="min-w-0">
+                                <strong class="d-block"><?php echo $rotulo; ?></strong>
+                                <span class="small text-body-secondary d-block"><?php echo $ayuda; ?></span>
+                                <div class="ds-cdiseno__imagen-botones">
+                                    <form class="FormularioAjax" method="POST" enctype="multipart/form-data" action="<?php echo $ajaxCarnet; ?>">
+                                        <input type="hidden" name="modulo_carnet" value="subir_imagen_carnet">
+                                        <input type="hidden" name="tipo" value="<?php echo $tipo; ?>">
+                                        <label class="btn btn-sm btn-primary mb-0">
+                                            <i class="fas fa-upload me-1" aria-hidden="true"></i>Cambiar
+                                            <input type="file" name="imagen" accept="image/jpeg,image/png,image/webp" class="visually-hidden" data-subir-al-elegir>
+                                        </label>
+                                    </form>
+                                    <?php if (!str_starts_with((string)$imgCarnet[$tipo], 'vertical_')): ?>
+                                        <form class="FormularioAjax" method="POST" action="<?php echo $ajaxCarnet; ?>"
+                                              data-confirmar="Se volverá a usar la imagen original.">
+                                            <input type="hidden" name="modulo_carnet" value="restaurar_imagen_carnet">
+                                            <input type="hidden" name="tipo" value="<?php echo $tipo; ?>">
+                                            <button type="submit" class="btn btn-sm btn-secondary"><i class="fas fa-undo me-1" aria-hidden="true"></i>Original</button>
+                                        </form>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                    <div class="ds-cdiseno__imagen">
+                        <img src="<?php echo $h(ds_logo_url()); ?>" alt="Logo actual">
+                        <div class="min-w-0">
+                            <strong class="d-block">Logo</strong>
+                            <span class="small text-body-secondary d-block">El de la organización o el de cada sede.</span>
+                            <a class="btn btn-sm btn-secondary mt-1" href="<?php echo APP_URL; ?>organizacionForm/"><i class="fas fa-building me-1" aria-hidden="true"></i>Cambiar en Organización</a>
+                        </div>
+                    </div>
+                </div>
+
+                <form class="FormularioAjax" method="POST" action="<?php echo $ajaxCarnet; ?>" id="formDiseno" autocomplete="off">
+                    <input type="hidden" name="modulo_carnet" value="guardar_diseno">
+
+                    <h4 class="ds-cdiseno__grupo">Franja lateral</h4>
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" role="switch" id="cd_franja_imagen" name="diseno[franja_imagen]" value="1" <?php echo $diseno['franja_imagen'] ? 'checked' : ''; ?>>
+                        <label class="form-check-label" for="cd_franja_imagen">Imagen de fondo</label>
+                    </div>
+                    <?php foreach (['franja_ancho' => ['Ancho', 'mm'], 'franja_opacidad' => ['Color del mes encima', '%']] as $clave => [$rotulo, $unidad]): ?>
+                        <div class="ds-cdiseno__rango">
+                            <label for="cd_<?php echo $clave; ?>" class="form-label mb-0"><?php echo $rotulo; ?></label>
+                            <output for="cd_<?php echo $clave; ?>" id="cd_<?php echo $clave; ?>_v"><?php echo (int)$diseno[$clave] . ' ' . $unidad; ?></output>
+                            <input type="range" class="form-range" id="cd_<?php echo $clave; ?>" name="diseno[<?php echo $clave; ?>]"
+                                   min="<?php echo $rangos[$clave][0]; ?>" max="<?php echo $rangos[$clave][1]; ?>" step="1"
+                                   value="<?php echo (int)$diseno[$clave]; ?>" data-unidad="<?php echo $unidad; ?>">
+                        </div>
+                    <?php endforeach; ?>
+
+                    <h4 class="ds-cdiseno__grupo">Logo, QR y línea</h4>
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" role="switch" id="cd_logo" name="diseno[logo]" value="1" <?php echo $diseno['logo'] ? 'checked' : ''; ?>>
+                        <label class="form-check-label" for="cd_logo">Logo</label>
+                    </div>
+                    <div class="ds-cdiseno__rango">
+                        <label for="cd_logo_tamano" class="form-label mb-0">Tamaño del logo</label>
+                        <output for="cd_logo_tamano" id="cd_logo_tamano_v"><?php echo (int)$diseno['logo_tamano']; ?> mm</output>
+                        <input type="range" class="form-range" id="cd_logo_tamano" name="diseno[logo_tamano]"
+                               min="<?php echo $rangos['logo_tamano'][0]; ?>" max="<?php echo $rangos['logo_tamano'][1]; ?>" step="1"
+                               value="<?php echo (int)$diseno['logo_tamano']; ?>" data-unidad="mm">
+                    </div>
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" role="switch" id="cd_qr" name="diseno[qr]" value="1" <?php echo $diseno['qr'] ? 'checked' : ''; ?>>
+                        <label class="form-check-label" for="cd_qr">Código QR <span class="small text-body-secondary">(estado de la pensión)</span></label>
+                    </div>
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" role="switch" id="cd_linea" name="diseno[linea]" value="1" <?php echo $diseno['linea'] ? 'checked' : ''; ?>>
+                        <label class="form-check-label" for="cd_linea">Línea decorativa</label>
+                    </div>
+
+                    <h4 class="ds-cdiseno__grupo">Textos</h4>
+                    <div class="mb-3">
+                        <label for="cd_titulo" class="form-label">Título sobre el nombre</label>
+                        <input type="text" class="form-control" id="cd_titulo" name="diseno[titulo]" maxlength="24"
+                               value="<?php echo $h($diseno['titulo']); ?>" placeholder="DEPORTISTA">
+                    </div>
+                    <div class="ds-cdiseno__campos">
+                        <?php foreach ($camposVisibles as [$clave, $rotulo, $ayuda]): ?>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" role="switch" id="cd_<?php echo $clave; ?>" name="diseno[<?php echo $clave; ?>]" value="1" <?php echo $diseno[$clave] ? 'checked' : ''; ?>>
+                                <label class="form-check-label" for="cd_<?php echo $clave; ?>"><?php echo $rotulo; ?></label>
+                            </div>
+                        <?php endforeach; ?>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" role="switch" id="cd_mes" checked disabled>
+                            <label class="form-check-label" for="cd_mes">Mes de vigencia <span class="small text-body-secondary">(siempre)</span></label>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="card-footer ds-acciones ds-cdiseno__acciones">
+        <?php if ($disenoCambiado): ?>
+            <form class="FormularioAjax me-auto" method="POST" action="<?php echo $ajaxCarnet; ?>"
+                  data-confirmar="El carnet volverá a su diseño de siempre (las imágenes no cambian).">
+                <input type="hidden" name="modulo_carnet" value="restaurar_diseno">
+                <button type="submit" class="btn btn-secondary"><i class="fas fa-undo me-1" aria-hidden="true"></i>Diseño original</button>
+            </form>
+        <?php endif; ?>
+        <button type="submit" form="formDiseno" class="btn btn-primary"><i class="fas fa-save me-1" aria-hidden="true"></i>Guardar diseño</button>
+    </div>
+</div>
+
 <form class="FormularioAjax" method="POST" action="<?php echo $ajaxCarnet; ?>" autocomplete="off">
     <input type="hidden" name="modulo_carnet" value="actualizar_colores">
     <?php /* El anio viaja con el formulario: sin el, guardar desde la
@@ -187,7 +367,7 @@ require_once __DIR__ . "/inc/layout-top.php";
 
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-hover mb-0">
+                        <table class="table table-hover mb-0 ds-colormes">
                             <thead>
                                 <tr>
                                     <th style="width:38%">Mes</th>
@@ -548,6 +728,85 @@ foreach ($catalogo as $c) { if ($c['editable']) { $editables++; } }
         if (!b) { return; }
         document.getElementById('reColorId').value = b.dataset.id;
         document.getElementById('formRetirarColor').requestSubmit();
+    });
+})();
+</script>
+
+<script>
+/* =====================================================================
+   Vista previa del diseño del carnet.
+
+   Repite la geometría de ds_futbol/app/lib/carnet_render.php en mm
+   (las mismas posiciones y los mismos saltos de línea) para que lo que se
+   ajusta aquí sea lo que sale en el PDF. Se redibuja con cada cambio, sin
+   guardar; «PDF de muestra» confirma con el renderizador real.
+   ===================================================================== */
+(function () {
+    var carnet = document.getElementById('cdCarnet'), form = document.getElementById('formDiseno');
+    if (!carnet || !form) { return; }
+    var textos = carnet.querySelector('.cd-textos'), aviso = document.getElementById('cdSinGuardar');
+    var inicial = new URLSearchParams(new FormData(form)).toString();
+    var datos = carnet.dataset;
+    var esc = function (t) { var d = document.createElement('span'); d.textContent = t; return d.innerHTML; };
+
+    function valor(nombre) {
+        var e = form.elements['diseno[' + nombre + ']'];
+        if (!e) { return null; }
+        return e.type === 'checkbox' ? e.checked : e.value;
+    }
+    /* Un texto en mm: x, y (arriba de la celda), alto de la celda, tamaño en pt. */
+    function texto(t, x, y, alto, pt, extra) {
+        return '<span class="cd-t' + (extra ? ' ' + extra : '') + '" style="--x:' + x + ';--y:' + y + ';--h:' + alto + ';--pt:' + pt + '">' + t + '</span>';
+    }
+
+    function dibujar() {
+        var franja = +valor('franja_ancho'), info = franja + 2, y = 17, html = '';
+        carnet.style.setProperty('--franja', franja);
+        carnet.style.setProperty('--color', datos.color);
+        carnet.style.setProperty('--opacidad', (+valor('franja_opacidad')) / 100);
+        carnet.style.setProperty('--logo', +valor('logo_tamano'));
+        carnet.classList.toggle('sin-fondo', !valor('franja_imagen'));
+        carnet.classList.toggle('sin-linea', !valor('linea'));
+        carnet.classList.toggle('sin-logo', !valor('logo'));
+        carnet.classList.toggle('sin-qr', !valor('qr'));
+
+        html += texto(esc((valor('titulo') || 'DEPORTISTA').toUpperCase()), info, y, 3, 6, 'cd-b');
+        y += 4;
+        /* «Nombre Apellido Ejemplo» pasa de 21 letras: dos líneas, como en el PDF. */
+        html += texto('NOMBRE APELLIDO<br>EJEMPLO', info, y, 6, 10, 'cd-b cd-nombre');
+        y += 6 + 1;
+        var linea = function (rotulo, sangria, v, pt) {
+            html += texto(rotulo, info, y, 2.5, 8) + texto(v, info + sangria, y, 2.5, pt || 8, 'cd-b');
+            y += 3;
+        };
+        if (valor('ci'))      { linea('C.I.:', 8, '0000000000'); }
+        if (valor('horario')) { linea('Horario:', 12, '16H00 PM'); }
+        if (valor('edad'))    { linea('Edad:', 10, '10 años', 7.5); }
+        html += texto('Mes vigencia:', info, y, 2.5, 8)
+              + '<span class="cd-t cd-b cd-mes" style="--x:' + (info + 18) + ';--y:' + (y - 0.5) + ';--h:3;--pt:9;--w:20">' + esc(datos.mes) + '</span>';
+        y += 3;
+        if (valor('sede'))    { linea('Sede:', 10, esc(datos.sede)); }
+        y += 0.5;
+        if (valor('correo'))   { html += texto(esc(datos.correo), info, y, 2, 7, 'cd-gris'); y += 3; }
+        if (valor('telefono')) { html += texto(esc(datos.telefono), info, y, 2, 7, 'cd-gris'); }
+        if (valor('fecha'))    { html += '<span class="cd-t cd-fecha" style="--x:60.6;--y:49.48;--h:2;--pt:5;--w:22">Impreso: ' + new Date().toLocaleDateString('es-EC') + '</span>'; }
+        html += '<span class="cd-pie" style="--x:' + info + '"></span>';
+        textos.innerHTML = html;
+
+        form.querySelectorAll('input[type="range"]').forEach(function (r) {
+            var o = document.getElementById(r.id + '_v');
+            if (o) { o.textContent = r.value + ' ' + r.dataset.unidad; }
+        });
+        if (aviso) { aviso.hidden = new URLSearchParams(new FormData(form)).toString() === inicial; }
+    }
+
+    form.addEventListener('input', dibujar);
+    form.addEventListener('change', dibujar);
+    dibujar();
+
+    /* Cambiar una imagen: se envía al elegir el archivo. */
+    document.querySelectorAll('[data-subir-al-elegir]').forEach(function (i) {
+        i.addEventListener('change', function () { if (i.files.length) { i.form.requestSubmit(); } });
     });
 })();
 </script>

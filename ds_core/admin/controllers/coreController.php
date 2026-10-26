@@ -1601,6 +1601,11 @@ class coreController
             'codigo_establecimiento' => '001', 'punto_emision' => '001',
             'obligado_contabilidad' => 'NO', 'contribuyente_especial' => '',
             'agente_retencion' => '', 'contribuyente_rimpe' => '',
+            /* Migración 071: servicio, teléfono, proveedor y correo. */
+            'servicio_activo' => 1, 'mantenimiento_mensaje' => '', 'telefono' => '',
+            'ruc_proveedor' => '', 'etiqueta_ruc_proveedor' => 'RUC Proveedor',
+            'correo_from' => '', 'correo_from_nombre' => '', 'smtp_activo' => 0, 'smtp_host' => '',
+            'smtp_port' => 587, 'smtp_seguridad' => 'tls', 'smtp_usuario' => '', 'smtp_clave_cifrada' => '',
         ];
 
         try {
@@ -1843,6 +1848,19 @@ class coreController
     }
 
     /** Política de cobro por reimpresión de carnet. */
+    /** Imágenes del carnet (franja y línea decorativa) de la escuela. */
+    public function imagenesCarnet(): array
+    {
+        try {
+            $f = $this->filas("SELECT E.escuela_verticalfondo AS fondo, E.escuela_verticalprincipal AS linea
+                                  FROM general_escuela E WHERE E.escuela_id IN (SELECT sede_escuelaid FROM general_sede)
+                                 ORDER BY E.escuela_id LIMIT 1");
+        } catch (\Throwable $e) {
+            $f = [];
+        }
+        return $f[0] ?? ['fondo' => 'vertical_fondo.jpg', 'linea' => 'vertical_principal.jpg'];
+    }
+
     public function configuracionCarnet(): array
     {
         $valores = ['cobrar_reimpresion' => '1', 'valor_reimpresion' => '3.00'];

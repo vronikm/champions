@@ -1,44 +1,55 @@
 $(function () {
-    // Inicializar DataTable
-    new DataTable("#example1", {
-        "order": [[4, "asc"]], // Ordena por la columna "Impresion" (Pendiente primero)
-        "responsive": true, 
-        "lengthChange": false, 
-        "autoWidth": false,
-        "language": {
-            "decimal": "",
+    /* Tabla en escritorio, fichas en el teléfono (futbol.css, .ds-crud).
+       Primero los que faltan por imprimir; «Mostrar N» se recuerda. */
+    var CLAVE_LARGO = 'ds-carnets-por-pagina', LARGOS = [10, 25, 50, 100, -1], largo = 25;
+    try { var g = parseInt(localStorage.getItem(CLAVE_LARGO), 10); if (LARGOS.indexOf(g) !== -1) { largo = g; } } catch (e) {}
+
+    var tablaCarnets = new DataTable("#example1", {
+        autoWidth: false,
+        pageLength: largo,
+        lengthMenu: [LARGOS, [10, 25, 50, 100, 'Todos']],
+        order: [[3, 'asc'], [0, 'asc']],
+        columnDefs: [{ targets: 4, orderable: false, searchable: false }],
+        layout: { topStart: 'pageLength', topEnd: 'search', bottomStart: 'info', bottomEnd: { paging: { firstLast: false } } },
+        language: {
             // Con alumnos sin horario la vista no lista carnets (el aviso va encima).
-            "emptyTable": (typeof CARNETS_BLOQUEADOS !== 'undefined' && CARNETS_BLOQUEADOS)
+            emptyTable: (typeof CARNETS_BLOQUEADOS !== 'undefined' && CARNETS_BLOQUEADOS)
                 ? "Asigne el horario a los alumnos indicados arriba para listar los carnets"
                 : "No hay alumnos con pago de pensión este mes",
-            "info": "Mostrando _START_ a _END_ de _TOTAL_ carnets",
-            "infoEmpty": "Mostrando 0 a 0 de 0 carnets",
-            "infoFiltered": "(filtrado de _MAX_ carnets totales)",
-            "thousands": ",",
-            "lengthMenu": "Mostrar _MENU_ carnets",
-            "loadingRecords": "Cargando...",
-            "processing": "Procesando...",
-            "search": "Buscar:",
-            "zeroRecords": "No se encontraron carnets",
-            "paginate": {
-                "first": "Primero",
-                "last": "Último",
-                "next": "Siguiente",
-                "previous": "Anterior"
-            }
+            info: "_START_ a _END_ de _TOTAL_ alumnos",
+            infoEmpty: "Sin alumnos",
+            infoFiltered: "(de _MAX_)",
+            lengthMenu: "Mostrar _MENU_",
+            search: "",
+            searchPlaceholder: "Buscar nombre o cédula…",
+            zeroRecords: "Ningún alumno coincide",
+            paginate: { next: "Siguiente", previous: "Anterior" }
         }
     });
+    tablaCarnets.on('length', function (e, s, nuevo) {
+        try { localStorage.setItem(CLAVE_LARGO, String(nuevo)); } catch (err) {}
+    });
+    /* «Marcar los impresos de esta página» refleja la página que se ve:
+       al paginar o buscar cambian las filas (carnet_seleccion.js). */
+    tablaCarnets.on('draw', function () {
+        if (typeof verificarSeleccionTodos === 'function') { verificarSeleccionTodos(); }
+    });
 
-    // Cambiar encabezado "Condicion" por "Impresion" en esta vista.
-    $('#example1 thead th').eq(4).text('Impresion');
-    
+    /* La sede se aplica al elegirla: recarga la lista y el alcance de la emisión. */
+    $('[data-autoenvio]').on('change', function () { this.form.submit(); });
+
+    /* Sede de la emisión (0 = todas las del usuario) y su nombre, para confirmar. */
+    var SEDE = (typeof SEDE_CARNET !== 'undefined') ? SEDE_CARNET : 0;
+    var ALCANCE = $('<span>').text((typeof SEDE_NOMBRE !== 'undefined') ? SEDE_NOMBRE : 'Todas las sedes').html();
+
     // ✅ FUNCIÓN PARA CONSULTAR CARNETS PENDIENTES VÍA AJAX
     function consultarCarnetsPendientes(callback) {
         $.ajax({
             url: APP_URL + 'app/ajax/carnetAjax.php',
             type: 'POST',
             data: {
-                modulo_carnet: 'imprimir_carnetspendientes'
+                modulo_carnet: 'imprimir_carnetspendientes',
+                sede: SEDE
             },
             dataType: 'json',
             success: function(response) {
@@ -124,9 +135,13 @@ $(function () {
                         <i class="fas fa-layer-group" style="color: #17a2b8;"></i> 
                         Formato: <strong>10 carnets por hoja A4</strong>
                     </p>
-                   <p style="margin-bottom: 0;">
-                        <i class="fas fa-calendar-alt" style="color: #ffc107;"></i> 
+                   <p style="margin-bottom: 6px;">
+                        <i class="fas fa-calendar-alt" style="color: #ffc107;"></i>
                         Mes: <strong>${MES_ACTUAL}</strong>
+                    </p>
+                    <p style="margin-bottom: 0;">
+                        <i class="fas fa-map-marker-alt" style="color: #6c757d;"></i>
+                        Sede: <strong>${ALCANCE}</strong>
                     </p>
                 </div>
             `,
@@ -177,7 +192,8 @@ $(function () {
                         url: APP_URL + 'app/ajax/carnetAjax.php',
                         type: 'POST',
                         data: {
-                            modulo_carnet: 'preparar_impresion_mensual'
+                            modulo_carnet: 'preparar_impresion_mensual',
+                            sede: SEDE
                         },
                         dataType: 'json',
                         success: function(response) {
@@ -239,153 +255,99 @@ $(function () {
         });
     });
 
-    function opcionesMeses(mesSeleccionado) {
-        var meses = [
-            'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-            'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
-        ];
-        var html = '';
+    /* ================= Impresión atrasada (modal #modalAtrasada) =================
+       Antes era un SweetAlert con estilos en línea: en el teléfono el
+       formulario quedaba estrecho y los avisos del servidor llegaban en una
+       sola línea separada por «;». Ahora: pantalla completa en el teléfono,
+       las cédulas se cuentan al escribirlas y los avisos son una lista. */
+    var modalAtrasadaEl = document.getElementById('modalAtrasada');
+    var modalAtrasada = modalAtrasadaEl ? bootstrap.Modal.getOrCreateInstance(modalAtrasadaEl) : null;
+    var $cedulas = $('#atrasadaCedulas'), $detectadas = $('#atrasadaDetectadas'),
+        $errorAt = $('#atrasadaError'), $resultado = $('#atrasadaResultado'), $enviar = $('#atrasadaEnviar');
+    var escapar = function (t) { return $('<span>').text(t == null ? '' : String(t)).html(); };
 
-        meses.forEach(function(nombre, index) {
-            var valor = index + 1;
-            var selected = valor === parseInt(mesSeleccionado, 10) ? ' selected' : '';
-            html += '<option value="' + valor + '"' + selected + '>' + nombre + '</option>';
-        });
-
-        return html;
+    /* Lo mismo que extrae el servidor: grupos de 6 a 20 cifras, sin repetir. */
+    function cedulasEscritas() {
+        var vistas = {}, lista = [];
+        ($cedulas.val().match(/\d{6,20}/g) || []).forEach(function (c) { if (!vistas[c]) { vistas[c] = 1; lista.push(c); } });
+        return lista;
     }
 
-    $('#btn-impresion-atrasada').on('click', function() {
-        var mesDefault = typeof MES_ATRASADO_DEFAULT !== 'undefined' ? MES_ATRASADO_DEFAULT : (new Date().getMonth() || 12);
-        var anioDefault = typeof ANIO_ATRASADO_DEFAULT !== 'undefined' ? ANIO_ATRASADO_DEFAULT : new Date().getFullYear();
+    function pintarDetectadas() {
+        var lista = cedulasEscritas();
+        $errorAt.prop('hidden', true);
+        $cedulas.removeClass('is-invalid');
+        if (!lista.length) { $detectadas.prop('hidden', true).empty(); return; }
+        var html = '<span class="ds-atrasada__cuenta">' + lista.length + (lista.length === 1 ? ' cédula' : ' cédulas') + '</span>';
+        lista.slice(0, 12).forEach(function (c) { html += '<span class="badge text-bg-secondary">' + c + '</span>'; });
+        if (lista.length > 12) { html += '<span class="small text-body-secondary">y ' + (lista.length - 12) + ' más</span>'; }
+        $detectadas.html(html).prop('hidden', false);
+    }
 
-        Swal.fire({
-            title: 'Impresion atrasada',
-            html: `
-                <div style="text-align: left;">
-                    <p style="font-size: 14px; color: #6c757d;">
-                        Use esta opcion para carnets de un mes anterior que no se imprimieron fisicamente. No genera cobro ROT.
-                    </p>
-                    <label style="font-weight: 600;">Cedulas</label>
-                    <textarea id="swal-cedulas-atrasadas" class="swal2-textarea" placeholder="Ej.: 1100000000, 1100000001" style="height: 90px; margin: 6px 0 12px;"></textarea>
-                    <div style="display: flex; gap: 10px;">
-                        <div style="flex: 1;">
-                            <label style="font-weight: 600;">Mes</label>
-                            <select id="swal-mes-atrasado" class="swal2-select" style="width: 100%; margin: 6px 0;">
-                                ${opcionesMeses(mesDefault)}
-                            </select>
-                        </div>
-                        <div style="flex: 1;">
-                            <label style="font-weight: 600;">Anio</label>
-                            <input id="swal-anio-atrasado" class="swal2-input" type="number" value="${anioDefault}" min="2000" max="2100" style="width: 100%; margin: 6px 0;">
-                        </div>
-                    </div>
-                </div>
-            `,
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonColor: '#17a2b8',
-            cancelButtonColor: '#6c757d',
-            confirmButtonText: '<i class="fas fa-print"></i> Preparar PDF',
-            cancelButtonText: '<i class="fas fa-times"></i> Cancelar',
-            customClass: {
-                confirmButton: 'btn btn-info btn-sm mx-1',
-                cancelButton: 'btn btn-secondary btn-sm mx-1'
-            },
-            buttonsStyling: false,
-            width: '520px',
-            preConfirm: function() {
-                var cedulas = $('#swal-cedulas-atrasadas').val().trim();
-                var mes = parseInt($('#swal-mes-atrasado').val(), 10);
-                var anio = parseInt($('#swal-anio-atrasado').val(), 10);
+    function pintarResultado(r, ok) {
+        var avisos = Array.isArray(r.avisos) ? r.avisos : [];
+        var html = '<div class="alert ' + (ok ? (avisos.length ? 'alert-warning' : 'alert-success') : 'alert-warning') + ' mb-0">'
+            + '<strong>' + escapar(ok ? 'Se prepararon ' + (r.total || '') + ' carnets' : (r.titulo || 'Sin carnets para imprimir')) + '</strong>';
+        if (ok) { html += '<div class="small">El PDF se abrió en otra pestaña.</div>'; }
+        if (!ok && !avisos.length && r.texto) { html += '<div class="small">' + escapar(r.texto) + '</div>'; }
+        if (avisos.length) {
+            html += '<div class="small mt-2">' + (ok ? 'No se incluyeron:' : 'Revise:') + '</div><ul class="small mb-0 ps-3">';
+            avisos.forEach(function (a) { html += '<li>' + escapar(a) + '</li>'; });
+            html += '</ul>';
+        }
+        $resultado.html(html + '</div>').prop('hidden', false);
+        if ($resultado[0].scrollIntoView) { $resultado[0].scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+    }
 
-                if(!cedulas) {
-                    Swal.showValidationMessage('Ingrese al menos una cedula');
-                    return false;
-                }
+    $('#btn-impresion-atrasada').on('click', function () {
+        $resultado.prop('hidden', true).empty();
+        pintarDetectadas();
+        if (modalAtrasada) { modalAtrasada.show(); }
+    });
+    if (modalAtrasadaEl) {
+        /* En el teléfono el teclado tapaba el campo si se enfocaba antes de abrir. */
+        /* En el siguiente ciclo: en el mismo evento «shown» algo posterior (el
+           foco de Bootstrap) lo llevaba a la «×» y había que tocar el campo. */
+        modalAtrasadaEl.addEventListener('shown.bs.modal', function () { setTimeout(function () { $cedulas[0].focus(); }, 0); });
+    }
+    $cedulas.on('input', function () { $resultado.prop('hidden', true); pintarDetectadas(); });
 
-                if(!mes || mes < 1 || mes > 12 || !anio || anio < 2000 || anio > 2100) {
-                    Swal.showValidationMessage('Seleccione un periodo valido');
-                    return false;
-                }
+    $('#formAtrasada').on('submit', function (e) {
+        e.preventDefault();
+        var lista = cedulasEscritas();
+        if (!lista.length) {
+            $cedulas.addClass('is-invalid').trigger('focus');
+            $errorAt.text('Escriba al menos una cédula (6 a 20 cifras).').prop('hidden', false);
+            return;
+        }
 
-                return {
-                    cedulas: cedulas,
-                    mes: mes,
-                    anio: anio
-                };
+        /* La pestaña del PDF se abre AQUÍ, con el clic: abrirla después de la
+           respuesta la bloquearía el navegador del teléfono. */
+        var ventanaPDF = window.open('', '_blank');
+        if (ventanaPDF) { ventanaPDF.document.write('<p style="font-family: Arial; padding: 20px;">Preparando carnets atrasados…</p>'); }
+
+        var textoBoton = $enviar.html();
+        $enviar.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>Preparando…');
+        $resultado.prop('hidden', true).empty();
+
+        $.ajax({
+            url: APP_URL + 'app/ajax/carnetAjax.php',
+            type: 'POST',
+            data: { modulo_carnet: 'preparar_impresion_atrasada', cedulas: lista.join(','), mes: $('#atrasadaMes').val(), anio: $('#atrasadaAnio').val() },
+            dataType: 'json'
+        }).done(function (r) {
+            if (r.tipo === 'redireccionar' && r.url) {
+                if (ventanaPDF) { ventanaPDF.location.href = r.url; } else { window.open(r.url, '_blank'); }
+                pintarResultado(r, true);
+            } else {
+                if (ventanaPDF) { ventanaPDF.close(); }
+                pintarResultado(r, false);
             }
-        }).then(function(result) {
-            if(!result.isConfirmed || !result.value) {
-                return;
-            }
-
-            var datos = result.value;
-            var ventanaPDF = window.open('', '_blank');
-            if(ventanaPDF) {
-                ventanaPDF.document.write('<p style="font-family: Arial; padding: 20px;">Preparando carnets atrasados...</p>');
-            }
-
-            Swal.fire({
-                title: 'Preparando PDF...',
-                text: 'Validando cedulas y periodo',
-                allowOutsideClick: false,
-                showConfirmButton: false,
-                didOpen: function() {
-                    Swal.showLoading();
-                }
-            });
-
-            $.ajax({
-                url: APP_URL + 'app/ajax/carnetAjax.php',
-                type: 'POST',
-                data: {
-                    modulo_carnet: 'preparar_impresion_atrasada',
-                    cedulas: datos.cedulas,
-                    mes: datos.mes,
-                    anio: datos.anio
-                },
-                dataType: 'json',
-                success: function(response) {
-                    if(response.tipo === 'redireccionar' && response.url) {
-                        if(ventanaPDF) {
-                            ventanaPDF.location.href = response.url;
-                        } else {
-                            window.open(response.url, '_blank');
-                        }
-
-                        Swal.fire({
-                            icon: response.icono || 'success',
-                            title: response.titulo || 'PDF preparado',
-                            text: response.texto || 'Carnets atrasados preparados',
-                            confirmButtonColor: '#17a2b8'
-                        });
-                    } else {
-                        if(ventanaPDF) {
-                            ventanaPDF.close();
-                        }
-
-                        Swal.fire({
-                            icon: response.icono || 'info',
-                            title: response.titulo || 'Aviso',
-                            text: response.texto || 'No se pudo preparar la impresion atrasada',
-                            confirmButtonColor: '#3085d6'
-                        });
-                    }
-                },
-                error: function() {
-                    if(ventanaPDF) {
-                        ventanaPDF.close();
-                    }
-
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Error',
-                        text: 'No se pudo preparar la impresion atrasada',
-                        confirmButtonColor: '#3085d6'
-                    });
-                }
-            });
+        }).fail(function () {
+            if (ventanaPDF) { ventanaPDF.close(); }
+            pintarResultado({ titulo: 'No se pudo preparar la impresión', texto: 'Revise la conexión e inténtelo de nuevo.' }, false);
+        }).always(function () {
+            $enviar.prop('disabled', false).html(textoBoton);
         });
     });
     

@@ -13,9 +13,35 @@
 
 	$insAlumno  = new facturasController();
 
+	/* Servicio en mantenimiento (Core › Facturación electrónica): no se
+	   genera ni se envía nada al SRI. Pasan sólo las operaciones de
+	   configuración, que son las que permiten prepararlo y volver a
+	   levantarlo. */
+	$moduloFacturas = (string)($_POST['modulo_facturas'] ?? $_GET['modulo_facturas'] ?? '');
+	$modulosConfiguracion = [
+		'GUARDAR_CONFIG_SRI', 'SUBIR_CERTIFICADO_SRI', 'PROBAR_CERTIFICADO_SRI', 'PROBAR_CONEXION_SRI',
+		'INFO_CERTIFICADO_SRI', 'CAMBIAR_ESTADO_SERVICIO_SRI', 'GUARDAR_AMBIENTES_SRI', 'PROBAR_AMBIENTE_SRI',
+	];
+	if($moduloFacturas !== '' && !in_array($moduloFacturas, $modulosConfiguracion, true) && !$insAlumno->servicioFacturacionActivo()){
+		http_response_code(503);
+		if(isset($_GET['modulo_facturas'])){
+			/* VER_RIDE y DESCARGAR_XML devuelven archivos, no JSON. */
+			header('Content-Type: text/plain; charset=UTF-8');
+			echo $insAlumno->mensajeMantenimientoFacturacion();
+		}else{
+			echo $insAlumno->respuestaServicioFacturacionAbajo();
+		}
+		exit();
+	}
+
 	if(isset($_GET['modulo_facturas'])){
 		$modulo = $_GET['modulo_facturas'];
 		$facturaId = $_GET['factura_id'] ?? 0;
+
+		/* RIDE y XML sólo de facturas de alumnos de las sedes del usuario. */
+		if(in_array($modulo, ["DESCARGAR_XML", "VER_RIDE"], true) && !$insAlumno->facturaEnSedesDeLaSesion($facturaId)){
+			http_response_code(404); echo "Factura no encontrada"; exit();
+		}
 
 		if($modulo=="DESCARGAR_XML"){
 			$tipoXml = $_GET['tipo'] ?? 'xml';
@@ -56,6 +82,14 @@
 
 	if(isset($_POST['modulo_facturas'])){
 
+		/* Las operaciones sobre una factura ya emitida, sólo dentro de las sedes del usuario. */
+		if(in_array($_POST['modulo_facturas'], ["CONSULTAR_FACTURA_SRI", "ENVIAR_FACTURA_CORREO", "REGENERAR_FACTURA_DEVUELTA"], true)
+			&& !$insAlumno->facturaEnSedesDeLaSesion($_POST['factura_id'] ?? 0)){
+			header('Content-Type: application/json; charset=UTF-8');
+			echo json_encode(["tipo"=>"simple", "titulo"=>"Factura no encontrada", "texto"=>"La factura no existe o es de otra sede.", "icono"=>"warning"], JSON_UNESCAPED_UNICODE);
+			exit();
+		}
+
 		if($_POST['modulo_facturas']=="ACTUALIZAR_REPRESENTANTE"){
 			echo $insAlumno->actualizarRepresentanteFactura();
 			exit();
@@ -73,6 +107,21 @@
 
 		if($_POST['modulo_facturas']=="PROBAR_CERTIFICADO_SRI"){
 			echo $insAlumno->probarCertificadoSri();
+			exit();
+		}
+
+		if($_POST['modulo_facturas']=="CAMBIAR_ESTADO_SERVICIO_SRI"){
+			echo $insAlumno->cambiarEstadoServicioFacturacion();
+			exit();
+		}
+
+		if($_POST['modulo_facturas']=="GUARDAR_AMBIENTES_SRI"){
+			echo $insAlumno->guardarAmbientesSri();
+			exit();
+		}
+
+		if($_POST['modulo_facturas']=="PROBAR_AMBIENTE_SRI"){
+			echo $insAlumno->probarAmbienteSri();
 			exit();
 		}
 

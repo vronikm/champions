@@ -10,6 +10,14 @@ require_once "../../autoload.php";
 
 use app\controllers\carnetController;
 
+/* Carnet de muestra en PDF (Core › Carnets › Diseño del carnet). GET: sólo
+   lee y dibuja. Superadministrador, como el resto del diseño. */
+if(($_GET['modulo_carnet'] ?? '') === 'muestra_pdf') {
+    if(!es_superadministrador()) { http_response_code(403); exit('Acceso restringido'); }
+    (new carnetController())->muestraCarnetPdf();
+    exit();
+}
+
 if(isset($_POST['modulo_carnet'])) {
     
     $insCarnet = new carnetController();
@@ -63,6 +71,26 @@ if(isset($_POST['modulo_carnet'])) {
             break;
 
 
+        /* Diseño del carnet: qué elementos lleva, medidas e imágenes.
+           Pantalla de Core, sólo el superadministrador; aquí se cierra la
+           puerta de atrás, como con los colores. */
+        case 'guardar_diseno':
+        case 'restaurar_diseno':
+        case 'subir_imagen_carnet':
+        case 'restaurar_imagen_carnet':
+            if(!es_superadministrador()){
+                echo json_encode(["tipo" => "simple", "titulo" => "Acceso restringido",
+                    "texto" => "Solo el superadministrador puede cambiar el diseño del carnet.", "icono" => "error"], JSON_UNESCAPED_UNICODE);
+                break;
+            }
+            echo match($_POST['modulo_carnet']) {
+                'guardar_diseno'          => $insCarnet->guardarDisenoCarnet(),
+                'restaurar_diseno'        => $insCarnet->restaurarDisenoCarnet(),
+                'subir_imagen_carnet'     => $insCarnet->subirImagenCarnet(),
+                'restaurar_imagen_carnet' => $insCarnet->restaurarImagenCarnet(),
+            };
+            break;
+
         case 'obtener_color':
             // Para obtener el color hexadecimal via AJAX
             if(isset($_POST['color_id'])) {
@@ -74,7 +102,7 @@ if(isset($_POST['modulo_carnet'])) {
             
         case 'imprimir_carnetspendientes':
             // Obtener carnets pendientes
-            $resultado = $insCarnet->carnetPendientesImpresion();
+            $resultado = $insCarnet->carnetPendientesImpresion((int)($_POST['sede'] ?? 0));
             
             // Retornar JSON con el total
             if(isset($resultado[0]['total'])) {

@@ -149,12 +149,103 @@ if (!function_exists('sri_disponible')) {
                           ->fetchAll(PDO::FETCH_KEY_PAIR);
             if ($formas) { $cfg['formas_pago'] = $formas; }
 
+            /* Direcciones y tiempos del SRI por ambiente (Core › Configuración SRI). */
+            $cfg['webservices'] = sri_webservices();
+
         } catch (\Throwable $e) {
             /* Sin fila configurada se devuelve lo estructural; quien vaya a
                emitir lo detecta con sri_disponible() y avisa. */
         }
 
         return $cache = $cfg;
+    }
+
+    /*======================================================================
+      Ambientes del SRI
+      ======================================================================
+      Direcciones de los servicios web —recepción y autorización— y sus
+      tiempos, por ambiente ('1' pruebas, '2' producción). Viven en
+      facturas_electronicas_ambiente (migración 069) y se editan en Core ›
+      Configuración SRI. Antes estaban escritas en el código.
+
+      Si la tabla no existe todavía (servidor sin la migración), se usan
+      los valores publicados por el SRI: emitir no puede depender de que
+      alguien haya aplicado una migración.
+      ====================================================================*/
+
+    /** Los valores publicados por el SRI, por ambiente. */
+    function sri_ambientes_por_defecto(): array
+    {
+        $base = static fn(string $host, string $nombre) => [
+            'nombre'                => $nombre,
+            'url_recepcion'         => "https://$host/comprobantes-electronicos-ws/RecepcionComprobantesOffline?wsdl",
+            'url_autorizacion'      => "https://$host/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl",
+            'timeout_conexion'      => 30,
+            'timeout_respuesta'     => 60,
+            'intentos_autorizacion' => 4,
+            'espera_segundos'       => 3,
+            'guardado'              => false,   // true: viene de la tabla
+            'actualizado'           => '',
+        ];
+        return ['1' => $base('celcer.sri.gob.ec', 'Pruebas'), '2' => $base('cel.sri.gob.ec', 'Producción')];
+    }
+
+    /** Los ambientes como están configurados (o los del SRI si no hay tabla). */
+    function sri_ambientes(): array
+    {
+        $amb = sri_ambientes_por_defecto();
+        $con = seguridad_conexion();
+        if ($con === null) { return $amb; }
+        try {
+            foreach ($con->query("SELECT * FROM facturas_electronicas_ambiente")->fetchAll(PDO::FETCH_ASSOC) as $f) {
+                $clave = (string)$f['ambiente'];
+                if (!isset($amb[$clave])) { continue; }
+                foreach (['url_recepcion', 'url_autorizacion'] as $c) {
+                    if (trim((string)$f[$c]) !== '') { $amb[$clave][$c] = trim((string)$f[$c]); }
+                }
+                foreach (['timeout_conexion', 'timeout_respuesta', 'intentos_autorizacion', 'espera_segundos'] as $c) {
+                    $amb[$clave][$c] = (int)$f[$c];
+                }
+                $amb[$clave]['guardado'] = true;
+                $amb[$clave]['actualizado'] = trim(($f['updated_by'] ?? '') . ' ' . ($f['updated_at'] ?? ''));
+            }
+        } catch (\Throwable $e) {
+            /* Sin la migración 069: los del SRI. */
+        }
+        return $amb;
+    }
+
+    /**
+     * La forma que espera el motor (WebServiceSRIService):
+     * ['pruebas' => [recepcion, autorizacion, tiempos…], 'produccion' => …].
+     */
+    function sri_webservices(): array
+    {
+        $ws = [];
+        foreach (sri_ambientes() as $clave => $a) {
+            $ws[$clave === '2' ? 'produccion' : 'pruebas'] = [
+                'recepcion'             => $a['url_recepcion'],
+                'autorizacion'          => $a['url_autorizacion'],
+                'timeout_conexion'      => $a['timeout_conexion'],
+                'timeout_respuesta'     => $a['timeout_respuesta'],
+                'intentos_autorizacion' => $a['intentos_autorizacion'],
+                'espera_segundos'       => $a['espera_segundos'],
+            ];
+        }
+        return $ws;
+    }
+
+    /**
+     * Una dirección de servicio web del SRI admisible: HTTPS y en el dominio
+     * del SRI. Sin esta regla, un error de tipeo —o un abuso— mandaría los
+     * comprobantes firmados, con los datos de los clientes, a otro servidor.
+     */
+    function sri_url_valida(string $url): bool
+    {
+        $p = parse_url(trim($url));
+        if (!$p || strtolower($p['scheme'] ?? '') !== 'https' || empty($p['host'])) { return false; }
+        $host = strtolower($p['host']);
+        return $host === 'sri.gob.ec' || str_ends_with($host, '.sri.gob.ec');
     }
 
     /**

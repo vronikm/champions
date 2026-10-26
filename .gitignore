@@ -35,6 +35,8 @@
 /ds_futbol/app/views/imagenes/cedulas/*
 /ds_futbol/app/views/imagenes/pagos/*
 /ds_futbol/app/views/imagenes/ingresos/*
+# Imágenes del carnet subidas desde Core › Carnets › Diseño del carnet
+/ds_futbol/app/views/imagenes/carnet/carnet_*.jpg
 /ds_futbol/app/views/fotos/usuario/*
 
 # Excepciones: los marcadores de posición que el código referencia

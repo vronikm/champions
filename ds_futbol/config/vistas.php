@@ -46,7 +46,7 @@ return [
     "formularioLPPDF", "empleadoEntrada",
     "empleadoAsistencias", "agenda", "empleadoAsistenciasDetalle", "cobranzaPensionInactivos",
     "ingresosLugarEntrenamiento", "estadisticas", "reporteIngresosMorames", "facturasList",
-    "facturasNew", "carnetList", "carnetFoto", "carnetPDF",
+    "facturasNew", "facturasEmitidas", "carnetList", "carnetFoto", "carnetPDF",
     "carnetFotoPDF", "cumpleaniosList", "cumpleaniosTarjeta",
     "alumnoFotos",
     "importarAlumnos", "inscripcionEnlace", "consentimientoList", "inscripcionPendientes",

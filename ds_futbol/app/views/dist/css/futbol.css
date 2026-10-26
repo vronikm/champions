@@ -1093,3 +1093,76 @@
     .ds-toma__largo { display: none; }
     .ds-toma__corto { display: inline; }
 }
+
+/* =========================================================================
+   FACTURACIÓN: Facturas emitidas (facturasEmitidas) y Emitir facturas
+   (facturasList). Fichas de .ds-crud; resumen con .info-box.
+   ========================================================================= */
+.ds-fact__resumen { margin-bottom: 1.25rem; }
+.ds-fact__resumen .info-box { height: 100%; }
+.ds-fact__detalle { display: block; font-size: .8rem; color: var(--bs-secondary-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ds-fact__total { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.ds-fact__error { max-width: 28ch; margin-top: .25rem; line-height: 1.25; }
+.ds-fact__limpiar { min-height: calc(1.5em + .75rem + 2px); }
+.ds-fact__situacion { font-size: .8rem; }
+@media (max-width: 991.98px) {
+    /* Teléfono: el resumen, compacto, de dos en dos. */
+    .ds-fact__resumen .info-box { min-height: 0; padding: .5rem; gap: .5rem; }
+    .ds-fact__resumen .info-box-icon { width: 2.5rem; height: 2.5rem; min-width: 2.5rem; font-size: 1.1rem; align-self: center; }
+    .ds-fact__resumen .info-box-content { padding: 0; min-width: 0; }
+    .ds-fact__resumen .info-box-text { white-space: normal; font-size: .8rem; line-height: 1.2; }
+    .ds-fact__resumen .info-box-number { font-size: 1.15rem; }
+    /* En la ficha el estado va arriba a la derecha: el mensaje del SRI,
+       debajo y a todo lo ancho, no apretado en esa esquina. */
+    .ds-crud__tabla td.ds-ficha__estado { text-align: right; }
+    .ds-fact__error { max-width: none; text-align: left; }
+    .ds-fact__total { text-align: left !important; }
+}
+@media (max-width: 991.98px) {
+    /* Con mensaje del SRI, el estado baja a su propia fila, a todo lo ancho. */
+    .ds-crud__tabla td.ds-ficha__estado:has(.ds-fact__error) { grid-column: 1 / -1; grid-row: auto; text-align: left; }
+}
+/* Facturación en mantenimiento (inc/facturacion-mantenimiento.php). */
+.ds-fact__mantenimiento { max-width: 36rem; border-top: 4px solid var(--bs-warning); }
+.ds-fact__mantenimiento-icono {
+    display: inline-grid; place-items: center; width: 4rem; height: 4rem; border-radius: 50%;
+    background: var(--bs-warning-bg-subtle); color: var(--bs-warning-text-emphasis); font-size: 1.6rem;
+}
+@media (max-width: 575.98px) { .ds-fact__mantenimiento .btn { flex: 1 1 100%; min-height: 2.75rem; } }
+
+/* =========================================================================
+   CARNETS DEL MES (carnetList). Emisión por sede o de todas, cifras del
+   mes y fichas de .ds-crud; «Reimprimir» es un interruptor (btn-check).
+   ========================================================================= */
+.ds-carnet__cifras { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; margin-bottom: 1rem; }
+.ds-carnet__cifras > div { background: var(--bs-tertiary-bg); border-radius: var(--bs-border-radius-lg); padding: .6rem .75rem; text-align: center; }
+.ds-carnet__cifra { display: block; font-size: 1.6rem; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.ds-carnet__rotulo { display: block; font-size: .8rem; color: var(--bs-secondary-color); }
+.ds-carnet__acciones { display: flex; flex-wrap: wrap; gap: .5rem; }
+.ds-carnet__alcance { font-weight: 400; opacity: .9; }
+.ds-carnet__sin-horario { columns: 18rem; }
+.ds-carnet__seleccion { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; margin-bottom: .75rem; }
+.ds-carnet__seleccion-botones { display: flex; gap: .5rem; margin-left: auto; }
+/* Interruptor «Reimprimir»: el texto del cuerpo sobre el fondo (4,5:1 en
+   los dos temas); marcado, el aviso amarillo de la reimpresión. */
+.ds-carnet__reimprimir { color: var(--bs-emphasis-color); background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); }
+.ds-carnet__reimprimir:hover { background: var(--bs-tertiary-bg); color: var(--bs-emphasis-color); }
+.btn-check:checked + .ds-carnet__reimprimir { background: var(--bs-warning); border-color: var(--bs-warning); color: #212529; }
+.btn-check:focus-visible + .ds-carnet__reimprimir { outline: 2px solid var(--bs-primary); outline-offset: 2px; }
+@media (max-width: 575.98px) {
+    .ds-carnet__acciones .btn { flex: 1 1 100%; min-height: 2.75rem; }
+    .ds-carnet__cifra { font-size: 1.35rem; }
+    .ds-carnet__seleccion-botones { margin-left: 0; width: 100%; }
+    .ds-carnet__seleccion-botones .btn { flex: 1; min-height: 2.75rem; }
+}
+/* Impresión atrasada (carnetList, #modalAtrasada): pantalla completa en el
+   teléfono, cédulas detectadas como insignias y botones de 44 px. */
+.ds-atrasada__cedulas { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
+.ds-atrasada__cedulas .badge { font-weight: 500; font-variant-numeric: tabular-nums; }
+.ds-atrasada__cuenta { font-weight: 600; font-size: .85rem; margin-right: .25rem; }
+.ds-atrasada textarea { font-variant-numeric: tabular-nums; resize: vertical; }
+@media (max-width: 575.98px) {
+    .ds-atrasada .modal-footer { flex-wrap: nowrap; }
+    .ds-atrasada .modal-footer .btn { flex: 1; min-height: 2.75rem; }
+    .ds-atrasada .form-select { min-height: 2.75rem; }
+}

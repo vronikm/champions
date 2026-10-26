@@ -3,6 +3,7 @@ use app\controllers\carnetController;
 
 include 'app/lib/barcode.php';
 include 'app/lib/alphapdf.php';
+include_once 'app/lib/carnet_render.php';
 
 $insCarnet = new carnetController();
 
@@ -190,6 +191,8 @@ $margenX = ($pageWidth - $totalWidth) / 2;
 $margenY = ($pageHeight - $totalHeight) / 2;
 
 $totalCarnets = count($carnetsData);
+// El diseño (Core › Carnets) se lee una vez para todo el lote.
+$disenoCarnet = $insCarnet->disenoCarnet();
 $carnetCounter = 0;
 
 // Nombres de meses
@@ -256,42 +259,9 @@ foreach($carnetsData as $carnet) {
     list($r, $g, $b) = sscanf($colorHex, "#%02x%02x%02x");
     
     // ====================
-    // FONDO DEL CARNET
+    // EL CARNET: lo dibuja app/lib/carnet_render.php con el diseño de
+    // Core › Carnets (el mismo que usa el carnet suelto).
     // ====================
-    $pdf->SetFillColor(255, 255, 255);
-    $pdf->Rect($x, $y, $carnetWidth, $carnetHeight, 'F');
-    
-    $pdf->SetLineWidth(0.3);
-    $pdf->SetDrawColor(200, 200, 200);
-    $pdf->Rect($x, $y, $carnetWidth, $carnetHeight);
-    
-    // ====================
-    // IMÁGENES DECORATIVAS
-    // ====================
-    $imgFondo = "./app/views/imagenes/carnet/" . $sede['escuela_verticalfondo'];
-    if(file_exists($imgFondo)) {
-        $pdf->Image($imgFondo, $x, $y, 20, $carnetHeight);
-    }
-    
-    $pdf->SetAlpha(0.5);
-    $pdf->SetFillColor($r, $g, $b);
-    $pdf->Rect($x, $y, 20, $carnetHeight, 'F');
-    $pdf->SetAlpha(1);
-
-    $imgDerecha = "./app/views/imagenes/carnet/" . $sede['escuela_verticalprincipal'];
-    if(file_exists($imgDerecha)) {
-        $pdf->Image($imgDerecha, $x + $carnetWidth - 65, $y, 1, $carnetHeight);
-    }
-    
-    // ====================
-    // HEADER: LOGO Y QR
-    // ====================
-    $logoPath = ds_logo_ruta((int)$sede["sede_id"]);
-    if(file_exists($logoPath)) {
-        ds_logo_dibujar($pdf, (int)$sede["sede_id"], $x + 40, $y + 2, 18, 17);   /* a su proporción */
-    }
-    
-    // Código QR
     $estadoAlumno = $insCarnet->EstadoAlumno($carnet['alumno_id']);
     if($estadoAlumno->rowCount() == 1) {
         $estadoAlumno = $estadoAlumno->fetch();
@@ -301,172 +271,48 @@ foreach($carnetsData as $carnet) {
         $condicion = 'Pendiente';
         $fechaUltPension = date('Y-m-d');
     }
-    
     $marcaReimpresion = $esReimpresion ? "\nREIMPRESION: SI" : "";
     $qrData = "Estado pension: " . $condicion . "\n" .
               "Fecha ultimo pago: " . $fechaUltPension . "\n" .
               "Sede: " . $sede['sede_nombre'] . "\n" .
               $sede['sede_telefono'] . $marcaReimpresion;
-    
     $qrFile = $tempDir . "qr_" . $carnet['alumno_id'] . "_" . time() . "_" . rand(1000,9999) . ".jpeg";
     $image = $generator->render_image($symbology, $qrData, $optionsQR);
     imagejpeg($image, $qrFile);
     imagedestroy($image);
 
-    if(file_exists($qrFile)) {
-        $pdf->Image($qrFile, $x + $carnetWidth - 15, $y + 2, 12, 12);
-        @unlink($qrFile);
-    }
-    
-    $pdf->SetFont('Arial', 'B', 8.5);
-    $pdf->SetTextColor(0, 0, 0);
-    $pdf->SetXY($x + $carnetWidth - 15, $y + 14);
-
-
-    // ====================
-    // FOTO DEL ALUMNO
-    // ====================
     $fotoPath = "./app/views/imagenes/fotos/alumno/" . $carnet['alumno_imagen'];
     if(!file_exists($fotoPath) || empty($carnet['alumno_imagen'])) {
         $fotoPath = "./app/views/imagenes/fotos/alumno/alumno.jpg";
     }
-    
-    $fotoX = $x + $carnetWidth - 23;
-    $fotoY = $y + 20;
-    $fotoWidth = 20;
-    $fotoHeight = 25;
-    
-    if(file_exists($fotoPath)) {
-        $pdf->Image($fotoPath, $fotoX, $fotoY, $fotoWidth, $fotoHeight);
-    }
 
-    $pdf->SetLineWidth(0.3);
-    $pdf->SetDrawColor(200, 200, 200);
-    $pdf->Rect($fotoX, $fotoY, $fotoWidth, $fotoHeight);
-    
-    // ====================
-    // INFORMACIÓN DEL ALUMNO
-    // ====================
-    $infoX = $x + 22;
-    $infoY = $y + 17;
-
-    $pdf->SetFont('Arial', 'B', 6);
-    $pdf->SetTextColor(0, 0, 0);
-    $pdf->SetXY($infoX, $infoY);
-    $pdf->Cell(40, 3, 'DEPORTISTA', 0, 0, 'L');
-    
-    $infoY += 4;
-    $pdf->SetFont('Arial', 'B', 10);
-    $pdf->SetXY($infoX, $infoY);
-    $nombreCompleto = mb_convert_encoding(
-        strtoupper($carnet['alumno_nombre']), 
-        'ISO-8859-1', 'UTF-8'
-    );
-    
-    if(strlen($carnet['alumno_nombre']) > 21) {
-        $pdf->MultiCell(42, 3, $nombreCompleto, 0, 'L');
-        $infoY = $pdf->GetY();
-    } else {
-        $pdf->Cell(40, 3, $nombreCompleto, 0, 0, 'L');
-        $infoY += 3;
-    }
-    
-    $infoY += 1;
-    $pdf->SetFont('Arial', '', 8);
-    $pdf->SetXY($infoX, $infoY);
-    $pdf->Cell(15, 2.5, 'C.I.:', 0, 0, 'L');
-    $pdf->SetFont('Arial', 'B', 8);
-    $pdf->SetXY($infoX + 8, $infoY);
-    $pdf->Cell(32, 2.5, $carnet['alumno_identificacion'], 0, 0, 'L');
-    
-    $infoY += 3;
-    $pdf->SetFont('Arial', '', 8);
-    $pdf->SetXY($infoX, $infoY);
-    $pdf->Cell(15, 2.5, 'Horario:', 0, 0, 'L');
-    $pdf->SetFont('Arial', 'B', 8);
-    $pdf->SetXY($infoX + 12, $infoY);
-    $pdf->Cell(28, 2.5, 
-        mb_convert_encoding($carnet['horario_nombre'], 'ISO-8859-1', 'UTF-8'), 
-        0, 0, 'L');
-    
     $infoAlumno = $insCarnet->infoAlumnoCarnet($carnet['alumno_id']);
+    $edad = 0;
     if($infoAlumno->rowCount() == 1) {
         $infoAlumno = $infoAlumno->fetch();
-        $edad = date_diff(
-            date_create($infoAlumno['alumno_fechanacimiento']), 
-            date_create('today')
-        )->y;
-    } else {
-        $edad = 0;
+        $edad = date_diff(date_create($infoAlumno['alumno_fechanacimiento']), date_create('today'))->y;
     }
-    
-    $infoY += 3;
-    $pdf->SetFont('Arial', '', 8);
-    $pdf->SetXY($infoX, $infoY);
-    $pdf->Cell(15, 2.5, 'Edad:', 0, 0, 'L');
-    $pdf->SetFont('Arial', 'B', 7.5);
-    $pdf->SetXY($infoX + 10, $infoY);
-    $pdf->Cell(30, 2.5, $edad . ' ' . mb_convert_encoding('años', 'ISO-8859-1', 'UTF-8'), 0, 0, 'L');
-    
-    $infoY += 3;
-    $pdf->SetFont('Arial', '', 8);
-    $pdf->SetXY($infoX, $infoY);
-    $pdf->Cell(15, 2.5, 'Mes vigencia:', 0, 0, 'L');
-    
-    $pdf->SetFillColor($r, $g, $b);
-    $pdf->SetTextColor(255, 255, 255);
-    $pdf->SetFont('Arial', 'B', 9);
-    $pdf->SetXY($infoX + 18, $infoY - 0.5);
-    $mesNombre = strtoupper($nombresMeses[$carnet['carnet_mes']] ?? 'N/A');
-    $pdf->Cell(20, 3, 
-        mb_convert_encoding($mesNombre, 'ISO-8859-1', 'UTF-8'), 
-        0, 0, 'C', true);
-    
-    $infoY += 3;
-    $pdf->SetTextColor(0, 0, 0);
-    $pdf->SetFont('Arial', '', 8);
-    $pdf->SetXY($infoX, $infoY);
-    $pdf->Cell(15, 2.5, 'Sede:', 0, 0, 'L');
-    $pdf->SetFont('Arial', 'B', 8);
-    $pdf->SetXY($infoX + 10, $infoY);
-    $pdf->Cell(30, 2.5, 
-        mb_convert_encoding($sede['sede_nombre'], 'ISO-8859-1', 'UTF-8'), 
-        0, 0, 'L');
-    
-    $infoY += 3.5;
-    $pdf->SetFont('Arial', '', 7);
-    $pdf->SetTextColor(100, 100, 100);
-    $pdf->SetXY($infoX, $infoY);
-    $pdf->Cell(40, 2, ds_email_organizacion((int)$sede['sede_id']), 0, 0, 'L');
-    $infoY += 3;
-    $pdf->SetXY($infoX, $infoY);
-    $pdf->Cell(40, 2, ds_telefono_organizacion((int)$sede['sede_id']), 0, 0, 'L');
-    
-    // ====================
-    // MARCA DE REIMPRESIÓN
-    // ====================
-    if($esReimpresion) {
-        $pdf->SetFont('Arial', 'B', 6);
-        $pdf->SetTextColor(255, 0, 0);
-        $pdf->SetXY($x + 22, $y + $carnetHeight - 4);
-        $pdf->Cell(30, 2, mb_convert_encoding('REIMPRESION', 'ISO-8859-1', 'UTF-8'), 0, 0, 'L');
-        
-        $pdf->SetFont('Arial', '', 4.5);
-        $pdf->SetXY($x + $carnetWidth - 25, $y + $carnetHeight - 4.5);
-        $pdf->Cell(22, 2, 'Reimp: ' . date('d/m/Y'), 0, 0, 'R');
-    } else {
-        $pdf->SetFont('Arial', '', 5);
-        $pdf->SetTextColor(150, 150, 150);
-        $pdf->SetXY($x + $carnetWidth - 25, $y + $carnetHeight - 4.5);
-        $pdf->Cell(22, 2, 'Impreso: ' . date('d/m/Y'), 0, 0, 'R');
-    }
-    
-    // ====================
-    // FOOTER
-    // ====================
-    $pdf->SetDrawColor(220, 220, 220);
-    $pdf->Line($x + 22, $y + $carnetHeight - 2, $x + $carnetWidth - 3, $y + $carnetHeight - 2);
-    
+
+    carnet_dibujar($pdf, $x, $y, [
+        'color'       => [$r, $g, $b],
+        'img_fondo'   => carnet_dir_imagenes() . $sede['escuela_verticalfondo'],
+        'img_linea'   => carnet_dir_imagenes() . $sede['escuela_verticalprincipal'],
+        'sede_id'     => (int)$sede['sede_id'],
+        'qr'          => $qrFile,
+        'foto'        => $fotoPath,
+        'nombre'      => $carnet['alumno_nombre'],
+        'ci'          => $carnet['alumno_identificacion'],
+        'horario'     => (string)$carnet['horario_nombre'],
+        'edad'        => $edad,
+        'mes'         => $nombresMeses[$carnet['carnet_mes']] ?? 'N/A',
+        'sede_nombre' => $sede['sede_nombre'],
+        'correo'      => ds_email_organizacion((int)$sede['sede_id']),
+        'telefono'    => ds_telefono_organizacion((int)$sede['sede_id']),
+        'reimpresion' => $esReimpresion,
+        'fecha'       => date('d/m/Y'),
+    ], $disenoCarnet);
+    @unlink($qrFile);
+
     $carnetCounter++;
 }
 

@@ -21,6 +21,16 @@
 	use Exception;
 
 	class carnetController extends mainModel{
+
+		/** Conexión para leer el diseño del carnet (carnet_diseno_leer). */
+		public function conexionCarnet(): \PDO {
+			return $this->conectar();
+		}
+
+		/** El diseño del carnet guardado (ds_core/inc/carnet_diseno.php). */
+		public function disenoCarnet(): array {
+			return carnet_diseno_leer($this->conectar());
+		}
         public function informacionSede($sedeid){
             $consulta_datos="SELECT *, escuela_nombre, escuela_verticalfondo, escuela_verticalprincipal, escuela_verticalcolor
 								 FROM general_sede
@@ -31,133 +41,95 @@
         }
 
 		/**
-		 * Listar alumnos con pagos de pensión del mes actual
+		 * Alumnos con pago de pensión del mes (o beca completa): los que
+		 * llevan carnet este mes, con si ya está impreso.
 		 *
-		 * Devuelve SOLO filas de 7 celdas, o nada. La tabla es un DataTable y
-		 * DataTables no admite colspan en el tbody: una fila de aviso con
-		 * colspan provoca «Requested unknown parameter '1' for row 0». Los
-		 * avisos (horario pendiente, sin alumnos) los pinta la vista fuera de
-		 * la tabla; la tabla vacía muestra el texto «emptyTable».
+		 * Devuelve filas, no HTML: las pinta carnetList-view.php como fichas.
+		 * Acotado a las sedes del usuario (condicionSede); con $sede > 0, a
+		 * esa sede. Antes listaba los alumnos de todas las sedes a cualquiera.
+		 *
+		 * Regla heredada: mientras haya alumnos con pago y sin horario no se
+		 * listan carnets; primero se corrige el horario. Ahora vale por sede:
+		 * un alumno sin horario en otra sede no bloquea esta.
 		 *
 		 * @param array|null $alumnos_sin_horario El resultado de
-		 *        verificarAlumnosSinHorarioAsignado() si la vista ya lo tiene,
-		 *        para no repetir la consulta.
-		 * @return string HTML de filas de tabla
+		 *        verificarAlumnosSinHorarioAsignado($sede) si la vista ya lo
+		 *        tiene, para no repetir la consulta.
 		 */
-		public function listarAlumnos(?array $alumnos_sin_horario = null) {
-			$tabla = "";
-
-			/* Regla heredada: mientras haya alumnos con pago y sin horario no
-			   se listan carnets; primero se corrige el horario. */
-			$alumnos_sin_horario ??= $this->verificarAlumnosSinHorarioAsignado();
+		public function alumnosCarnetMes(int $sede = 0, ?array $alumnos_sin_horario = null): array {
+			$alumnos_sin_horario ??= $this->verificarAlumnosSinHorarioAsignado($sede);
 			if(!empty($alumnos_sin_horario)) {
-				return '';
+				return [];
 			}
 
-			$consulta_datos = "SELECT alumno_id,
-									alumno_identificacion,
-									CONCAT(alumno_primernombre, ' ', alumno_segundonombre) NOMBRES,
-									CONCAT(alumno_apellidopaterno, ' ', alumno_apellidomaterno) APELLIDOS,
-									FechaUltPension,
-									CASE
-										WHEN FechaUltPension >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
-										THEN 'Al día'
-										ELSE 'Pendiente'
-										END Condicion,
-									CASE
-										WHEN EXISTS(
-											SELECT 1
-											FROM alumno_carnet ac
-											WHERE ac.carnet_alumnoid = alumno_id
-											AND ac.carnet_mes = MONTH(CURDATE())
-											AND ac.carnet_anio = YEAR(CURDATE())
-											AND ac.carnet_fecha_impresion IS NOT NULL
-										) THEN 1
-										ELSE 0
-									END AS carnet_impreso,
-									(
-										SELECT MAX(ac2.carnet_fecha_impresion)
-										FROM alumno_carnet ac2
-										WHERE ac2.carnet_alumnoid = alumno_id
-										AND ac2.carnet_mes = MONTH(CURDATE())
-										AND ac2.carnet_anio = YEAR(CURDATE())
-									) AS fecha_impresion
-								FROM sujeto_alumno
-								INNER JOIN (
-									 (
-										SELECT pago_alumnoid, MAX(FechaPension) FechaUltPension, MAX(pago_estado) Estado
-										FROM (
-												SELECT pago_fecha as FechaPension, pago_estado, pago_alumnoid
-														FROM alumno_pago
-														WHERE pago_fecha >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
-																AND pago_estado NOT IN ('E', 'J')
-																AND pago_rubroid = 'RPE'
-										) AS Pagos
-										GROUP BY pago_alumnoid
-										)
-										UNION
-										SELECT descuento_alumnoid, DATE_FORMAT(CURDATE(), '%Y-%m-05') FechaPago, 'Al dìa' as Estado
-														from alumno_pago_descuento
-														where descuento_rubroid = 'DBC'
-																		and descuento_valor = 0
-																		and descuento_estado = 'S'
-														) EstadoPagos ON pago_alumnoid = alumno_id
-								WHERE alumno_estado = 'A'
-								ORDER BY carnet_impreso ASC, alumno_apellidopaterno, alumno_apellidomaterno";
+			$parametros = [];
+			$sedeSql = $this->condicionSede('A.alumno_sedeid', $sede, $parametros);
 
-			$datos = $this->ejecutarConsulta($consulta_datos);
+			$consulta = "SELECT A.alumno_id, A.alumno_identificacion, A.alumno_sedeid, S.sede_nombre,
+								CONCAT_WS(' ', A.alumno_primernombre, A.alumno_segundonombre) AS nombres,
+								CONCAT_WS(' ', A.alumno_apellidopaterno, A.alumno_apellidomaterno) AS apellidos,
+								EP.FechaUltPension AS ultima_pension,
+								EP.beca,
+								(SELECT MAX(ac.carnet_fecha_impresion)
+								   FROM alumno_carnet ac
+								  WHERE ac.carnet_alumnoid = A.alumno_id
+									AND ac.carnet_mes = MONTH(CURDATE())
+									AND ac.carnet_anio = YEAR(CURDATE())) AS fecha_impresion
+						   FROM sujeto_alumno A
+						   INNER JOIN (
+								SELECT pago_alumnoid, MAX(FechaPension) AS FechaUltPension, MAX(beca) AS beca
+								  FROM (
+										SELECT pago_alumnoid, pago_fecha AS FechaPension, 0 AS beca
+										  FROM alumno_pago
+										 WHERE pago_fecha >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
+										   AND pago_estado NOT IN ('E', 'J')
+										   AND pago_rubroid = 'RPE'
+										UNION ALL
+										SELECT descuento_alumnoid, NULL, 1
+										  FROM alumno_pago_descuento
+										 WHERE descuento_rubroid = 'DBC'
+										   AND descuento_valor = 0
+										   AND descuento_estado = 'S'
+								  ) P
+								 GROUP BY pago_alumnoid
+						   ) EP ON EP.pago_alumnoid = A.alumno_id
+						   LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
+						  WHERE A.alumno_estado = 'A' AND $sedeSql
+						  ORDER BY (fecha_impresion IS NOT NULL), A.alumno_apellidopaterno, A.alumno_apellidomaterno, A.alumno_primernombre";
 
-			if($datos->rowCount() > 0) {
-				$datos = $datos->fetchAll();
+			return $this->ejecutarConsulta($consulta, $parametros)->fetchAll();
+		}
 
-				foreach($datos as $rows) {
-					if((int)$rows['carnet_impreso'] === 1) {
-						$estadoImpresion = '<span class="badge text-bg-success"><i class="fas fa-check"></i> Impreso</span>';
-						if(!empty($rows['fecha_impresion'])) {
-							$estadoImpresion .= '<br><small class="text-muted">' . $rows['fecha_impresion'] . '</small>';
-						}
-					} else {
-						$estadoImpresion = '<span class="badge text-bg-warning"><i class="fas fa-clock"></i> Pendiente</span>';
-					}
-
-					$tabla .= '
-						<tr>
-							<td>' . $rows['alumno_identificacion'] . '</td>
-							<td>' . $rows['NOMBRES'] . '</td>
-							<td>' . $rows['APELLIDOS'] . '</td>
-							<td>' . $rows['FechaUltPension'] . '</td>
-							<td data-order="' . (int)$rows['carnet_impreso'] . '">' . $estadoImpresion . '</td>
-							<td>
-								<a href="' . APP_URL . 'carnetFotoPDF/' . $rows['alumno_id'] . '/"
-								class="btn float-end btn-success btn-sm"
-								style="margin-right: 5px;">
-								Ver carnet
-								</a>
-							</td>
-							<td style="text-align: center;">
-								<div class="custom-control custom-checkbox">
-									<input class="custom-control-input chk-reimpresion"
-										type="checkbox"
-										id="alumno_' . $rows['alumno_id'] . '"
-										name="pagos_seleccionados[]"
-										value="' . $rows['alumno_id'] . '">
-									<label for="alumno_' . $rows['alumno_id'] . '"
-										class="custom-control-label"></label>
-								</div>
-							</td>
-						</tr>';
-				}
+		/** Sedes del usuario para el filtro (todas si es administración). */
+		public function opcionesSedeCarnet($sedeid): string {
+			$permitidas = $this->sedesDeLaSesion();
+			$option = '';
+			foreach($this->ejecutarConsulta("SELECT sede_id, sede_nombre FROM general_sede ORDER BY sede_nombre")->fetchAll() as $s) {
+				if($permitidas !== null && !in_array((int)$s['sede_id'], $permitidas, true)) { continue; }
+				$option .= '<option value="' . (int)$s['sede_id'] . '"' . ((int)$sedeid === (int)$s['sede_id'] ? ' selected' : '') . '>'
+					. htmlspecialchars(html_entity_decode((string)$s['sede_nombre'], ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8') . '</option>';
 			}
+			return $option;
+		}
 
-			/* Sin filas: DataTables muestra «No hay carnets para emitir este mes». */
-			return $tabla;
+		/** Los alumnos (ids) que el usuario puede tocar: los de sus sedes. */
+		private function alumnosEnSedesDeLaSesion(array $ids): array {
+			$ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+			if(!$ids) { return []; }
+			$parametros = [];
+			$sedeSql = $this->condicionSede('alumno_sedeid', 0, $parametros);
+			return array_map('intval', $this->ejecutarConsulta(
+				"SELECT alumno_id FROM sujeto_alumno WHERE alumno_id IN (" . implode(',', $ids) . ") AND $sedeSql", $parametros
+			)->fetchAll(\PDO::FETCH_COLUMN));
 		}
 
 		/**
 		 * Verificar alumnos candidatos a carnet que no tienen horario de entrenamiento asignado
 		 * @return array
 		 */
-		public function verificarAlumnosSinHorarioAsignado() {
+		public function verificarAlumnosSinHorarioAsignado($sede = 0) {
+			$parametros = [];
+			$sedeSql = $this->condicionSede('a.alumno_sedeid', $sede, $parametros);
 			$consulta = "SELECT
 						a.alumno_id,
 						a.alumno_identificacion,
@@ -178,7 +150,7 @@
 								AND descuento_valor = 0
 								AND descuento_estado = 'S'
 						) EstadoPagos ON EstadoPagos.pago_alumnoid = a.alumno_id
-						WHERE a.alumno_estado = 'A'
+						WHERE a.alumno_estado = 'A' AND $sedeSql
 							AND NOT EXISTS(
 								SELECT 1
 								FROM asistencia_asignahorario ah
@@ -188,7 +160,7 @@
 						ORDER BY a.alumno_apellidopaterno, a.alumno_apellidomaterno,
 							a.alumno_primernombre, a.alumno_segundonombre";
 
-			$datos = $this->ejecutarConsulta($consulta);
+			$datos = $this->ejecutarConsulta($consulta, $parametros);
 			if($datos && $datos->rowCount() > 0) {
 				return $datos->fetchAll();
 			}
@@ -657,6 +629,151 @@
 		}
 
 		/** Alta de un color en el catálogo. */
+		/*======================================================================
+		  Diseño del carnet (Core › Carnets › Diseño del carnet)
+		  ======================================================================
+		  Superadministrador (lo comprueba carnetAjax.php). Los ajustes se
+		  acotan con carnet_diseno_normalizar() —un solo sitio para las
+		  reglas— y se guardan uno por clave en carnet_configuracion.
+		  ====================================================================*/
+
+		public function guardarDisenoCarnet(): string {
+			$entrada = [];
+			foreach (array_keys(carnet_diseno_defecto()) as $clave) {
+				/* Los interruptores sin marcar no llegan: valen 0. */
+				$entrada[$clave] = $_POST['diseno'][$clave] ?? (in_array($clave, ['franja_ancho', 'franja_opacidad', 'logo_tamano', 'titulo'], true) ? null : 0);
+			}
+			$entrada = array_filter($entrada, static fn($v) => $v !== null);
+			foreach (carnet_diseno_normalizar($entrada) as $clave => $valor) {
+				$this->guardarValorConfiguracionCarnet('diseno_' . $clave, (string)$valor, 'Diseño del carnet');
+			}
+			return $this->alertaCarnet('Diseño guardado', 'Los próximos carnets se imprimirán con este diseño.', 'success', 'recargar');
+		}
+
+		public function restaurarDisenoCarnet(): string {
+			$this->asegurarTablaConfiguracionCarnet();
+			$this->ejecutarConsulta("DELETE FROM carnet_configuracion WHERE config_clave LIKE 'diseno\\_%'");
+			return $this->alertaCarnet('Diseño original', 'El carnet vuelve a su diseño de siempre.', 'success', 'recargar');
+		}
+
+		/** Imágenes que se pueden cambiar: campo de general_escuela y archivo original. */
+		private function imagenesCarnet(): array {
+			return [
+				'fondo' => ['campo' => 'escuela_verticalfondo',     'original' => 'vertical_fondo.jpg',     'nombre' => 'La imagen de la franja'],
+				'linea' => ['campo' => 'escuela_verticalprincipal', 'original' => 'vertical_principal.jpg', 'nombre' => 'La línea decorativa'],
+			];
+		}
+
+		/**
+		 * Cambia la imagen de la franja o de la línea decorativa.
+		 *
+		 * Se vuelve a codificar SIEMPRE como JPEG con GD: lo que se guarda es
+		 * una imagen limpia (nada de lo que traiga el archivo subido llega
+		 * al disco) y FPDF la dibuja sin depender de zlib —un PNG con
+		 * transparencia sin zlib tumbaba los PDF en producción—. La
+		 * transparencia se aplana sobre blanco. El archivo anterior no se
+		 * borra: el cambio se puede deshacer con «Restaurar».
+		 */
+		public function subirImagenCarnet(): string {
+			$tipos = $this->imagenesCarnet();
+			$tipo = (string)($_POST['tipo'] ?? '');
+			if (!isset($tipos[$tipo])) {
+				return $this->alertaCarnet('Imagen no válida', 'Indique qué imagen del carnet quiere cambiar.', 'warning');
+			}
+			$archivo = $_FILES['imagen'] ?? null;
+			if (!$archivo || ($archivo['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_uploaded_file($archivo['tmp_name'])) {
+				return $this->alertaCarnet('Sin imagen', 'Elija una imagen JPG, PNG o WebP.', 'warning');
+			}
+			if ($archivo['size'] > 4 * 1024 * 1024) {
+				return $this->alertaCarnet('Imagen muy pesada', 'La imagen no puede pasar de 4 MB.', 'warning');
+			}
+			$info = @getimagesize($archivo['tmp_name']);
+			$crear = [IMAGETYPE_JPEG => 'imagecreatefromjpeg', IMAGETYPE_PNG => 'imagecreatefrompng', IMAGETYPE_WEBP => 'imagecreatefromwebp'];
+			if (!$info || !isset($crear[$info[2]]) || !function_exists($crear[$info[2]])) {
+				return $this->alertaCarnet('Formato no admitido', 'La imagen debe ser JPG, PNG o WebP.', 'warning');
+			}
+			if ($info[0] < 20 || $info[1] < 100 || $info[0] > 4000 || $info[1] > 4000) {
+				return $this->alertaCarnet('Medidas no válidas', 'La imagen es vertical: al menos 100 px de alto, y no más de 4000 px por lado.', 'warning');
+			}
+			$origen = @($crear[$info[2]])($archivo['tmp_name']);
+			if (!$origen) {
+				return $this->alertaCarnet('Imagen dañada', 'No se pudo leer la imagen.', 'warning');
+			}
+			$lienzo = imagecreatetruecolor($info[0], $info[1]);
+			imagefill($lienzo, 0, 0, imagecolorallocate($lienzo, 255, 255, 255));
+			imagecopy($lienzo, $origen, 0, 0, 0, 0, $info[0], $info[1]);
+
+			require_once dirname(__DIR__) . '/lib/carnet_render.php';
+			$nombre = 'carnet_' . $tipo . '_' . date('Ymd_His') . '.jpg';
+			$ok = imagejpeg($lienzo, carnet_dir_imagenes() . $nombre, 90);
+			unset($origen, $lienzo);
+			if (!$ok) {
+				return $this->alertaCarnet('No se guardó', 'No se pudo escribir la imagen en el servidor.', 'error');
+			}
+			$this->ejecutarConsulta("UPDATE general_escuela SET " . $tipos[$tipo]['campo'] . " = :archivo
+				WHERE escuela_id IN (SELECT sede_escuelaid FROM general_sede)", [':archivo' => $nombre]);
+			return $this->alertaCarnet('Imagen cambiada', $tipos[$tipo]['nombre'] . ' ya está en el carnet.', 'success', 'recargar');
+		}
+
+		public function restaurarImagenCarnet(): string {
+			$tipos = $this->imagenesCarnet();
+			$tipo = (string)($_POST['tipo'] ?? '');
+			if (!isset($tipos[$tipo])) {
+				return $this->alertaCarnet('Imagen no válida', 'Indique qué imagen del carnet quiere restaurar.', 'warning');
+			}
+			$this->ejecutarConsulta("UPDATE general_escuela SET " . $tipos[$tipo]['campo'] . " = :archivo
+				WHERE escuela_id IN (SELECT sede_escuelaid FROM general_sede)", [':archivo' => $tipos[$tipo]['original']]);
+			return $this->alertaCarnet('Imagen original', $tipos[$tipo]['nombre'] . ' vuelve a ser la de siempre.', 'success', 'recargar');
+		}
+
+		/**
+		 * Un carnet de muestra en PDF, con el diseño guardado y el renderizador
+		 * real (el mismo de los lotes): lo que se ve es lo que se imprime. Los
+		 * datos son de ejemplo, no de un alumno.
+		 */
+		public function muestraCarnetPdf(): void {
+			require_once dirname(__DIR__) . '/lib/alphapdf.php';
+			require_once dirname(__DIR__) . '/lib/barcode.php';
+			require_once dirname(__DIR__) . '/lib/carnet_render.php';
+
+			$sede = $this->informacionSede((int)($_GET['sede'] ?? 1));
+			$sede = ($sede && $sede->rowCount() === 1) ? $sede->fetch() : $this->informacionSede(1)->fetch();
+			$mes = (int)date('n');
+			$color = $this->BuscarColorPorMes($mes)->fetch();
+			[$r, $g, $b] = sscanf($color['color_hex'] ?? '#CCCCCC', '#%02x%02x%02x');
+
+			/* .jpeg: FPDF deduce el tipo por la extensión (tempnam daría .tmp). */
+			$qr = dirname(__DIR__) . '/views/dist/img/temp/qr_muestra_' . bin2hex(random_bytes(6)) . '.jpeg';
+			$img = (new \barcode_generator())->render_image('qr', "Carnet de muestra\nSede: " . $sede['sede_nombre'], ['sx' => 4, 'sy' => 4, 'p' => -12]);
+			imagejpeg($img, $qr);
+			unset($img);
+
+			$pdf = new \AlphaPDF('L', 'mm', [CARNET_ANCHO, CARNET_ALTO]);
+			$pdf->SetAutoPagebreak(false);
+			$pdf->SetMargins(0, 0, 0);
+			$pdf->AddPage();
+			carnet_dibujar($pdf, 0, 0, [
+				'color' => [$r, $g, $b],
+				'img_fondo' => carnet_dir_imagenes() . $sede['escuela_verticalfondo'],
+				'img_linea' => carnet_dir_imagenes() . $sede['escuela_verticalprincipal'],
+				'sede_id' => (int)$sede['sede_id'],
+				'qr' => $qr,
+				'foto' => dirname(__DIR__) . '/views/imagenes/fotos/alumno/alumno.jpg',
+				'nombre' => 'Nombre Apellido Ejemplo',
+				'ci' => '0000000000',
+				'horario' => '16H00 PM',
+				'edad' => 10,
+				'mes' => $this->nombreMes($mes),
+				'sede_nombre' => $sede['sede_nombre'],
+				'correo' => ds_email_organizacion((int)$sede['sede_id']),
+				'telefono' => ds_telefono_organizacion((int)$sede['sede_id']),
+				'reimpresion' => false,
+				'fecha' => date('d/m/Y'),
+			], $this->disenoCarnet());
+			@unlink($qr);
+			$pdf->Output('carnet_muestra.pdf', 'I');
+		}
+
 		public function crearColorCarnet(): string
 		{
 			$v = $this->validarColor(
@@ -1062,7 +1179,9 @@
 		 * Incluye todos los alumnos con pagos de pensión (RPE) del mes
 		 * @return array Array con datos de carnets
 		 */
-		public function obtenerCarnetsMesActual() {
+		public function obtenerCarnetsMesActual($sede = 0) {
+			$parSede = [];
+			$sedeSql = $this->condicionSede('a.alumno_sedeid', $sede, $parSede);
 			$fecha_actual = date('Y-m-d');
 			$mes_actual = date('n'); // Mes actual (1-12)
 			$anio_actual = date('Y');
@@ -1095,7 +1214,7 @@
 							LEFT JOIN alumno_carnet ac ON ac.carnet_alumnoid = a.alumno_id
 													AND ac.carnet_mes = :mes
 													AND ac.carnet_anio = :anio
-							WHERE a.alumno_estado = 'A'
+							WHERE a.alumno_estado = 'A' AND $sedeSql
 								AND ap.pago_estado NOT IN ('E', 'J')
 								AND MONTH(ap.pago_fecha) = :mes
 								AND YEAR(ap.pago_fecha) = :anio
@@ -1127,13 +1246,13 @@
 							LEFT JOIN alumno_carnet ac ON ac.carnet_alumnoid = a.alumno_id
 													AND ac.carnet_mes = :mes
 													AND ac.carnet_anio = :anio
-							WHERE a.alumno_estado = 'A'
+							WHERE a.alumno_estado = 'A' AND $sedeSql
 								AND apd.descuento_rubroid = 'DBC'
 								AND apd.descuento_valor = 0
 								AND apd.descuento_estado = 'S'
 								AND ac.carnet_alumnoid IS NULL";
 
-			$parametros = [
+			$parametros = $parSede + [
 				':fecha_actual' => $fecha_actual,
 				':mes' => $mes_actual,
 				':anio' => $anio_actual,
@@ -1241,11 +1360,14 @@
 			$alumno_ids = array_map([$this, 'limpiarCadena'], $alumno_ids);
 			$alumno_ids = array_filter($alumno_ids, 'is_numeric');
 
+			/* Sólo alumnos de las sedes del usuario: los ids llegan del navegador. */
+			$alumno_ids = $this->alumnosEnSedesDeLaSesion($alumno_ids);
+
 			if(empty($alumno_ids)) {
 				return json_encode([
 					"tipo" => "simple",
 					"titulo" => "Error",
-					"texto" => "IDs de alumnos inválidos",
+					"texto" => "Los alumnos elegidos no existen o son de otra sede.",
 					"icono" => "error"
 				]);
 			}
@@ -1455,7 +1577,9 @@
 			return $datos->fetchAll();
 		}
 
-		public function carnetPendientesImpresion() {
+		public function carnetPendientesImpresion($sede = 0) {
+			$parametros = [];
+			$sedeSql = $this->condicionSede('a.alumno_sedeid', $sede, $parametros);
 			$mes_actual = date('n');
 			$anio_actual = date('Y');
 
@@ -1467,7 +1591,7 @@
 							SELECT a.alumno_id
 							FROM sujeto_alumno a
 							INNER JOIN alumno_pago ap ON ap.pago_alumnoid = a.alumno_id
-							WHERE a.alumno_estado = 'A'
+							WHERE a.alumno_estado = 'A' AND $sedeSql
 								AND ap.pago_estado NOT IN ('E', 'J')
 								AND MONTH(ap.pago_fecha) = :mes
 								AND YEAR(ap.pago_fecha) = :anio
@@ -1485,7 +1609,7 @@
 							SELECT a.alumno_id
 							FROM sujeto_alumno a
 							INNER JOIN alumno_pago_descuento apd ON apd.descuento_alumnoid = a.alumno_id
-							WHERE a.alumno_estado = 'A'
+							WHERE a.alumno_estado = 'A' AND $sedeSql
 								AND apd.descuento_rubroid = 'DBC'
 								AND apd.descuento_valor = 0
 								AND apd.descuento_estado = 'S'
@@ -1498,7 +1622,7 @@
 								)
 						) AS subconsulta";
 
-			$parametros = [
+			$parametros += [
 				':mes' => $mes_actual,
 				':anio' => $anio_actual
 			];
@@ -1506,7 +1630,9 @@
 			$datos = $this->ejecutarConsulta($consulta, $parametros);
 			return $datos->fetchAll();
 		}
-		public function obtenerCarnetsPendientesMesActual() {
+		public function obtenerCarnetsPendientesMesActual($sede = 0) {
+			$parSede = [];
+			$sedeSql = $this->condicionSede('a.alumno_sedeid', $sede, $parSede);
 			$mes_actual = date('n');
 			$anio_actual = date('Y');
 			$fecha_actual = date('Y-m-d');
@@ -1539,7 +1665,7 @@
 								SELECT DISTINCT a.alumno_id
 								FROM sujeto_alumno a
 								INNER JOIN alumno_pago ap ON ap.pago_alumnoid = a.alumno_id
-								WHERE a.alumno_estado = 'A'
+								WHERE a.alumno_estado = 'A' AND $sedeSql
 									AND ap.pago_estado NOT IN ('E', 'J')
 									AND MONTH(ap.pago_fecha) = :mes
 									AND YEAR(ap.pago_fecha) = :anio
@@ -1558,7 +1684,7 @@
 								SELECT DISTINCT a.alumno_id
 								FROM sujeto_alumno a
 								INNER JOIN alumno_pago_descuento apd ON apd.descuento_alumnoid = a.alumno_id
-								WHERE a.alumno_estado = 'A'
+								WHERE a.alumno_estado = 'A' AND $sedeSql
 									AND apd.descuento_rubroid = 'DBC'
 									AND apd.descuento_valor = 0
 									AND apd.descuento_estado = 'S'
@@ -1583,7 +1709,7 @@
 							)
 							ORDER BY a.alumno_apellidopaterno, a.alumno_apellidomaterno";
 
-			$datos = $this->ejecutarConsulta($consulta, [
+			$datos = $this->ejecutarConsulta($consulta, $parSede + [
 				':fecha_actual' => $fecha_actual,
 				':mes' => $mes_actual,
 				':anio' => $anio_actual,
@@ -1609,16 +1735,18 @@
 			}
 
 			if(empty($carnetsFinales)) {
-				$carnetsFinales = $this->obtenerCarnetsNoImpresosMesActual();
+				$carnetsFinales = $this->obtenerCarnetsNoImpresosMesActual($sede);
 			}
 
 			if(empty($carnetsFinales)) {
-				return $this->obtenerCarnetsMesActual();
+				return $this->obtenerCarnetsMesActual($sede);
 			}
 
 			return $carnetsFinales;
 		}
-		public function obtenerCarnetsNoImpresosMesActual() {
+		public function obtenerCarnetsNoImpresosMesActual($sede = 0) {
+			$parSede = [];
+			$sedeSql = $this->condicionSede('a.alumno_sedeid', $sede, $parSede);
 			$mes_actual = date('n');
 			$anio_actual = date('Y');
 
@@ -1649,11 +1777,11 @@
 							WHERE ac.carnet_mes = :mes
 								AND ac.carnet_anio = :anio
 								AND ac.carnet_fecha_impresion IS NULL
-								AND a.alumno_estado = 'A'
+								AND a.alumno_estado = 'A' AND $sedeSql
 								AND EXISTS (SELECT 1 FROM asistencia_asignahorario ah WHERE ah.asignahorario_alumnoid = a.alumno_id)
 							ORDER BY a.alumno_apellidopaterno, a.alumno_apellidomaterno";
 
-			$datos = $this->ejecutarConsulta($consulta, [
+			$datos = $this->ejecutarConsulta($consulta, $parSede + [
 				':mes' => $mes_actual,
 				':anio' => $anio_actual,
 				':color_hex' => $colorData['color_hex'] ?? '#CCCCCC',
@@ -1841,8 +1969,14 @@
 			}
 
 			$carnet_ids = [];
+			$deMisSedes = $this->alumnosEnSedesDeLaSesion(array_column($alumnos, 'alumno_id'));
 
 			foreach($alumnos as $alumno) {
+				if(!in_array((int)$alumno['alumno_id'], $deMisSedes, true)) {
+					$errores[] = $alumno['nombre'] . " no pertenece a sus sedes";
+					continue;
+				}
+
 				if($alumno['alumno_estado'] !== 'A') {
 					$errores[] = $alumno['nombre'] . " no esta activo";
 					continue;
@@ -1888,6 +2022,7 @@
 					"tipo" => "simple",
 					"titulo" => "Sin carnets para imprimir",
 					"texto" => empty($errores) ? "No se pudo preparar el lote atrasado" : implode("; ", $errores),
+					"avisos" => array_values($errores),
 					"icono" => "warning"
 				]);
 			}
@@ -1908,15 +2043,19 @@
 				"titulo" => "Impresion atrasada preparada",
 				"texto" => $texto,
 				"icono" => empty($errores) ? "success" : "warning",
+				"avisos" => array_values($errores),
+				"total" => count($carnet_ids),
 				"url" => APP_URL . "carnetPDF/?modo=atrasada&atrasada=" . rawurlencode($token_atrasada) . "&firma=" . $firma_atrasada
 			]);
 		}
 
 		public function prepararImpresionMensual() {
-			$carnets = $this->obtenerCarnetsPendientesMesActual();
+			/* 0 = todas las sedes del usuario; condicionSede acota siempre. */
+			$sede = (int)($_POST['sede'] ?? 0);
+			$carnets = $this->obtenerCarnetsPendientesMesActual($sede);
 
 			if(empty($carnets)) {
-				$carnets = $this->obtenerCarnetsNoImpresosMesActual();
+				$carnets = $this->obtenerCarnetsNoImpresosMesActual($sede);
 			}
 
 			if(empty($carnets)) {

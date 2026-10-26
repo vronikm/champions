@@ -14,7 +14,7 @@ MYSQL=/ruta/a/mysql MYSQL_OPTS="-u USUARIO -pCLAVE" \
   ds_core/database/migracion_champions/aplicar_migracion.sh BASE
 ```
 
-Aplica los 70 archivos en el orden correcto y se detiene en el primer error.
+Aplica los 73 archivos en el orden correcto y se detiene en el primer error.
 Antes de empezar comprueba que `BASE` sea una copia de SoccerEasy **sin migrar**:
 si ya tiene `facturas_electronicas`, no aplica nada, porque varias migraciones no
 se pueden repetir.
@@ -65,6 +65,17 @@ en desarrollo y llevar el resultado a producción con un volcado (ver más abajo
    franja azul y las medidas de champions_cf (venía con las de barcelona).
 9. `068_corrige_fecha_pago_7328.sql`: el pago 7328 traía el año `0025`
    en vez de `2025`. Idempotente.
+10. `069_sri_ambientes.sql`: tabla `facturas_electronicas_ambiente` con las
+    direcciones del SRI (pruebas y producción) y sus tiempos, que antes
+    estaban en el código. Se editan en Core › Facturación electrónica ›
+    Ambientes del SRI. Repetible.
+11. `070_menu_facturas_emitidas.sql`: grupo «Facturación» con «Emitir
+    facturas» (la entrada de siempre, mismo id y permisos) y «Facturas
+    emitidas», que nace con los permisos de la primera. Repetible.
+12. `071_facturacion_servicio_correo.sql`: columnas de la configuración del
+    SRI para el estado del servicio (mantenimiento), el teléfono del emisor,
+    el RUC del proveedor del sistema (NAC-DGERCGC26-00000027) y el correo
+    por SMTP (clave cifrada). Por defecto, todo como antes. Repetible.
 
 ```bash
 mysql -u USUARIO -p --default-character-set=utf8mb4 BASE < ARCHIVO.sql

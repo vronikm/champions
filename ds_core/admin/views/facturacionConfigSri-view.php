@@ -6,9 +6,9 @@
 | comprobantes: RUC del emisor, ambiente y certificado de firma. Sólo el
 | superadministrador puede entrar, con independencia de los permisos que
 | tenga su rol. Emitir facturas es otra cosa y se concede por rol sobre
-| «Facturas emitidas» en Basketball.
+| «Facturas emitidas» en Fútbol.
 |
-| El formulario guarda contra el módulo Basketball, que es donde está el
+| El formulario guarda contra el módulo Fútbol, que es donde está el
 | motor del SRI (firma, webservices, RIDE). Core no duplica esa lógica:
 | sólo presenta los datos y recoge los cambios.
 */
@@ -25,11 +25,13 @@ $insCore = new coreController();
 
 $cfg        = $insCore->configuracionSri();
 $formasPago = $insCore->formasPagoSri();
+$ambientes  = sri_ambientes();               // ds_core/inc/sri.php
+$ambientesSri = sri_ambientes_por_defecto();
 
 $tituloVista = 'Facturación electrónica';
 $vistaActual = 'facturacionConfigSri';
 
-/* El motor del SRI responde en Basketball. */
+/* El motor del SRI responde en Fútbol. */
 $ajaxSri = DS_FUTBOL_URL . 'app/ajax/facturasAjax.php';
 
 $h   = static fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
@@ -45,6 +47,58 @@ require_once __DIR__ . "/inc/layout-top.php";
         Aquí se define en nombre de quién se emiten comprobantes con validez tributaria.
         Para que alguien pueda <em>emitir</em> facturas basta con darle permiso sobre
         «Facturas emitidas» en <a href="<?php echo APP_URL; ?>permisoRol/">Permisos</a>.
+    </div>
+</div>
+
+<?php
+/* Estado del servicio: el interruptor se guarda en la fila de configuración,
+   así que sólo funciona cuando ya hay emisor guardado. */
+$servicioActivo = (int)$cfg['servicio_activo'] === 1;
+$hayConfig      = !empty($cfg['id']);
+?>
+<div class="card ds-servicio <?php echo $servicioActivo ? 'ds-servicio--activo' : 'ds-servicio--mantenimiento'; ?>" id="estadoServicio">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-power-off me-2"></i>Estado del servicio de facturación electrónica</h3>
+        <span class="badge <?php echo $servicioActivo ? 'text-bg-success' : 'text-bg-warning'; ?> ms-auto ds-servicio__estado">
+            <i class="fas <?php echo $servicioActivo ? 'fa-check-circle' : 'fa-tools'; ?> me-1"></i><?php echo $servicioActivo ? 'En servicio' : 'En mantenimiento'; ?>
+        </span>
+    </div>
+    <div class="card-body">
+        <p class="text-muted mb-3">
+            Al bajar el servicio se detiene la generación y el envío de facturas al SRI. Las pantallas de
+            facturación mostrarán un aviso de mantenimiento y esta pantalla de configuración seguirá disponible
+            para volver a levantarlo. <strong>El registro de pagos no se ve afectado.</strong>
+        </p>
+        <form class="FormularioAjax" method="POST" autocomplete="off" action="<?php echo $ajaxSri; ?>"
+              data-confirmar="<?php echo $servicioActivo
+                  ? 'Nadie podrá generar ni enviar facturas al SRI hasta que vuelva a levantar el servicio.'
+                  : 'La facturación electrónica volverá a estar disponible para todos.'; ?>">
+            <input type="hidden" name="modulo_facturas" value="CAMBIAR_ESTADO_SERVICIO_SRI">
+            <input type="hidden" name="servicio_activo" value="<?php echo $servicioActivo ? '0' : '1'; ?>">
+            <div class="row g-2 align-items-end">
+                <div class="col-lg">
+                    <label for="mantenimiento_mensaje">Mensaje para los usuarios <small class="text-muted">(opcional)</small></label>
+                    <input type="text" class="form-control" id="mantenimiento_mensaje" name="mantenimiento_mensaje" maxlength="300"
+                           placeholder="El servicio de facturación electrónica está temporalmente fuera de servicio por mantenimiento."
+                           value="<?php echo $h($cfg['mantenimiento_mensaje']); ?>">
+                    <small class="text-muted">Vacío = el mensaje por defecto. Útil para decir hasta cuándo dura la interrupción.</small>
+                </div>
+                <div class="col-lg-auto ds-servicio__accion">
+                    <?php if ($servicioActivo): ?>
+                        <button type="submit" class="btn btn-warning w-100"<?php echo $hayConfig ? '' : ' disabled'; ?>>
+                            <i class="fas fa-tools me-1"></i> Bajar el servicio por mantenimiento
+                        </button>
+                    <?php else: ?>
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="fas fa-play me-1"></i> Levantar el servicio
+                        </button>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <?php if (!$hayConfig): ?>
+                <p class="small text-muted mt-2 mb-0"><i class="fas fa-info-circle me-1"></i>Guarde primero los datos del emisor: el estado del servicio se almacena con esa configuración.</p>
+            <?php endif; ?>
+        </form>
     </div>
 </div>
 
@@ -105,11 +159,19 @@ require_once __DIR__ . "/inc/layout-top.php";
                                value="<?php echo $h($cfg['direccion_matriz']); ?>">
                     </div>
 
-                    <div class="mb-3">
-                        <label for="direccion_establecimiento">Dirección del establecimiento</label>
-                        <input type="text" class="form-control" id="direccion_establecimiento"
-                               name="direccion_establecimiento"
-                               value="<?php echo $h($cfg['direccion_establecimiento']); ?>">
+                    <div class="row g-2">
+                        <div class="mb-3 col-md-8">
+                            <label for="direccion_establecimiento">Dirección del establecimiento <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="direccion_establecimiento"
+                                   name="direccion_establecimiento" required
+                                   value="<?php echo $h($cfg['direccion_establecimiento']); ?>">
+                        </div>
+                        <div class="mb-3 col-md-4">
+                            <label for="telefono">Teléfono de la factura</label>
+                            <input type="tel" class="form-control" id="telefono" name="telefono" maxlength="50"
+                                   value="<?php echo $h($cfg['telefono']); ?>">
+                            <small class="text-muted">Sale en el RIDE.</small>
+                        </div>
                     </div>
 
                     <div class="row g-2">
@@ -179,16 +241,222 @@ require_once __DIR__ . "/inc/layout-top.php";
                                    value="<?php echo $h($cfg['contribuyente_rimpe']); ?>">
                         </div>
                     </div>
+
+                    <!-- Proveedor del sistema de facturación -->
+                    <h4 class="ds-config__seccion"><i class="fas fa-handshake me-2" aria-hidden="true"></i>Proveedor del sistema de facturación</h4>
+                    <p class="text-muted small">
+                        La resolución <strong>NAC-DGERCGC26-00000027</strong> (art. 5) obliga a quienes emiten con un
+                        sistema provisto por un tercero a incluir el <strong>RUC de ese proveedor</strong> en la
+                        información adicional del comprobante. Si se deja vacío, el XML sale como hasta ahora.
+                    </p>
+                    <div class="row g-2">
+                        <div class="mb-3 col-md-4">
+                            <label for="ruc_proveedor">RUC del proveedor</label>
+                            <input type="text" class="form-control" id="ruc_proveedor" name="ruc_proveedor"
+                                   maxlength="13" inputmode="numeric" pattern="\d{13}" title="13 dígitos"
+                                   value="<?php echo $h($cfg['ruc_proveedor']); ?>">
+                            <small class="text-muted">13 dígitos. Vacío = no se agrega.</small>
+                        </div>
+                        <div class="mb-3 col-md-8">
+                            <label for="etiqueta_ruc_proveedor">Nombre del campo en el XML</label>
+                            <input type="text" class="form-control" id="etiqueta_ruc_proveedor" name="etiqueta_ruc_proveedor"
+                                   maxlength="300" placeholder="RUC Proveedor"
+                                   value="<?php echo $h($cfg['etiqueta_ruc_proveedor'] ?: 'RUC Proveedor'); ?>">
+                            <small class="text-muted">
+                                Es el atributo <code>nombre</code> de <code>&lt;campoAdicional&gt;</code>. Es configurable porque el
+                                literal exacto lo fija la Ficha Técnica de Comprobantes Electrónicos vigente: verifíquelo
+                                antes de emitir en producción.
+                            </small>
+                        </div>
+                    </div>
+                    <div class="ds-config__xml mb-3" id="xmlProveedor"<?php echo trim((string)$cfg['ruc_proveedor']) === '' ? ' hidden' : ''; ?>>
+                        <strong class="small">Así saldrá en el XML:</strong>
+                        <pre class="mb-0 mt-1"><code>&lt;infoAdicional&gt;
+  &lt;campoAdicional nombre="<span data-xml="etiqueta"><?php echo $h($cfg['etiqueta_ruc_proveedor'] ?: 'RUC Proveedor'); ?></span>"&gt;<span data-xml="ruc"><?php echo $h($cfg['ruc_proveedor']); ?></span>&lt;/campoAdicional&gt;
+&lt;/infoAdicional&gt;</code></pre>
+                    </div>
+
+                    <!-- Correo de facturación -->
+                    <h4 class="ds-config__seccion"><i class="fas fa-envelope me-2" aria-hidden="true"></i>Correo de facturación</h4>
+                    <p class="text-muted small">
+                        Remitente de las facturas que se envían al cliente. Con «Correo del servidor» salen por
+                        <code>mail()</code>, como hasta ahora; con «SMTP autenticado», por la cuenta que indique
+                        (Gmail, Outlook, el correo del dominio…), que suele llegar mejor a la bandeja de entrada.
+                    </p>
+                    <div class="row g-2">
+                        <div class="mb-3 col-md-6">
+                            <label for="correo_from">Correo remitente</label>
+                            <input type="email" class="form-control" id="correo_from" name="correo_from" maxlength="150"
+                                   placeholder="facturacion@dominio.com" value="<?php echo $h($cfg['correo_from']); ?>">
+                            <small class="text-muted">Vacío = el correo de la organización.</small>
+                        </div>
+                        <div class="mb-3 col-md-6">
+                            <label for="correo_from_nombre">Nombre remitente</label>
+                            <input type="text" class="form-control" id="correo_from_nombre" name="correo_from_nombre" maxlength="150"
+                                   placeholder="<?php echo $h(ds_nombre_organizacion()); ?>" value="<?php echo $h($cfg['correo_from_nombre']); ?>">
+                        </div>
+                        <div class="mb-3 col-md-6">
+                            <label for="smtp_activo">Método de envío</label>
+                            <select class="form-select" id="smtp_activo" name="smtp_activo">
+                                <option value="0" <?php echo $sel((int)$cfg['smtp_activo'], 0); ?>>Correo del servidor (mail)</option>
+                                <option value="1" <?php echo $sel((int)$cfg['smtp_activo'], 1); ?>>SMTP autenticado</option>
+                            </select>
+                        </div>
+                    </div>
+                    <fieldset class="row g-2 ds-config__smtp" id="camposSmtp"<?php echo (int)$cfg['smtp_activo'] === 1 ? '' : ' hidden'; ?>>
+                        <legend class="visually-hidden">Servidor SMTP</legend>
+                        <div class="mb-3 col-md-6">
+                            <label for="smtp_host">Servidor SMTP</label>
+                            <input type="text" class="form-control" id="smtp_host" name="smtp_host" maxlength="150"
+                                   placeholder="smtp.gmail.com" value="<?php echo $h($cfg['smtp_host']); ?>">
+                        </div>
+                        <div class="mb-3 col-6 col-md-3">
+                            <label for="smtp_port">Puerto</label>
+                            <input type="number" class="form-control" id="smtp_port" name="smtp_port" min="1" max="65535"
+                                   inputmode="numeric" value="<?php echo (int)$cfg['smtp_port']; ?>">
+                        </div>
+                        <div class="mb-3 col-6 col-md-3">
+                            <label for="smtp_seguridad">Seguridad</label>
+                            <select class="form-select" id="smtp_seguridad" name="smtp_seguridad">
+                                <option value="tls" <?php echo $sel($cfg['smtp_seguridad'], 'tls'); ?>>TLS (587)</option>
+                                <option value="ssl" <?php echo $sel($cfg['smtp_seguridad'], 'ssl'); ?>>SSL (465)</option>
+                                <option value="ninguna" <?php echo $sel($cfg['smtp_seguridad'], 'ninguna'); ?>>Ninguna</option>
+                            </select>
+                        </div>
+                        <div class="mb-3 col-md-6">
+                            <label for="smtp_usuario">Usuario SMTP</label>
+                            <input type="text" class="form-control" id="smtp_usuario" name="smtp_usuario" maxlength="150"
+                                   autocomplete="off" value="<?php echo $h($cfg['smtp_usuario']); ?>">
+                        </div>
+                        <div class="mb-3 col-md-6">
+                            <label for="smtp_clave">Clave SMTP</label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="smtp_clave" name="smtp_clave" autocomplete="new-password"
+                                       placeholder="<?php echo trim((string)$cfg['smtp_clave_cifrada']) !== '' ? 'Guardada; déjela vacía para conservarla' : 'Clave o contraseña de aplicación'; ?>">
+                                <button type="button" class="btn btn-outline-secondary" data-ver-clave="smtp_clave"
+                                        title="Ver clave" aria-label="Ver clave"><i class="fas fa-eye"></i></button>
+                            </div>
+                            <small class="text-muted">Se guarda cifrada; nunca se muestra.</small>
+                        </div>
+                    </fieldset>
                 </div>
 
                 <?php echo ds_acciones_form(APP_URL . 'panel/'); ?>
             </div>
         </form>
+
+        <!-- Ambientes del SRI: direcciones de los servicios web y tiempos.
+             Antes estaban escritos en el código; ahora se guardan en
+             facturas_electronicas_ambiente (migración 069). -->
+        <form class="FormularioAjax" method="POST" autocomplete="off" action="<?php echo $ajaxSri; ?>"
+              id="formAmbientes" data-confirmar="Las próximas facturas se enviarán con estas direcciones y tiempos.">
+            <input type="hidden" name="modulo_facturas" value="GUARDAR_AMBIENTES_SRI">
+
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title"><i class="fas fa-server me-2"></i>Ambientes del SRI</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        Direcciones de los servicios de recepción y autorización y cuánto se espera al SRI.
+                        El ambiente <strong>en uso</strong> se elige arriba, en «Emisor y comprobantes».
+                        Sólo se admiten direcciones <code>https://</code> del dominio <code>sri.gob.ec</code>.
+                    </p>
+
+                    <?php if (!$ambientes['1']['guardado'] && !$ambientes['2']['guardado']): ?>
+                        <div class="alert alert-warning small">
+                            <i class="fas fa-exclamation-triangle me-1"></i>
+                            Falta aplicar la migración <strong>069_sri_ambientes.sql</strong>. Mientras tanto se
+                            usan los valores publicados por el SRI y no se pueden guardar cambios.
+                        </div>
+                    <?php endif; ?>
+
+                    <?php foreach ($ambientes as $clave => $a):
+                        $enUso = (string)$cfg['ambiente'] === (string)$clave;
+                        $p = 'amb[' . $clave . ']';
+                        $id = 'amb' . $clave . '_'; ?>
+                        <fieldset class="ds-ambiente<?php echo $enUso ? ' ds-ambiente--en-uso' : ''; ?>"
+                                  data-ambiente="<?php echo $clave; ?>">
+                            <legend class="ds-ambiente__titulo">
+                                <span><?php echo $h($a['nombre']); ?></span>
+                                <?php if ($enUso): ?>
+                                    <span class="badge text-bg-success">En uso</span>
+                                <?php endif; ?>
+                            </legend>
+
+                            <div class="mb-2">
+                                <label for="<?php echo $id; ?>recepcion" class="form-label small">Recepción</label>
+                                <input type="url" class="form-control form-control-sm" required maxlength="300"
+                                       id="<?php echo $id; ?>recepcion" name="<?php echo $p; ?>[url_recepcion]"
+                                       pattern="https://([a-zA-Z0-9-]+\.)*sri\.gob\.ec(/.*)?"
+                                       value="<?php echo $h($a['url_recepcion']); ?>">
+                            </div>
+                            <div class="mb-2">
+                                <label for="<?php echo $id; ?>autorizacion" class="form-label small">Autorización</label>
+                                <input type="url" class="form-control form-control-sm" required maxlength="300"
+                                       id="<?php echo $id; ?>autorizacion" name="<?php echo $p; ?>[url_autorizacion]"
+                                       pattern="https://([a-zA-Z0-9-]+\.)*sri\.gob\.ec(/.*)?"
+                                       value="<?php echo $h($a['url_autorizacion']); ?>">
+                            </div>
+
+                            <div class="row g-2">
+                                <?php foreach ([
+                                    'timeout_conexion'      => ['Conexión (s)', 5, 120, 'Segundos para conectar con el SRI.'],
+                                    'timeout_respuesta'     => ['Respuesta (s)', 10, 300, 'Segundos que se espera cada respuesta.'],
+                                    'intentos_autorizacion' => ['Intentos', 1, 10, 'Consultas de autorización tras enviar.'],
+                                    'espera_segundos'       => ['Espera (s)', 0, 30, 'Pausa entre consultas de autorización.'],
+                                ] as $campo => [$rotulo, $min, $max, $ayuda]): ?>
+                                    <div class="col-6 col-md-3">
+                                        <label for="<?php echo $id . $campo; ?>" class="form-label small"
+                                               title="<?php echo $h($ayuda); ?>"><?php echo $rotulo; ?></label>
+                                        <input type="number" class="form-control form-control-sm" required
+                                               inputmode="numeric" step="1" min="<?php echo $min; ?>" max="<?php echo $max; ?>"
+                                               id="<?php echo $id . $campo; ?>" name="<?php echo $p . '[' . $campo . ']'; ?>"
+                                               value="<?php echo (int)$a[$campo]; ?>">
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+
+                            <div class="ds-ambiente__pie">
+                                <small class="text-muted">
+                                    <?php echo $a['actualizado'] !== ''
+                                        ? 'Modificado por ' . $h($a['actualizado'])
+                                        : 'Valores de la instalación'; ?>
+                                </small>
+                                <div class="ds-ambiente__botones">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" data-restaurar="<?php echo $clave; ?>"
+                                            title="Vuelve a poner los valores publicados por el SRI (falta guardar)">
+                                        <i class="fas fa-undo me-1"></i> Valores del SRI
+                                    </button>
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary" form="probarAmbiente<?php echo $clave; ?>"
+                                            title="Prueba las direcciones guardadas">
+                                        <i class="fas fa-network-wired me-1"></i> Probar
+                                    </button>
+                                </div>
+                            </div>
+                        </fieldset>
+                    <?php endforeach; ?>
+                </div>
+                <div class="card-footer ds-acciones">
+                    <?php echo ds_boton('guardar', 'Guardar ambientes', ['estilo' => 'primary', 'type' => 'submit']); ?>
+                </div>
+            </div>
+        </form>
+
+        <?php /* Formularios de prueba: fuera del de ambientes (no se anidan);
+                 los botones «Probar» los envían con el atributo form. */
+        foreach (array_keys($ambientes) as $clave): ?>
+            <form class="FormularioAjax d-none" method="POST" action="<?php echo $ajaxSri; ?>"
+                  id="probarAmbiente<?php echo $clave; ?>">
+                <input type="hidden" name="modulo_facturas" value="PROBAR_AMBIENTE_SRI">
+                <input type="hidden" name="ambiente" value="<?php echo $clave; ?>">
+            </form>
+        <?php endforeach; ?>
     </div>
 
     <div class="col-lg-4">
 
-        <!-- Estado del certificado: lo resuelve Basketball, que es quien
+        <!-- Estado del certificado: lo resuelve Fútbol, que es quien
              sabe descifrar la clave y leer el .p12 -->
         <div class="card">
             <div class="card-header">
@@ -267,7 +535,53 @@ require_once __DIR__ . "/inc/layout-top.php";
         });
     }
 
-    /* El estado del certificado lo sirve Basketball. */
+    /* Correo: los datos del servidor SMTP sólo a la vista si se elige SMTP. */
+    var metodo = document.getElementById('smtp_activo'), camposSmtp = document.getElementById('camposSmtp');
+    if (metodo && camposSmtp) {
+        metodo.addEventListener('change', function () { camposSmtp.hidden = metodo.value !== '1'; });
+    }
+
+    /* Botones «ver clave» genéricos (data-ver-clave="id del campo"). */
+    document.querySelectorAll('[data-ver-clave]').forEach(function (b) {
+        b.addEventListener('click', function () {
+            var campo = document.getElementById(b.getAttribute('data-ver-clave')), oculta = campo.type === 'password';
+            campo.type = oculta ? 'text' : 'password';
+            b.innerHTML = oculta ? '<i class="fas fa-eye-slash"></i>' : '<i class="fas fa-eye"></i>';
+        });
+    });
+
+    /* Proveedor: vista previa del campo adicional mientras se escribe. */
+    var rucProv = document.getElementById('ruc_proveedor'), etqProv = document.getElementById('etiqueta_ruc_proveedor'),
+        cajaXml = document.getElementById('xmlProveedor');
+    function previsualizar() {
+        var ruc = rucProv.value.replace(/\D+/g, '');
+        cajaXml.hidden = ruc === '';
+        cajaXml.querySelector('[data-xml="ruc"]').textContent = ruc;
+        cajaXml.querySelector('[data-xml="etiqueta"]').textContent = etqProv.value.trim() || 'RUC Proveedor';
+    }
+    if (rucProv && etqProv && cajaXml) {
+        rucProv.addEventListener('input', previsualizar);
+        etqProv.addEventListener('input', previsualizar);
+    }
+
+    /* «Valores del SRI»: repone en el formulario los valores publicados
+       por el SRI. No guarda: hay que pulsar «Guardar ambientes». */
+    var porDefecto = <?php echo json_encode(array_map(static fn($a) => array_intersect_key($a, array_flip(['url_recepcion', 'url_autorizacion', 'timeout_conexion', 'timeout_respuesta', 'intentos_autorizacion', 'espera_segundos'])), $ambientesSri), JSON_UNESCAPED_SLASHES | JSON_HEX_TAG); ?>;
+    document.querySelectorAll('[data-restaurar]').forEach(function (b) {
+        b.addEventListener('click', function () {
+            var clave = b.getAttribute('data-restaurar'), v = porDefecto[clave] || {};
+            var campos = { recepcion: v.url_recepcion, autorizacion: v.url_autorizacion,
+                timeout_conexion: v.timeout_conexion, timeout_respuesta: v.timeout_respuesta,
+                intentos_autorizacion: v.intentos_autorizacion, espera_segundos: v.espera_segundos };
+            Object.keys(campos).forEach(function (k) {
+                var i = document.getElementById('amb' + clave + '_' + k);
+                if (i && campos[k] !== undefined) { i.value = campos[k]; }
+            });
+            b.closest('.ds-ambiente').classList.add('ds-ambiente--cambiado');
+        });
+    });
+
+    /* El estado del certificado lo sirve Fútbol. */
     var caja = document.getElementById('estadoCertificado');
 
     var etiquetas = {

@@ -159,6 +159,7 @@
        implementación, para que moverla al núcleo sea un cambio de una
        línea y no de cinco módulos. */
     require_once __DIR__ . "/sri.php";
+    require_once __DIR__ . "/carnet_diseno.php";
 
     /* Subida y normalizacion de imagenes. Vive en el nucleo porque la
        validacion de un archivo subido es identica en todos los modulos

@@ -8,6 +8,9 @@
 
 	class facturasController extends mainModel{
 
+		/* Aviso por defecto cuando el servicio se baja por mantenimiento. */
+		const MENSAJE_MANTENIMIENTO_SRI = 'El servicio de facturación electrónica está temporalmente fuera de servicio por mantenimiento.';
+
 
 		/*  funciones para el manejo de facturas */
 		public function listarSedeFacturas($sedeid, $rolid = null, $usuario = null){
@@ -40,122 +43,224 @@
 			return $option;
 		}
 
-		public function listarAlumnosFacturas($identificacion, $apellidopaterno, $primernombre, $anio, $sede){
-			/*
-			| Mismo criterio que en el buscador de pagos: los valores van
-			| ligados, no concatenados. El comodin se anade al parametro, no
-			| a la consulta, para que un apellido con apostrofo se busque tal
-			| cual lo escribio el usuario.
-			|
-			| Se conservan las mismas ramas que antes:
-			|   · con algun criterio de texto -> los tres LIKE en OR
-			|   · sin criterios pero con anio -> solo por anio de nacimiento
-			|   · sin nada                    -> todos
-			|   · sin sede                    -> no se lista nada
-			*/
-			$tabla="";
+		/*======================================================================
+		  Emitir facturas (facturasList): alumnos a los que se puede facturar
+		  ======================================================================
+		  Activos y con un representante que factura (repre_factura = 'S'),
+		  acotados SIEMPRE a las sedes del usuario (condicionSede). Antes:
+		    · «Todas» era alumno_sedeid <> 0, sin mirar las sedes del usuario;
+		    · sin sede elegida no salía nada;
+		    · dos subconsultas por alumno para saber su situación.
+		  Ahora una sola consulta, y la situación sale contada por alumno:
+		    pendientes  pagos cobrados (C) que no están en ninguna factura viva
+		    facturados  pagos que ya están en una factura viva (incluye la de
+		                un hermano: la factura es del representante)
+		  ====================================================================*/
+
+		/** Sedes del usuario para los filtros de facturación (las de la sesión; todas si es administración). */
+		public function opcionesSedeFacturas($sedeid): string{
+			$permitidas = $this->sedesDeLaSesion();
+			$option = "";
+			foreach($this->ejecutarConsulta("SELECT sede_id, sede_nombre FROM general_sede ORDER BY sede_nombre")->fetchAll() as $s){
+				if($permitidas !== null && !in_array((int)$s['sede_id'], $permitidas, true)){ continue; }
+				$option .= '<option value="'.(int)$s['sede_id'].'"'.((int)$sedeid === (int)$s['sede_id'] ? ' selected' : '').'>'
+					.htmlspecialchars(html_entity_decode((string)$s['sede_nombre'], ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8').'</option>';
+			}
+			return $option;
+		}
+
+		/** Situaciones del filtro, en el orden en que se ofrecen. */
+		public function situacionesFacturacion(): array{
+			return [
+				''           => 'Todas',
+				'pendiente'  => 'Con pagos por facturar',
+				'facturado'  => 'Ya facturados',
+				'sin_pagos'  => 'Sin pagos',
+			];
+		}
+
+		public function alumnosParaFacturar(array $filtros): array{
 			$parametros = [];
+			$condiciones = [
+				"A.alumno_estado = 'A'",
+				"R.repre_factura = 'S'",
+				$this->condicionSede('A.alumno_sedeid', (int)($filtros['sede'] ?? 0), $parametros),
+			];
 
-			$hayTexto = ($identificacion != "" || $primernombre != "" || $apellidopaterno != "");
-
-			if($hayTexto){
-				$consulta_datos = "SELECT * FROM sujeto_alumno
-									WHERE (alumno_primernombre LIKE :primernombre
-									OR alumno_identificacion LIKE :identificacion
-									OR alumno_apellidopaterno LIKE :apellidopaterno) ";
-
-				/* El comodin solo se anade a lo que trae valor: un criterio
-				   vacio debe seguir sin coincidir con nada, como antes. */
-				$parametros[':primernombre']    = $primernombre    != "" ? $primernombre.'%'    : '';
-				$parametros[':identificacion']  = $identificacion  != "" ? $identificacion.'%'  : '';
-				$parametros[':apellidopaterno'] = $apellidopaterno != "" ? $apellidopaterno.'%' : '';
-
-				if($anio!=""){
-					$consulta_datos .= " and YEAR(alumno_fechanacimiento) = :anio";
-					$parametros[':anio'] = $anio;
+			$texto = trim((string)($filtros['busqueda'] ?? ''));
+			if($texto !== ''){
+				/* Cada palabra debe aparecer en la cédula, un nombre o un apellido. */
+				foreach(array_slice(preg_split('/\s+/u', $texto), 0, 4) as $i => $palabra){
+					$condiciones[] = "CONCAT_WS(' ', A.alumno_identificacion, A.alumno_primernombre, A.alumno_segundonombre,
+											A.alumno_apellidopaterno, A.alumno_apellidomaterno) LIKE :p$i";
+					$parametros[":p$i"] = '%'.$palabra.'%';
 				}
-			}elseif($anio!=""){
-				$consulta_datos = "SELECT * FROM sujeto_alumno WHERE YEAR(alumno_fechanacimiento) = :anio";
-				$parametros[':anio'] = $anio;
-			}else{
-				$consulta_datos = "SELECT * FROM sujeto_alumno WHERE alumno_primernombre <> '' ";
 			}
 
-			if($sede!=""){
-				if($sede == 0){
-					$consulta_datos .= " and alumno_sedeid <> :sede";
-				}else{
-					$consulta_datos .= " and alumno_sedeid = :sede";
-				}
-				$parametros[':sede'] = $sede;
-			}else{
-				/* Sin sede no se lista nada; se descartan los parametros
-				   recogidos porque la consulta que los usaba desaparece. */
-				$consulta_datos = "SELECT * FROM sujeto_alumno WHERE alumno_primernombre = '' ";
-				$parametros = [];
+			$anio = (string)($filtros['anio'] ?? '');
+			if(preg_match('/^\d{4}$/', $anio)){
+				$condiciones[] = "YEAR(A.alumno_fechanacimiento) = :anio";
+				$parametros[':anio'] = (int)$anio;
 			}
 
-			// Solo alumnos activos cuyo representante factura (repre_factura = 'S')
-			$consulta_datos .= " AND alumno_estado = 'A' AND alumno_repreid IN (SELECT repre_id FROM alumno_representante WHERE repre_factura = 'S')";
-			$datos = $this->ejecutarConsulta($consulta_datos, $parametros);
-			$datos = $datos->fetchAll();
-			foreach($datos as $rows){
-				// Estado de facturacion del alumno (por prioridad):
-				//   ya tiene facturas (algun pago facturado, incluido via hermano) -> amarillo (btn-warning)
-				//   pagos pendientes de facturar -> azul (btn-info)
-				//   sin pagos -> gris (btn-secondary)
-				$alumnoId = (int)$rows['alumno_id'];
-				try{
-					$estado = $this->ejecutarConsulta(
-						"SELECT
-							(SELECT COUNT(*) FROM alumno_pago P
-								WHERE P.pago_alumnoid = :alumno1 AND P.pago_estado = 'C'
-									AND NOT EXISTS (
-										SELECT 1 FROM facturas_electronicas_detalle FD
-										INNER JOIN facturas_electronicas FE ON FE.id = FD.factura_electronica_id
-										WHERE FD.pago_id = P.pago_id AND ".$this->estadoFacturaBloqueanteSql('FE')."
-									)
-							) AS pagos_pendientes,
-							(SELECT COUNT(*) FROM alumno_pago P2
-								WHERE P2.pago_alumnoid = :alumno2
-									AND EXISTS (
-										SELECT 1 FROM facturas_electronicas_detalle FD2
-										INNER JOIN facturas_electronicas FE2 ON FE2.id = FD2.factura_electronica_id
-										WHERE FD2.pago_id = P2.pago_id AND ".$this->estadoFacturaBloqueanteSql('FE2')."
-									)
-							) AS facturas"
-					, [':alumno1' => $alumnoId, ':alumno2' => $alumnoId])->fetch();
-					$pagosPendientes = (int)($estado['pagos_pendientes'] ?? 0);
-					$tieneFacturas   = (int)($estado['facturas'] ?? 0);
-				}catch(\Throwable $e){
-					$pagosPendientes = 0;
-					$tieneFacturas   = 0;
-				}
+			$viva = $this->estadoFacturaBloqueanteSql('FE');
+			$consulta = "SELECT A.alumno_id, A.alumno_identificacion, A.alumno_fechanacimiento,
+								CONCAT_WS(' ', A.alumno_primernombre, A.alumno_segundonombre) AS nombres,
+								CONCAT_WS(' ', A.alumno_apellidopaterno, A.alumno_apellidomaterno) AS apellidos,
+								S.sede_nombre,
+								CONCAT_WS(' ', R.repre_primernombre, R.repre_apellidopaterno) AS representante,
+								COALESCE(P.pendientes, 0) AS pendientes,
+								COALESCE(P.facturados, 0) AS facturados
+							FROM sujeto_alumno A
+							INNER JOIN alumno_representante R ON R.repre_id = A.alumno_repreid
+							LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
+							LEFT JOIN (
+								SELECT PG.pago_alumnoid,
+									   SUM(PG.pago_estado = 'C' AND F.pago_id IS NULL) AS pendientes,
+									   SUM(F.pago_id IS NOT NULL) AS facturados
+								  FROM alumno_pago PG
+								  LEFT JOIN (SELECT DISTINCT FD.pago_id
+											   FROM facturas_electronicas_detalle FD
+											   INNER JOIN facturas_electronicas FE ON FE.id = FD.factura_electronica_id
+											  WHERE FD.pago_id IS NOT NULL AND $viva) F ON F.pago_id = PG.pago_id
+								 GROUP BY PG.pago_alumnoid
+							) P ON P.pago_alumnoid = A.alumno_id
+						   WHERE ".implode(' AND ', $condiciones);
 
-				if($tieneFacturas > 0){
-					$botonpago = "btn-warning";    // ya tiene facturas (incluye via hermano)
-				}elseif($pagosPendientes > 0){
-					$botonpago = "btn-info";       // pagos pendientes de facturar
-				}else{
-					$botonpago = "btn-secondary";  // sin pagos
-				}
-				if($rows['alumno_estado']=="I"){
-					$class = 'class="text-primary"';
-				}else{
-					$class = '';
-				}
-				$tabla.='
-					<tr '.$class.'>
-						<td>'.$rows['alumno_identificacion'].'</td>
-						<td>'.$rows['alumno_primernombre'].' '.$rows['alumno_segundonombre'].'</td>
-						<td>'.$rows['alumno_apellidopaterno'].' '.$rows['alumno_apellidomaterno'].'</td>
-						<td>'.$rows['alumno_fechanacimiento'].'</td>
-						<td>
-							'.$this->siPuede('crear','facturasList','<a href="'.APP_URL.'facturasNew/'.$rows['alumno_id'].'/" class="btn float-end '.$botonpago.' btn-sm" target="_blank"><i class="fas fa-file-invoice-dollar me-1"></i>Registrar factura</a>').'
-						</td>
-					</tr>';
+			$situacion = (string)($filtros['situacion'] ?? '');
+			if($situacion === 'pendiente'){ $consulta .= " HAVING pendientes > 0"; }
+			elseif($situacion === 'facturado'){ $consulta .= " HAVING facturados > 0"; }
+			elseif($situacion === 'sin_pagos'){ $consulta .= " HAVING pendientes = 0 AND facturados = 0"; }
+
+			/* Primero quien tiene pagos por facturar: es a quien se viene a buscar. */
+			$consulta .= " ORDER BY (COALESCE(P.pendientes, 0) > 0) DESC, A.alumno_apellidopaterno, A.alumno_apellidomaterno, A.alumno_primernombre";
+
+			return $this->ejecutarConsulta($consulta, $parametros)->fetchAll();
+		}
+
+		/*======================================================================
+		  Facturas emitidas (facturasEmitidas)
+		  ======================================================================
+		  Mismo listado que cdjg, con el alcance por sede de Champions: el
+		  usuario sólo ve las facturas de alumnos de sus sedes.
+		  ====================================================================*/
+
+		public function estadosFacturaSri(){
+			return ['PENDIENTE', 'GENERADA', 'FIRMADA', 'ENVIADA', 'RECIBIDA', 'DEVUELTA', 'AUTORIZADO', 'NO_AUTORIZADO', 'ERROR', 'ANULADA'];
+		}
+
+		/** Grupo del estado: el mismo criterio para la insignia, el filtro y el resumen. */
+		public function grupoEstadoFacturaSri($estado){
+			$estado = (string)$estado;
+			if($estado === 'AUTORIZADO'){ return 'autorizada'; }
+			if(in_array($estado, ['DEVUELTA', 'NO_AUTORIZADO', 'ERROR'], true)){ return 'problema'; }
+			if($estado === 'ANULADA'){ return 'anulada'; }
+			return 'proceso';
+		}
+
+		/** Clase de la insignia según el estado (Bootstrap 5: text-bg-*). */
+		public function claseEstadoFacturaSri($estado){
+			return [
+				'autorizada' => 'text-bg-success',
+				'problema'   => 'text-bg-danger',
+				'anulada'    => 'text-bg-dark',
+				'proceso'    => 'text-bg-warning',
+			][$this->grupoEstadoFacturaSri($estado)];
+		}
+
+		public function listarFacturasEmitidas(array $filtros = []){
+			$parametros = [];
+			$condiciones = [$this->condicionSede('A.alumno_sedeid', (int)($filtros['sede'] ?? 0), $parametros)];
+
+			$desde = (string)($filtros['desde'] ?? '');
+			$hasta = (string)($filtros['hasta'] ?? '');
+			if(preg_match('/^\d{4}-\d{2}-\d{2}$/', $desde) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $hasta)){
+				$condiciones[] = "FE.fecha_emision BETWEEN :desde AND :hasta";
+				$parametros[':desde'] = $desde;
+				$parametros[':hasta'] = $hasta;
 			}
-			return $tabla;
+
+			$estado = (string)($filtros['estado'] ?? '');
+			if(in_array($estado, $this->estadosFacturaSri(), true)){
+				$condiciones[] = "FE.estado_sri = :estado";
+				$parametros[':estado'] = $estado;
+			}
+
+			$busqueda = trim((string)($filtros['busqueda'] ?? ''));
+			if($busqueda !== ''){
+				$condiciones[] = "(FE.cliente_razon_social LIKE :b1
+									OR FE.cliente_identificacion LIKE :b2
+									OR FE.clave_acceso LIKE :b3
+									OR CONCAT(FE.establecimiento, '-', FE.punto_emision, '-', FE.secuencial) LIKE :b4
+									OR FE.numero_autorizacion LIKE :b5
+									OR CONCAT_WS(' ', A.alumno_primernombre, A.alumno_apellidopaterno, A.alumno_apellidomaterno) LIKE :b6)";
+				for($i = 1; $i <= 6; $i++){ $parametros[":b$i"] = '%'.$busqueda.'%'; }
+			}
+
+			$consulta = "SELECT FE.id, FE.fecha_emision, FE.establecimiento, FE.punto_emision, FE.secuencial,
+								FE.clave_acceso, FE.ambiente, FE.total,
+								FE.cliente_identificacion, FE.cliente_razon_social, FE.cliente_email,
+								FE.estado_sri, FE.numero_autorizacion, FE.fecha_autorizacion, FE.mensaje_error,
+								A.alumno_id,
+								CONCAT_WS(' ', A.alumno_apellidopaterno, A.alumno_apellidomaterno, A.alumno_primernombre) AS alumno,
+								S.sede_nombre
+							FROM facturas_electronicas FE
+							INNER JOIN sujeto_alumno A ON A.alumno_id = FE.alumno_id
+							LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
+						   WHERE ".implode(' AND ', $condiciones)."
+						   ORDER BY FE.fecha_emision DESC, FE.id DESC";
+
+			try{
+				$datos = $this->ejecutarConsulta($consulta, $parametros)->fetchAll();
+			}catch(\Throwable $e){
+				error_log('[facturasEmitidas] '.$e->getMessage());
+				return [];
+			}
+
+			$filas = [];
+			foreach($datos as $fila){
+				$fila['numero'] = $fila['establecimiento'].'-'.$fila['punto_emision'].'-'.$fila['secuencial'];
+				$fila['grupo'] = $this->grupoEstadoFacturaSri($fila['estado_sri']);
+				$fila['estado_clase'] = $this->claseEstadoFacturaSri($fila['estado_sri']);
+				$fila['mensaje_error'] = $fila['mensaje_error'] !== null ? $this->limpiarTextoFactura($fila['mensaje_error']) : '';
+				$filas[] = $fila;
+			}
+			return $filas;
+		}
+
+		/** Totales de cabecera del listado de facturas emitidas. */
+		public function resumenFacturasEmitidas($filas){
+			$resumen = ['total' => count($filas), 'autorizadas' => 0, 'en_proceso' => 0, 'con_problema' => 0, 'anuladas' => 0, 'monto_autorizado' => 0.0];
+			foreach($filas as $fila){
+				switch($fila['grupo'] ?? $this->grupoEstadoFacturaSri($fila['estado_sri'])){
+					case 'autorizada': $resumen['autorizadas']++; $resumen['monto_autorizado'] += (float)$fila['total']; break;
+					case 'problema':   $resumen['con_problema']++; break;
+					case 'anulada':    $resumen['anuladas']++; break;
+					default:           $resumen['en_proceso']++;
+				}
+			}
+			return $resumen;
+		}
+
+		/**
+		 * ¿La factura es de un alumno de las sedes del usuario?
+		 *
+		 * Ver el RIDE, bajar el XML, consultar, reenviar o regenerar llegan
+		 * con el id de la factura: sin esto, quien tiene permiso en una sede
+		 * podía abrir las facturas —con nombre, cédula y correo del
+		 * cliente— de las demás cambiando el número en la dirección.
+		 */
+		public function facturaEnSedesDeLaSesion($facturaId): bool{
+			$parametros = [':factura' => (int)$facturaId];
+			$sede = $this->condicionSede('A.alumno_sedeid', 0, $parametros);
+			try{
+				return (bool)$this->ejecutarConsulta(
+					"SELECT 1 FROM facturas_electronicas FE
+					   INNER JOIN sujeto_alumno A ON A.alumno_id = FE.alumno_id
+					  WHERE FE.id = :factura AND $sede", $parametros)->fetchColumn();
+			}catch(\Throwable $e){
+				return false;
+			}
 		}
 
 		public function BuscarAlumnoFactura($alumnoid, $fecha_inicio,$fecha_fin){
@@ -418,9 +523,15 @@
 				'iva_tarifa_default' => (float)(getenv('SENDERO_SRI_IVA_TARIFA') !== false ? getenv('SENDERO_SRI_IVA_TARIFA') : 0),
 				'valores_incluyen_iva' => true,
 				'secuencial_inicio' => 1,
+				// Interruptor de mantenimiento (ver estadoServicioFacturacion).
+				'servicio_activo' => true,
+				'mantenimiento_mensaje' => '',
+				// RUC del proveedor del sistema (NAC-DGERCGC26-00000027, art. 5).
+				'ruc_proveedor' => '',
+				'etiqueta_ruc_proveedor' => 'RUC Proveedor',
 				'emisor' => [
 					'ruc' => '', 'razon_social' => '', 'nombre_comercial' => '',
-					'direccion_matriz' => '', 'direccion_establecimiento' => '',
+					'direccion_matriz' => '', 'direccion_establecimiento' => '', 'telefono' => '',
 					'codigo_establecimiento' => '001', 'punto_emision' => '001',
 					'obligado_contabilidad' => 'NO', 'contribuyente_especial' => '',
 					'agente_retencion' => '', 'contribuyente_rimpe' => '',
@@ -431,6 +542,9 @@
 				],
 				'correo' => [
 					'from' => getenv('SENDERO_FACTURACION_FROM') ?: ds_email_organizacion(),
+					'from_name' => ds_nombre_organizacion(),
+					'mailer' => 'mail',
+					'smtp' => ['activo' => false, 'host' => '', 'port' => 587, 'usuario' => '', 'clave_cifrada' => '', 'clave_configurada' => false, 'seguridad' => 'tls', 'timeout' => 30],
 				],
 				'webservices' => [
 					'pruebas' => [
@@ -490,9 +604,7 @@
 
 			// 1. Fuente principal: tabla facturas_electronicas_config
 			$bd = $this->configEmisorDesdeBd();
-			if(!empty($bd)){
-				$config = array_replace_recursive($config, $bd);
-			}else{
+			if(empty($bd['emisor'])){
 				// 2. Fallback legacy: config/sri_local.php (pre-wiring / BD no disponible)
 				$localPath = dirname(__DIR__, 2).'/config/sri_local.php';
 				if(is_file($localPath)){
@@ -502,6 +614,9 @@
 					}
 				}
 			}
+			if(!empty($bd)){
+				$config = array_replace_recursive($config, $bd);
+			}
 
 			// 3. Catalogo de formas de pago desde la BD (si esta poblado)
 			$formas = $this->formasPagoDesdeBd();
@@ -509,13 +624,24 @@
 				$config['formas_pago'] = $formas;
 			}
 
+			// 4. Direcciones y tiempos del SRI por ambiente: la tabla
+			//    facturas_electronicas_ambiente (Core › Configuración SRI)
+			//    manda sobre el código y sobre config/sri.php.
+			if(function_exists('sri_webservices')){
+				$config['webservices'] = array_replace_recursive($config['webservices'] ?? [], sri_webservices());
+			}
+
 			return $config;
 		}
 
 		/**
 		 * Devuelve el overlay de emisor + parametros desde la tabla
-		 * facturas_electronicas_config, o [] si no hay fila configurada
-		 * (RUC vacio) o la BD no esta disponible.
+		 * facturas_electronicas_config, o [] si no hay fila o la BD no esta
+		 * disponible. El emisor sólo se incluye con RUC; el estado del
+		 * servicio, el proveedor y el correo, siempre que haya fila.
+		 *
+		 * Las columnas de la migración 071 se leen con ?? : sin ella, el
+		 * servicio se considera en marcha y el correo sale con mail().
 		 */
 		private function configEmisorDesdeBd(){
 			try{
@@ -524,30 +650,67 @@
 			}catch(\Throwable $e){
 				return [];
 			}
-			if(!$row || trim((string)($row['ruc'] ?? '')) === ''){
+			if(!$row){
 				return [];
 			}
-			return [
-				'ambiente' => (string)$row['ambiente'],
-				'tipo_emision' => (string)$row['tipo_emision'],
-				'iva_tarifa_default' => (float)$row['iva_tarifa_default'],
-				'forma_pago_default' => (string)$row['forma_pago_default'],
-				'valores_incluyen_iva' => (bool)((int)$row['valores_incluyen_iva']),
-				'secuencial_inicio' => max(1, (int)($row['secuencial_inicio'] ?? 1)),
-				'emisor' => [
+			$config = [
+				'servicio_activo' => !array_key_exists('servicio_activo', $row) || (int)$row['servicio_activo'] === 1,
+				'mantenimiento_mensaje' => trim((string)($row['mantenimiento_mensaje'] ?? '')),
+				'ruc_proveedor' => trim((string)($row['ruc_proveedor'] ?? '')),
+				'etiqueta_ruc_proveedor' => trim((string)($row['etiqueta_ruc_proveedor'] ?? '')) !== ''
+					? trim((string)$row['etiqueta_ruc_proveedor'])
+					: 'RUC Proveedor',
+			];
+
+			if(trim((string)($row['ruc'] ?? '')) !== ''){
+				$config += [
+					'ambiente' => (string)$row['ambiente'],
+					'tipo_emision' => (string)$row['tipo_emision'],
+					'iva_tarifa_default' => (float)$row['iva_tarifa_default'],
+					'forma_pago_default' => (string)$row['forma_pago_default'],
+					'valores_incluyen_iva' => (bool)((int)$row['valores_incluyen_iva']),
+					'secuencial_inicio' => max(1, (int)($row['secuencial_inicio'] ?? 1)),
+				];
+				$config['emisor'] = [
 					'ruc' => (string)$row['ruc'],
 					'razon_social' => (string)$row['razon_social'],
 					'nombre_comercial' => (string)$row['nombre_comercial'],
 					'direccion_matriz' => (string)$row['direccion_matriz'],
 					'direccion_establecimiento' => (string)$row['direccion_establecimiento'],
+					'telefono' => (string)($row['telefono'] ?? ''),
 					'codigo_establecimiento' => (string)$row['codigo_establecimiento'],
 					'punto_emision' => (string)$row['punto_emision'],
 					'obligado_contabilidad' => (string)$row['obligado_contabilidad'],
 					'contribuyente_especial' => (string)$row['contribuyente_especial'],
 					'agente_retencion' => (string)$row['agente_retencion'],
 					'contribuyente_rimpe' => (string)$row['contribuyente_rimpe'],
-				],
-			];
+				];
+			}
+
+			if(array_key_exists('correo_from', $row)){
+				$smtpActivo = !empty($row['smtp_activo']) && trim((string)($row['smtp_host'] ?? '')) !== '';
+				$correo = [
+					'mailer' => $smtpActivo ? 'smtp' : 'mail',
+					'smtp' => [
+						'activo' => $smtpActivo,
+						'host' => trim((string)($row['smtp_host'] ?? '')),
+						'port' => max(1, (int)($row['smtp_port'] ?? 587)),
+						'usuario' => trim((string)($row['smtp_usuario'] ?? '')),
+						/* Cifrada: se descifra al enviar. Descifrarla aquí recurriría,
+						   porque la llave se ubica leyendo esta misma configuración. */
+						'clave_cifrada' => (string)($row['smtp_clave_cifrada'] ?? ''),
+						'clave_configurada' => trim((string)($row['smtp_clave_cifrada'] ?? '')) !== '',
+						'seguridad' => in_array((string)($row['smtp_seguridad'] ?? 'tls'), ['tls', 'ssl', 'ninguna'], true) ? (string)$row['smtp_seguridad'] : 'tls',
+						'timeout' => 30,
+					],
+				];
+				// Vacíos: se quedan los de la organización (sriEstructuraBase).
+				if(trim((string)$row['correo_from']) !== ''){ $correo['from'] = trim((string)$row['correo_from']); }
+				if(trim((string)($row['correo_from_nombre'] ?? '')) !== ''){ $correo['from_name'] = trim((string)$row['correo_from_nombre']); }
+				$config['correo'] = $correo;
+			}
+
+			return $config;
 		}
 
 		/** Catalogo SRI de formas de pago desde la BD (codigo => nombre). */
@@ -607,6 +770,91 @@
 		 */
 		private function autorizadoConfigSri(){
 			return es_superadministrador();
+		}
+
+		/*======================================================================
+		  Estado del servicio de facturación (mantenimiento)
+		  ======================================================================
+		  Con el servicio abajo no se genera ni se envía nada al SRI: el
+		  endpoint lo corta (facturasAjax.php) y las pantallas de facturación
+		  muestran el aviso (views/inc/facturacion-mantenimiento.php). La
+		  configuración —en Core— sigue disponible para volver a levantarlo.
+		  El registro de pagos no pasa por aquí: no se ve afectado.
+		  ====================================================================*/
+
+		/** Si está activo y qué aviso mostrar. */
+		public function estadoServicioFacturacion(){
+			$config = $this->sriConfig();
+			$propio = trim((string)($config['mantenimiento_mensaje'] ?? ''));
+			return [
+				'activo' => !array_key_exists('servicio_activo', $config) || (bool)$config['servicio_activo'],
+				'mensaje' => $propio !== '' ? $propio : self::MENSAJE_MANTENIMIENTO_SRI,
+				'mensaje_propio' => $propio,
+			];
+		}
+
+		public function servicioFacturacionActivo(){
+			return $this->estadoServicioFacturacion()['activo'];
+		}
+
+		public function mensajeMantenimientoFacturacion(){
+			return $this->estadoServicioFacturacion()['mensaje'];
+		}
+
+		/** Respuesta estándar al intentar operar con el servicio abajo. */
+		public function respuestaServicioFacturacionAbajo(){
+			return $this->respuestaJson('simple', 'Facturación en mantenimiento', $this->mensajeMantenimientoFacturacion(), 'warning');
+		}
+
+		/** Baja o levanta el servicio (Core › Facturación electrónica). */
+		public function cambiarEstadoServicioFacturacion(){
+			if(!$this->autorizadoConfigSri()){
+				return $this->respuestaJson('simple', 'Acceso restringido', 'Solo el superadministrador puede cambiar el estado del servicio.', 'error');
+			}
+			$activo  = (string)($_POST['servicio_activo'] ?? '1') === '1';
+			$mensaje = $this->textoConfigSri($_POST['mantenimiento_mensaje'] ?? '', 300);
+
+			try{
+				$existe = (int)$this->ejecutarConsulta("SELECT COUNT(*) FROM facturas_electronicas_config WHERE config_lock = 'X'")->fetchColumn();
+				if($existe === 0){
+					return $this->respuestaJson('simple', 'Configuración incompleta', 'Guarde primero los datos del emisor: el estado del servicio se almacena junto con esa configuración.', 'warning');
+				}
+				$this->ejecutarConsulta(
+					"UPDATE facturas_electronicas_config
+					    SET servicio_activo = :activo, mantenimiento_mensaje = :mensaje, updated_by = :usuario
+					  WHERE config_lock = 'X'",
+					[':activo' => $activo ? 1 : 0, ':mensaje' => $mensaje, ':usuario' => (int)($_SESSION['usuarioid'] ?? 0) ?: null]
+				);
+			}catch(\Throwable $e){
+				error_log('[SRI servicio] '.$e->getMessage());
+				return $this->respuestaJson('simple', 'No se pudo cambiar el estado', 'Ocurrió un error al guardar. ¿Se aplicó la migración 071?', 'error');
+			}
+
+			return $this->respuestaJson(
+				'recargar',
+				$activo ? 'Servicio activado' : 'Servicio en mantenimiento',
+				$activo
+					? 'La facturación electrónica vuelve a estar disponible.'
+					: 'Se bajó el servicio. Las pantallas de facturación mostrarán el aviso de mantenimiento.',
+				'success'
+			);
+		}
+
+		/**
+		 * Información adicional del comprobante, con el RUC del proveedor del
+		 * sistema de facturación si está configurado (NAC-DGERCGC26-00000027,
+		 * art. 5). El nombre del campoAdicional sale de la configuración: el
+		 * literal exacto lo fija la Ficha Técnica vigente y no debe obligar a
+		 * desplegar. Sin RUC, el comprobante sale igual que antes.
+		 */
+		private function infoAdicionalFacturaSri(array $campos){
+			$config = $this->sriConfig();
+			$ruc = trim((string)($config['ruc_proveedor'] ?? ''));
+			if($ruc !== ''){
+				$etiqueta = trim((string)($config['etiqueta_ruc_proveedor'] ?? '')) ?: 'RUC Proveedor';
+				$campos[$etiqueta] = $ruc;
+			}
+			return array_filter($campos, static fn($valor) => $valor !== '' && $valor !== null);
 		}
 
 		private function rutaClaveFirmaSri(){
@@ -700,25 +948,33 @@
 			}
 		}
 
-		private function guardarClaveFirmaSri($clave){
+		/**
+		 * Cifra un secreto (clave de la firma, clave SMTP) con AES-256-CBC y
+		 * la llave de storage/. Devuelve el blob (base64 de JSON) o '' si no
+		 * hay OpenSSL. Lo lee descifrarClaveFirma().
+		 */
+		private function cifrarTextoSri($texto){
 			if(!function_exists('openssl_encrypt')){
-				return false;
+				return '';
 			}
 
 			$iv = random_bytes(16);
-			$cipher = openssl_encrypt((string)$clave, 'AES-256-CBC', $this->claveCriptoSri(), OPENSSL_RAW_DATA, $iv);
+			$cipher = openssl_encrypt((string)$texto, 'AES-256-CBC', $this->claveCriptoSri(), OPENSSL_RAW_DATA, $iv);
 
 			if($cipher === false){
-				return false;
+				return '';
 			}
 
-			$payload = base64_encode(json_encode([
+			return base64_encode(json_encode([
 				'method' => 'AES-256-CBC',
 				'iv' => base64_encode($iv),
 				'data' => base64_encode($cipher)
 			]));
+		}
 
-			return $this->guardarClaveFirmaEnBd($payload);
+		private function guardarClaveFirmaSri($clave){
+			$payload = $this->cifrarTextoSri($clave);
+			return $payload !== '' && $this->guardarClaveFirmaEnBd($payload);
 		}
 
 		/** Persiste el blob cifrado de la clave de la firma en la BD (fila unica). */
@@ -930,6 +1186,51 @@
 				return $this->respuestaJson('simple', 'Forma de pago no valida', 'Seleccione una forma de pago del catalogo SRI.', 'error');
 			}
 
+			/* RUC del proveedor del sistema de facturación: resolución
+			   NAC-DGERCGC26-00000027 art. 5. Se valida lo escrito, no lo
+			   limpiado: si alguien teclea texto se avisa, en vez de guardar
+			   vacío en silencio. Vacío = el comprobante no lleva el campo. */
+			$rucProveedorIngresado = trim((string)($_POST['ruc_proveedor'] ?? ''));
+			$rucProveedor = preg_replace('/\D+/', '', $rucProveedorIngresado);
+			if($rucProveedorIngresado !== '' && !preg_match('/^\d{13}$/', $rucProveedor)){
+				return $this->respuestaJson('simple', 'RUC del proveedor no válido', 'El RUC del proveedor del sistema de facturación debe tener 13 dígitos. Déjelo vacío si no emite con un sistema de terceros.', 'warning');
+			}
+			$etiquetaRucProveedor = $this->textoConfigSri($_POST['etiqueta_ruc_proveedor'] ?? '', 300);
+			if($etiquetaRucProveedor === ''){
+				$etiquetaRucProveedor = 'RUC Proveedor';
+			}
+
+			/* Correo de las facturas. La clave SMTP viaja sólo si se escribe
+			   una nueva; vacía, se conserva la guardada (cifrada). */
+			$correoFrom = $this->textoConfigSri($_POST['correo_from'] ?? '', 150);
+			$correoFromNombre = $this->textoConfigSri($_POST['correo_from_nombre'] ?? '', 150);
+			$smtpActivo = (string)($_POST['smtp_activo'] ?? '0') === '1' ? 1 : 0;
+			$smtpHost = $this->textoConfigSri($_POST['smtp_host'] ?? '', 150);
+			$smtpPort = max(1, min(65535, (int)($_POST['smtp_port'] ?? 587)));
+			$smtpUsuario = $this->textoConfigSri($_POST['smtp_usuario'] ?? '', 150);
+			$smtpSeguridad = in_array((string)($_POST['smtp_seguridad'] ?? 'tls'), ['tls', 'ssl', 'ninguna'], true) ? (string)$_POST['smtp_seguridad'] : 'tls';
+			$smtpClave = (string)($_POST['smtp_clave'] ?? '');
+			$smtpClaveCifrada = $smtpClave !== '' ? $this->cifrarTextoSri($smtpClave) : null;
+			$smtpClaveYaConfigurada = !empty($config['correo']['smtp']['clave_configurada']);
+
+			if($correoFrom !== '' && !filter_var($correoFrom, FILTER_VALIDATE_EMAIL)){
+				return $this->respuestaJson('simple', 'Correo no válido', 'El correo remitente no tiene un formato válido.', 'warning');
+			}
+			if($smtpActivo === 1){
+				if($correoFrom === '' || $smtpHost === ''){
+					return $this->respuestaJson('simple', 'SMTP incompleto', 'Para enviar por SMTP complete el correo remitente y el servidor SMTP.', 'warning');
+				}
+				if(!preg_match('/^[A-Za-z0-9.-]+$/', $smtpHost)){
+					return $this->respuestaJson('simple', 'Servidor SMTP no válido', 'Escriba sólo el nombre del servidor, por ejemplo smtp.gmail.com, sin «https://» ni rutas.', 'warning');
+				}
+				if($smtpUsuario !== '' && $smtpClave === '' && !$smtpClaveYaConfigurada){
+					return $this->respuestaJson('simple', 'Clave SMTP requerida', 'Ingrese la clave SMTP o la contraseña de aplicación para autenticar el envío.', 'warning');
+				}
+			}
+			if($smtpClave !== '' && $smtpClaveCifrada === ''){
+				return $this->respuestaJson('simple', 'Clave SMTP no guardada', 'No fue posible cifrar la clave SMTP. Verifique OpenSSL en PHP.', 'error');
+			}
+
 			$local = [
 				'ambiente' => $ambiente,
 				'iva_tarifa_default' => (float)$iva,
@@ -940,6 +1241,7 @@
 					'nombre_comercial' => $this->textoConfigSri($_POST['nombre_comercial'] ?? '', 300),
 					'direccion_matriz' => $this->textoConfigSri($_POST['direccion_matriz'] ?? '', 300),
 					'direccion_establecimiento' => $this->textoConfigSri($_POST['direccion_establecimiento'] ?? '', 300),
+					'telefono' => $this->textoConfigSri($_POST['telefono'] ?? '', 50),
 					'codigo_establecimiento' => $establecimiento,
 					'punto_emision' => $puntoEmision,
 					'obligado_contabilidad' => $obligado,
@@ -968,16 +1270,27 @@
 				'nombre_comercial' => $em['nombre_comercial'],
 				'direccion_matriz' => $em['direccion_matriz'],
 				'direccion_establecimiento' => $em['direccion_establecimiento'],
+				'telefono' => $em['telefono'],
 				'codigo_establecimiento' => $em['codigo_establecimiento'],
 				'punto_emision' => $em['punto_emision'],
 				'obligado_contabilidad' => $em['obligado_contabilidad'],
 				'contribuyente_especial' => $em['contribuyente_especial'],
 				'agente_retencion' => $em['agente_retencion'],
 				'contribuyente_rimpe' => $em['contribuyente_rimpe'],
+				'ruc_proveedor' => $rucProveedor,
+				'etiqueta_ruc_proveedor' => $etiquetaRucProveedor,
+				'correo_from' => $correoFrom,
+				'correo_from_nombre' => $correoFromNombre,
+				'smtp_activo' => $smtpActivo,
+				'smtp_host' => $smtpHost,
+				'smtp_port' => $smtpPort,
+				'smtp_usuario' => $smtpUsuario,
+				'smtp_clave_cifrada' => $smtpClaveCifrada,
+				'smtp_seguridad' => $smtpSeguridad,
 			]);
 
 			if(!$guardado){
-				return $this->respuestaJson('simple', 'No se pudo guardar', 'No fue posible guardar la configuracion en la base de datos.', 'error');
+				return $this->respuestaJson('simple', 'No se pudo guardar', 'No fue posible guardar la configuracion en la base de datos. ¿Se aplicó la migración 071?', 'error');
 			}
 
 			return $this->respuestaJson('recargar', 'Configuracion guardada', 'La configuracion de facturacion electronica fue actualizada.', 'success');
@@ -991,32 +1304,51 @@
 					"INSERT INTO facturas_electronicas_config
 						(config_lock, ambiente, tipo_emision, iva_tarifa_default, forma_pago_default,
 						 valores_incluyen_iva, secuencial_inicio, ruc, razon_social, nombre_comercial, direccion_matriz,
-						 direccion_establecimiento, codigo_establecimiento, punto_emision,
+						 direccion_establecimiento, telefono, codigo_establecimiento, punto_emision,
 						 obligado_contabilidad, contribuyente_especial, agente_retencion,
-						 contribuyente_rimpe, updated_by)
+						 contribuyente_rimpe, ruc_proveedor, etiqueta_ruc_proveedor,
+						 correo_from, correo_from_nombre, smtp_activo, smtp_host, smtp_port,
+						 smtp_usuario, smtp_clave_cifrada, smtp_seguridad, updated_by)
 					 VALUES ('X', :ambiente, :tipo_emision, :iva, :fp, :vii, :sini, :ruc, :rs, :nc, :dm, :de,
-						 :ce, :pe, :oc, :cesp, :ar, :rimpe, :uby)
+						 :telefono, :ce, :pe, :oc, :cesp, :ar, :rimpe, :rucprov, :etiqprov,
+						 :correo_from, :correo_from_nombre, :smtp_activo, :smtp_host, :smtp_port,
+						 :smtp_usuario, :smtp_clave_cifrada, :smtp_seguridad, :uby)
 					 ON DUPLICATE KEY UPDATE
 						 ambiente=VALUES(ambiente), tipo_emision=VALUES(tipo_emision),
 						 iva_tarifa_default=VALUES(iva_tarifa_default), forma_pago_default=VALUES(forma_pago_default),
 						 valores_incluyen_iva=VALUES(valores_incluyen_iva), secuencial_inicio=VALUES(secuencial_inicio), ruc=VALUES(ruc),
 						 razon_social=VALUES(razon_social), nombre_comercial=VALUES(nombre_comercial),
 						 direccion_matriz=VALUES(direccion_matriz), direccion_establecimiento=VALUES(direccion_establecimiento),
+						 telefono=VALUES(telefono),
 						 codigo_establecimiento=VALUES(codigo_establecimiento), punto_emision=VALUES(punto_emision),
 						 obligado_contabilidad=VALUES(obligado_contabilidad),
 						 contribuyente_especial=VALUES(contribuyente_especial),
 						 agente_retencion=VALUES(agente_retencion), contribuyente_rimpe=VALUES(contribuyente_rimpe),
+						 ruc_proveedor=VALUES(ruc_proveedor), etiqueta_ruc_proveedor=VALUES(etiqueta_ruc_proveedor),
+						 correo_from=VALUES(correo_from), correo_from_nombre=VALUES(correo_from_nombre),
+						 smtp_activo=VALUES(smtp_activo), smtp_host=VALUES(smtp_host), smtp_port=VALUES(smtp_port),
+						 smtp_usuario=VALUES(smtp_usuario),
+						 smtp_clave_cifrada=COALESCE(VALUES(smtp_clave_cifrada), smtp_clave_cifrada),
+						 smtp_seguridad=VALUES(smtp_seguridad),
 						 updated_by=VALUES(updated_by)"
 				);
+				/* Sin ?? en los campos: si falta uno debe fallar ruidosamente, no
+				   guardar vacío en silencio. */
 				return $stmt->execute([
 					':ambiente'=>$d['ambiente'], ':tipo_emision'=>$d['tipo_emision'], ':iva'=>$d['iva_tarifa_default'],
 					':fp'=>$d['forma_pago_default'], ':vii'=>$d['valores_incluyen_iva'], ':sini'=>$d['secuencial_inicio'], ':ruc'=>$d['ruc'],
 					':rs'=>$d['razon_social'], ':nc'=>$d['nombre_comercial'], ':dm'=>$d['direccion_matriz'],
-					':de'=>$d['direccion_establecimiento'], ':ce'=>$d['codigo_establecimiento'], ':pe'=>$d['punto_emision'],
+					':de'=>$d['direccion_establecimiento'], ':telefono'=>$d['telefono'], ':ce'=>$d['codigo_establecimiento'], ':pe'=>$d['punto_emision'],
 					':oc'=>$d['obligado_contabilidad'], ':cesp'=>$d['contribuyente_especial'], ':ar'=>$d['agente_retencion'],
-					':rimpe'=>$d['contribuyente_rimpe'], ':uby'=>($_SESSION['usuarioid'] ?? null),
+					':rimpe'=>$d['contribuyente_rimpe'],
+					':rucprov'=>$d['ruc_proveedor'], ':etiqprov'=>$d['etiqueta_ruc_proveedor'],
+					':correo_from'=>$d['correo_from'], ':correo_from_nombre'=>$d['correo_from_nombre'],
+					':smtp_activo'=>$d['smtp_activo'], ':smtp_host'=>$d['smtp_host'], ':smtp_port'=>$d['smtp_port'],
+					':smtp_usuario'=>$d['smtp_usuario'], ':smtp_clave_cifrada'=>$d['smtp_clave_cifrada'],
+					':smtp_seguridad'=>$d['smtp_seguridad'], ':uby'=>($_SESSION['usuarioid'] ?? null),
 				]);
 			}catch(\Throwable $e){
+				error_log('[SRI config] '.$e->getMessage());
 				return false;
 			}
 		}
@@ -1128,6 +1460,106 @@
 			}
 
 			return $this->respuestaJson('simple', 'Firma pendiente', 'Estado actual del certificado: '.($info['estado'] ?? 'NO_CONFIGURADO').'.', 'warning');
+		}
+
+		/**
+		 * Guarda los dos ambientes del SRI (Core › Configuración SRI ›
+		 * Ambientes del SRI). Llegan como amb[1][...] y amb[2][...].
+		 *
+		 * Las direcciones deben ser HTTPS y del dominio del SRI
+		 * (sri_url_valida): por ellas salen los comprobantes firmados con
+		 * los datos de los clientes. Los tiempos van acotados para que una
+		 * emisión no se quede colgada más de lo que aguanta el servidor.
+		 */
+		public function guardarAmbientesSri(){
+			if(!$this->autorizadoConfigSri()){
+				return $this->respuestaJson('simple', 'Acceso restringido', 'Solo el superadministrador puede modificar los ambientes del SRI.', 'error');
+			}
+
+			$rangos = [
+				'timeout_conexion'      => [5, 120, 'El tiempo de conexión'],
+				'timeout_respuesta'     => [10, 300, 'El tiempo de respuesta'],
+				'intentos_autorizacion' => [1, 10, 'Los intentos de autorización'],
+				'espera_segundos'       => [0, 30, 'La espera entre intentos'],
+			];
+			$nombres = ['1' => 'Pruebas', '2' => 'Producción'];
+			$entrada = is_array($_POST['amb'] ?? null) ? $_POST['amb'] : [];
+			$filas = [];
+
+			foreach($nombres as $clave => $nombre){
+				$a = is_array($entrada[$clave] ?? null) ? $entrada[$clave] : [];
+				$fila = ['ambiente' => $clave, 'nombre' => $nombre];
+
+				foreach(['url_recepcion' => 'recepción', 'url_autorizacion' => 'autorización'] as $campo => $etiqueta){
+					$url = trim((string)($a[$campo] ?? ''));
+					if(!sri_url_valida($url) || strlen($url) > 300){
+						return $this->respuestaJson('simple', 'Dirección no válida', "$nombre: la dirección de $etiqueta debe empezar por https:// y pertenecer al dominio sri.gob.ec.", 'warning');
+					}
+					$fila[$campo] = $url;
+				}
+
+				foreach($rangos as $campo => [$min, $max, $etiqueta]){
+					$valor = trim((string)($a[$campo] ?? ''));
+					if(!preg_match('/^\d{1,3}$/', $valor) || (int)$valor < $min || (int)$valor > $max){
+						return $this->respuestaJson('simple', 'Valor fuera de rango', "$nombre: $etiqueta debe estar entre $min y $max segundos.", 'warning');
+					}
+					$fila[$campo] = (int)$valor;
+				}
+				if($fila['intentos_autorizacion'] * $fila['espera_segundos'] > 60){
+					return $this->respuestaJson('simple', 'Espera demasiado larga', "$nombre: intentos × espera no puede pasar de 60 segundos; la pantalla de emisión quedaría esperando.", 'warning');
+				}
+				$filas[] = $fila;
+			}
+
+			try{
+				$stmt = $this->conectar()->prepare(
+					"INSERT INTO facturas_electronicas_ambiente
+						(ambiente, nombre, url_recepcion, url_autorizacion, timeout_conexion, timeout_respuesta, intentos_autorizacion, espera_segundos, updated_by, updated_at)
+					 VALUES (:ambiente, :nombre, :url_recepcion, :url_autorizacion, :timeout_conexion, :timeout_respuesta, :intentos_autorizacion, :espera_segundos, :usuario, NOW())
+					 ON DUPLICATE KEY UPDATE
+						url_recepcion = VALUES(url_recepcion), url_autorizacion = VALUES(url_autorizacion),
+						timeout_conexion = VALUES(timeout_conexion), timeout_respuesta = VALUES(timeout_respuesta),
+						intentos_autorizacion = VALUES(intentos_autorizacion), espera_segundos = VALUES(espera_segundos),
+						updated_by = VALUES(updated_by), updated_at = VALUES(updated_at)"
+				);
+				foreach($filas as $fila){
+					$stmt->execute($fila + [':usuario' => substr((string)($_SESSION['usuario'] ?? ''), 0, 50)]);
+				}
+			}catch(\Throwable $e){
+				error_log('[SRI ambientes] '.$e->getMessage());
+				return $this->respuestaJson('simple', 'No se guardó', 'No se pudieron guardar los ambientes. ¿Se aplicó la migración 069?', 'error');
+			}
+
+			return $this->respuestaJson('simple', 'Ambientes guardados', 'Las próximas emisiones usarán estas direcciones y tiempos.', 'success');
+		}
+
+		/**
+		 * Prueba un ambiente concreto —no necesariamente el que está en uso—
+		 * con las direcciones guardadas. Dice cuánto tardó cada servicio.
+		 */
+		public function probarAmbienteSri(){
+			if(!$this->autorizadoConfigSri()){
+				return $this->respuestaJson('simple', 'Acceso restringido', 'Solo el superadministrador puede probar los ambientes del SRI.', 'error');
+			}
+			$clave = (string)($_POST['ambiente'] ?? '');
+			if(!in_array($clave, ['1', '2'], true)){
+				return $this->respuestaJson('simple', 'Ambiente no válido', 'Elija Pruebas o Producción.', 'warning');
+			}
+
+			$config = $this->sriConfig();
+			$config['ambiente'] = $clave;
+			$nombre = $clave === '2' ? 'Producción' : 'Pruebas';
+			$r = (new WebServiceSRIService($config))->verificarConectividad();
+
+			$partes = [];
+			foreach(['recepcion' => 'Recepción', 'autorizacion' => 'Autorización'] as $k => $etiqueta){
+				$d = $r['detalle'][$k] ?? [];
+				$partes[] = $etiqueta.': '.(!empty($r[$k])
+					? 'responde ('.number_format((float)($d['segundos'] ?? 0), 2, ',', '').' s)'
+					: 'sin respuesta');
+			}
+			$ok = !empty($r['recepcion']) && !empty($r['autorizacion']);
+			return $this->respuestaJson('simple', $ok ? "$nombre: el SRI responde" : "$nombre: sin conexión completa", implode(' · ', $partes).'.', $ok ? 'success' : 'warning', ['detalle' => $r['detalle'] ?? []]);
 		}
 
 		public function probarConexionSri(){
@@ -1508,7 +1940,7 @@
 				}catch(\Throwable $e){ /* sin logo si no se puede resolver la sede */ }
 			}
 
-			$html = '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>RIDE '.$h($factura['numero']).'</title><style>body{font-family:Arial,sans-serif;font-size:12px;color:#222}.wrap{max-width:920px;margin:24px auto}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.box{border:1px solid #555;padding:10px}h1,h2,h3{margin:0 0 8px}table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border:1px solid #999;padding:6px}th{background:#eee}.right{text-align:right}.warn{background:#fff3cd;border:1px solid #ffeeba;padding:8px;margin:10px 0}.ok{background:#d4edda;border:1px solid #c3e6cb;padding:8px;margin:10px 0}</style></head><body><div class="wrap"><div class="'.$bannerClase.'">'.$bannerTexto.'</div><div class="grid"><div class="box">'.$logoHtml.'<h2>'.$h($emisor['razon_social'] ?? '').'</h2><p><strong>RUC:</strong> '.$h($emisor['ruc'] ?? '').'</p><p><strong>Nombre comercial:</strong> '.$h($emisor['nombre_comercial'] ?? '').'</p><p><strong>Direccion matriz:</strong> '.$h($emisor['direccion_matriz'] ?? '').'</p><p><strong>Direccion establecimiento:</strong> '.$h($emisor['direccion_establecimiento'] ?? '').'</p><p><strong>Obligado contabilidad:</strong> '.$h($emisor['obligado_contabilidad'] ?? 'NO').'</p></div><div class="box"><h1>Factura</h1><p><strong>No.:</strong> '.$h($factura['numero']).'</p><p><strong>Clave de acceso:</strong> '.$h($factura['clave_acceso']).'</p><p><strong>Numero autorizacion:</strong> '.$h($numeroAutorizacion !== '' ? $numeroAutorizacion : 'Pendiente').'</p><p><strong>Fecha autorizacion:</strong> '.$h($fechaAutorizacion !== '' ? $fechaAutorizacion : 'Pendiente').'</p><p><strong>Estado:</strong> '.$h($estadoSri).'</p><p><strong>Ambiente:</strong> '.$h($ambiente).'</p><p><strong>Emision:</strong> NORMAL</p></div></div><div class="box" style="margin-top:16px"><h3>Datos del cliente</h3><p><strong>Cliente:</strong> '.$h($factura['cliente_razon_social']).'</p><p><strong>Identificacion:</strong> '.$h($factura['cliente_identificacion']).'</p><p><strong>Direccion:</strong> '.$h($factura['cliente_direccion']).'</p><p><strong>Email:</strong> '.$h($factura['cliente_email']).'</p></div><table><thead><tr><th>Codigo</th><th>Cantidad</th><th>Detalle</th><th>Precio unitario</th><th>Descuento</th><th>Total sin impuesto</th></tr></thead><tbody>'.$filas.'</tbody></table><table><tr><td class="right"><strong>Subtotal IVA</strong></td><td class="right">'.number_format((float)$factura['subtotal_iva'], 2, '.', '').'</td></tr><tr><td class="right"><strong>Subtotal 0%</strong></td><td class="right">'.number_format((float)$factura['subtotal_0'], 2, '.', '').'</td></tr><tr><td class="right"><strong>IVA</strong></td><td class="right">'.number_format((float)$factura['iva'], 2, '.', '').'</td></tr><tr><td class="right"><strong>Valor total</strong></td><td class="right"><strong>'.number_format((float)$factura['total'], 2, '.', '').'</strong></td></tr></table></div></body></html>';
+			$html = '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>RIDE '.$h($factura['numero']).'</title><style>body{font-family:Arial,sans-serif;font-size:12px;color:#222}.wrap{max-width:920px;margin:24px auto}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.box{border:1px solid #555;padding:10px}h1,h2,h3{margin:0 0 8px}table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border:1px solid #999;padding:6px}th{background:#eee}.right{text-align:right}.warn{background:#fff3cd;border:1px solid #ffeeba;padding:8px;margin:10px 0}.ok{background:#d4edda;border:1px solid #c3e6cb;padding:8px;margin:10px 0}</style></head><body><div class="wrap"><div class="'.$bannerClase.'">'.$bannerTexto.'</div><div class="grid"><div class="box">'.$logoHtml.'<h2>'.$h($emisor['razon_social'] ?? '').'</h2><p><strong>RUC:</strong> '.$h($emisor['ruc'] ?? '').'</p><p><strong>Nombre comercial:</strong> '.$h($emisor['nombre_comercial'] ?? '').'</p><p><strong>Direccion matriz:</strong> '.$h($emisor['direccion_matriz'] ?? '').'</p><p><strong>Direccion establecimiento:</strong> '.$h($emisor['direccion_establecimiento'] ?? '').'</p>'.(trim((string)($emisor['telefono'] ?? '')) !== '' ? '<p><strong>Telefonos:</strong> '.$h($emisor['telefono']).'</p>' : '').'<p><strong>Obligado contabilidad:</strong> '.$h($emisor['obligado_contabilidad'] ?? 'NO').'</p></div><div class="box"><h1>Factura</h1><p><strong>No.:</strong> '.$h($factura['numero']).'</p><p><strong>Clave de acceso:</strong> '.$h($factura['clave_acceso']).'</p><p><strong>Numero autorizacion:</strong> '.$h($numeroAutorizacion !== '' ? $numeroAutorizacion : 'Pendiente').'</p><p><strong>Fecha autorizacion:</strong> '.$h($fechaAutorizacion !== '' ? $fechaAutorizacion : 'Pendiente').'</p><p><strong>Estado:</strong> '.$h($estadoSri).'</p><p><strong>Ambiente:</strong> '.$h($ambiente).'</p><p><strong>Emision:</strong> NORMAL</p></div></div><div class="box" style="margin-top:16px"><h3>Datos del cliente</h3><p><strong>Cliente:</strong> '.$h($factura['cliente_razon_social']).'</p><p><strong>Identificacion:</strong> '.$h($factura['cliente_identificacion']).'</p><p><strong>Direccion:</strong> '.$h($factura['cliente_direccion']).'</p><p><strong>Email:</strong> '.$h($factura['cliente_email']).'</p></div><table><thead><tr><th>Codigo</th><th>Cantidad</th><th>Detalle</th><th>Precio unitario</th><th>Descuento</th><th>Total sin impuesto</th></tr></thead><tbody>'.$filas.'</tbody></table><table><tr><td class="right"><strong>Subtotal IVA</strong></td><td class="right">'.number_format((float)$factura['subtotal_iva'], 2, '.', '').'</td></tr><tr><td class="right"><strong>Subtotal 0%</strong></td><td class="right">'.number_format((float)$factura['subtotal_0'], 2, '.', '').'</td></tr><tr><td class="right"><strong>IVA</strong></td><td class="right">'.number_format((float)$factura['iva'], 2, '.', '').'</td></tr><tr><td class="right"><strong>Valor total</strong></td><td class="right"><strong>'.number_format((float)$factura['total'], 2, '.', '').'</strong></td></tr></table></div></body></html>';
 			$directorioRide = dirname($archivo);
 			if(!is_dir($directorioRide)){
 				$warningDirectorio = '';
@@ -1603,8 +2035,9 @@
 				'Nombre comercial: '.($emisor['nombre_comercial'] ?? ''),
 				'Dir. matriz: '.($emisor['direccion_matriz'] ?? ''),
 				'Dir. establecimiento: '.($emisor['direccion_establecimiento'] ?? ''),
+				trim((string)($emisor['telefono'] ?? '')) !== '' ? 'Teléfonos: '.$emisor['telefono'] : null,
 				'Obligado a contabilidad: '.($emisor['obligado_contabilidad'] ?? 'NO'),
-			] as $l){ $pdf->SetX($xTexto); $pdf->MultiCell($anchoTexto, 5, $t($l), 0, 'L'); }
+			] as $l){ if($l === null){ continue; } $pdf->SetX($xTexto); $pdf->MultiCell($anchoTexto, 5, $t($l), 0, 'L'); }
 			$yLogoBottom = ($logoPath !== '') ? $yIni + 26 : $pdf->GetY();
 			if($pdf->GetY() < $yLogoBottom){ $pdf->SetY($yLogoBottom); }
 			$pdf->Ln(2);
@@ -1930,7 +2363,7 @@
                 ],
                 'detalles'=>$detalles,
                 'pagos'=>$pagos,
-                'info_adicional'=>array_filter([
+                'info_adicional'=>$this->infoAdicionalFacturaSri([
                     'Email'=>$factura['cliente_email'] ?? '',
                     'Telefono'=>$factura['cliente_telefono'] ?? ''
                 ])
@@ -2197,7 +2630,159 @@
 			return trim($nombre, '._') ?: 'adjunto';
 		}
 
-		private function enviarCorreoConAdjuntos($destinatario, $asunto, $mensaje, $from, array $adjuntos){
+		/*======================================================================
+		  Correo por SMTP autenticado (Core › Facturación electrónica › Correo)
+		  ======================================================================
+		  Cliente SMTP mínimo, el de cdjg: EHLO, STARTTLS o SSL, AUTH LOGIN,
+		  y un mensaje MIME en UTF-8 con el RIDE y el XML adjuntos. Sin SMTP
+		  configurado se sigue usando mail() del servidor, como hasta ahora.
+		  ====================================================================*/
+
+		private function extraerEmailCorreo($correo){
+			$correo = trim((string)$correo);
+			return preg_match('/<([^>]+)>/', $correo, $m) ? trim($m[1]) : $correo;
+		}
+
+		private function cabeceraCorreoUtf8($valor){
+			$valor = $this->limpiarHeaderCorreo($valor);
+			return preg_match('/^[\x20-\x7E]*$/', $valor) ? $valor : '=?UTF-8?B?'.base64_encode($valor).'?=';
+		}
+
+		private function construirMensajeSmtpMime($destinatario, $asunto, $mensaje, $from, $fromName, array $adjuntos){
+			$boundary = '=_DS_'.md5(uniqid((string)time(), true));
+			$remitente = trim((string)$fromName) !== ''
+				? $this->cabeceraCorreoUtf8($fromName).' <'.$this->extraerEmailCorreo($from).'>'
+				: '<'.$this->extraerEmailCorreo($from).'>';
+			$headers = [
+				'Date: '.date('r'),
+				'From: '.$remitente,
+				'To: <'.$this->extraerEmailCorreo($destinatario).'>',
+				'Subject: '.$this->cabeceraCorreoUtf8($asunto),
+				'MIME-Version: 1.0',
+				'Content-Type: multipart/mixed; boundary="'.$boundary.'"',
+			];
+
+			$body = "--".$boundary."\r\n";
+			$body .= "Content-Type: text/plain; charset=UTF-8\r\n";
+			$body .= "Content-Transfer-Encoding: base64\r\n\r\n";
+			$body .= chunk_split(base64_encode((string)$mensaje))."\r\n";
+
+			foreach($adjuntos as $adjunto){
+				$path = $adjunto['path'] ?? '';
+				if($path === '' || !is_file($path)){
+					throw new \RuntimeException('No se encontro el adjunto de la factura.');
+				}
+				$filename = $this->nombreAdjuntoSeguro($adjunto['filename'] ?? basename($path));
+				$contentType = $this->limpiarHeaderCorreo($adjunto['content_type'] ?? 'application/octet-stream');
+				$body .= "--".$boundary."\r\n";
+				$body .= "Content-Type: ".$contentType."; name=\"".$filename."\"\r\n";
+				$body .= "Content-Transfer-Encoding: base64\r\n";
+				$body .= "Content-Disposition: attachment; filename=\"".$filename."\"\r\n\r\n";
+				$body .= chunk_split(base64_encode(file_get_contents($path)))."\r\n";
+			}
+
+			$body .= "--".$boundary."--";
+			return implode("\r\n", $headers)."\r\n\r\n".$body;
+		}
+
+		private function smtpLeerRespuesta($socket){
+			$respuesta = '';
+			while(!feof($socket)){
+				$linea = fgets($socket, 515);
+				if($linea === false){ break; }
+				$respuesta .= $linea;
+				if(strlen($linea) >= 4 && $linea[3] === ' '){ break; }
+			}
+			if($respuesta === ''){
+				throw new \RuntimeException('SMTP no devolvio respuesta.');
+			}
+			return [(int)substr($respuesta, 0, 3), trim($respuesta)];
+		}
+
+		private function smtpEnviarComando($socket, $comando, array $esperados, $etiqueta=''){
+			if($comando !== null){
+				fwrite($socket, $comando."\r\n");
+			}
+			[$codigo, $respuesta] = $this->smtpLeerRespuesta($socket);
+			if(!in_array($codigo, $esperados, true)){
+				$accion = $etiqueta !== '' ? $etiqueta : (is_string($comando) ? strtok($comando, ' ') : 'SMTP');
+				throw new \RuntimeException('SMTP '.$accion.' fallo: '.$respuesta);
+			}
+			return $respuesta;
+		}
+
+		private function enviarCorreoSmtpConAdjuntos($destinatario, $asunto, $mensaje, $from, $fromName, array $adjuntos, array $smtp){
+			$host = trim((string)($smtp['host'] ?? ''));
+			$port = max(1, (int)($smtp['port'] ?? 587));
+			$seguridad = in_array((string)($smtp['seguridad'] ?? 'tls'), ['tls', 'ssl', 'ninguna'], true) ? (string)$smtp['seguridad'] : 'tls';
+			$usuario = trim((string)($smtp['usuario'] ?? ''));
+			$clave = $this->descifrarClaveFirma($smtp['clave_cifrada'] ?? '');
+			$timeout = max(5, (int)($smtp['timeout'] ?? 30));
+
+			if($host === ''){
+				throw new \RuntimeException('Servidor SMTP no configurado.');
+			}
+			if($usuario !== '' && $clave === ''){
+				throw new \RuntimeException('No se pudo leer la clave SMTP guardada. Vuelva a escribirla en Core › Facturación electrónica.');
+			}
+			if(!function_exists('stream_socket_client')){
+				throw new \RuntimeException('PHP no tiene disponible stream_socket_client para SMTP.');
+			}
+
+			$destinatario = $this->extraerEmailCorreo($destinatario);
+			$fromEmail = $this->extraerEmailCorreo($from);
+			if(!filter_var($destinatario, FILTER_VALIDATE_EMAIL) || !filter_var($fromEmail, FILTER_VALIDATE_EMAIL)){
+				throw new \RuntimeException('Correo remitente o destinatario no valido.');
+			}
+
+			$transporte = $seguridad === 'ssl' ? 'ssl' : 'tcp';
+			$socket = @stream_socket_client($transporte.'://'.$host.':'.$port, $errno, $errstr, $timeout);
+			if(!$socket){
+				throw new \RuntimeException('No fue posible conectar al SMTP '.$host.':'.$port.'. '.$errstr);
+			}
+
+			try{
+				stream_set_timeout($socket, $timeout);
+				$ehlo = preg_replace('/[^A-Za-z0-9.-]+/', '', (string)(gethostname() ?: 'localhost')) ?: 'localhost';
+				$this->smtpEnviarComando($socket, null, [220], 'conexion');
+				$this->smtpEnviarComando($socket, 'EHLO '.$ehlo, [250], 'EHLO');
+
+				if($seguridad === 'tls'){
+					$this->smtpEnviarComando($socket, 'STARTTLS', [220], 'STARTTLS');
+					if(!function_exists('stream_socket_enable_crypto') || !@stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)){
+						throw new \RuntimeException('No fue posible iniciar TLS con el servidor SMTP.');
+					}
+					$this->smtpEnviarComando($socket, 'EHLO '.$ehlo, [250], 'EHLO TLS');
+				}
+
+				if($usuario !== ''){
+					$this->smtpEnviarComando($socket, 'AUTH LOGIN', [334], 'AUTH');
+					$this->smtpEnviarComando($socket, base64_encode($usuario), [334], 'usuario');
+					$this->smtpEnviarComando($socket, base64_encode($clave), [235], 'clave');
+				}
+
+				$this->smtpEnviarComando($socket, 'MAIL FROM:<'.$fromEmail.'>', [250], 'MAIL FROM');
+				$this->smtpEnviarComando($socket, 'RCPT TO:<'.$destinatario.'>', [250, 251], 'RCPT TO');
+				$this->smtpEnviarComando($socket, 'DATA', [354], 'DATA');
+
+				$mensajeMime = $this->construirMensajeSmtpMime($destinatario, $asunto, $mensaje, $fromEmail, $fromName, $adjuntos);
+				$mensajeMime = preg_replace('/^\./m', '..', $mensajeMime);
+				fwrite($socket, $mensajeMime."\r\n.\r\n");
+				$this->smtpEnviarComando($socket, null, [250], 'envio');
+				@fwrite($socket, "QUIT\r\n");
+			}finally{
+				fclose($socket);
+			}
+
+			return true;
+		}
+
+		private function enviarCorreoConAdjuntos($destinatario, $asunto, $mensaje, $from, array $adjuntos, array $correoConfig=[]){
+			$smtp = $correoConfig['smtp'] ?? [];
+			if(($correoConfig['mailer'] ?? '') === 'smtp' && !empty($smtp['activo'])){
+				return $this->enviarCorreoSmtpConAdjuntos($destinatario, $asunto, $mensaje, $from, $correoConfig['from_name'] ?? '', $adjuntos, $smtp);
+			}
+
 			if(!function_exists('mail')){
 				throw new \RuntimeException('La funcion mail() no esta disponible en este servidor.');
 			}
@@ -2327,7 +2912,7 @@
 				]
 			];
 
-			if(!$this->enviarCorreoConAdjuntos($email, 'Factura electronica '.$numero.' - '.$nombreEmisor, $mensaje, $from, $adjuntos)){
+			if(!$this->enviarCorreoConAdjuntos($email, 'Factura electronica '.$numero.' - '.$nombreEmisor, $mensaje, $from, $adjuntos, $config['correo'] ?? [])){
 				throw new \RuntimeException('El servidor no confirmo el envio del correo. Revise la configuracion mail() de PHP o SMTP local.');
 			}
 
@@ -2441,7 +3026,7 @@
 					'cliente'=>['tipo_identificacion'=>$tipoIdentificacion, 'identificacion'=>$this->normalizarTextoSri($representante['repre_identificacion'], 20), 'razon_social'=>$this->normalizarTextoSri($representante['representante'], 300), 'direccion'=>$this->normalizarTextoSri($representante['repre_direccion'], 300)],
 					'totales'=>['subtotal'=>$subtotal, 'descuento'=>0.00, 'total'=>$total, 'impuestos'=>[['codigo'=>$ivaInfo['codigo'], 'codigo_porcentaje'=>$ivaInfo['codigo_porcentaje'], 'base_imponible'=>$subtotal, 'tarifa'=>$ivaInfo['porcentaje'], 'valor'=>$ivaTotal]]],
 					'detalles'=>$detalles, 'pagos'=>[['forma_pago'=>$formaPago, 'total'=>$total]],
-					'info_adicional'=>['Email'=>$representante['repre_correo'], 'Telefono'=>$representante['repre_celular'], 'Generado por'=>$_SESSION['usuario'] ?? 'Sistema']
+					'info_adicional'=>$this->infoAdicionalFacturaSri(['Email'=>$representante['repre_correo'], 'Telefono'=>$representante['repre_celular'], 'Generado por'=>$_SESSION['usuario'] ?? 'Sistema'])
 				];
 				$xml = $service->generarXMLFactura($datosFactura);
 				$validacionXml = $service->validarXML($xml);

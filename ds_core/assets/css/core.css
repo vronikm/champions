@@ -983,3 +983,126 @@ td.ds-tabla-acciones .ds-hueco {
 }
 .ds-clave__envio { border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius); padding: .75rem 1rem; }
 .ds-clave__envio legend { float: none; width: auto; font-size: .95rem; font-weight: 600; padding: 0 .25rem; margin-bottom: .25rem; }
+
+/* Core › Configuración SRI › Ambientes del SRI: un bloque por ambiente;
+   el que está en uso, con el borde del color de éxito. */
+.ds-ambiente { border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius-lg); padding: .75rem 1rem; margin-bottom: 1rem; }
+.ds-ambiente:last-child { margin-bottom: 0; }
+.ds-ambiente--en-uso { border-color: var(--bs-success-border-subtle); box-shadow: inset 3px 0 0 var(--bs-success); }
+.ds-ambiente--cambiado { box-shadow: inset 3px 0 0 var(--bs-warning); }
+.ds-ambiente__titulo { float: none; width: auto; display: flex; align-items: center; gap: .5rem; font-size: 1rem; font-weight: 600; padding: 0 .25rem; margin-bottom: .25rem; }
+.ds-ambiente input[type="url"] { font-family: var(--bs-font-monospace); font-size: .8rem; }
+.ds-ambiente__pie { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; margin-top: .75rem; }
+.ds-ambiente__botones { display: flex; flex-wrap: wrap; gap: .5rem; }
+/* El gris de btn-outline-secondary no llega a 4,5:1; el texto del cuerpo, sí. */
+.ds-ambiente__botones .btn {
+    --bs-btn-color: var(--bs-body-color); --bs-btn-border-color: var(--bs-border-color);
+    --bs-btn-hover-color: var(--bs-body-color); --bs-btn-hover-bg: var(--bs-tertiary-bg); --bs-btn-hover-border-color: var(--bs-border-color);
+    --bs-btn-active-color: var(--bs-body-color); --bs-btn-active-bg: var(--bs-tertiary-bg);
+}
+@media (max-width: 575.98px) {
+    .ds-ambiente { padding: .65rem .75rem; }
+    .ds-ambiente__botones, .ds-ambiente__botones .btn { flex: 1 1 auto; }
+    .ds-ambiente__botones .btn { min-height: 2.75rem; }
+}
+
+/* Core › Facturación electrónica: estado del servicio y secciones del emisor. */
+.ds-servicio { border-top: 3px solid var(--bs-success); }
+.ds-servicio--mantenimiento { border-top-color: var(--bs-warning); }
+.ds-servicio .card-header { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.ds-servicio__estado { font-size: .85rem; padding: .45em .7em; }
+.ds-config__seccion { font-size: 1rem; font-weight: 600; margin: 1.25rem 0 .5rem; padding-top: 1rem; border-top: 1px solid var(--bs-border-color); }
+.ds-config__xml { background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius); padding: .65rem .85rem; }
+.ds-config__xml pre { white-space: pre-wrap; word-break: break-all; font-size: .8rem; color: var(--bs-body-color); }
+@media (max-width: 991.98px) {
+    .ds-servicio__accion .btn { min-height: 2.75rem; }
+}
+
+/* =========================================================================
+   Core › Carnets › Diseño del carnet. La vista previa se mide en mm:
+   --mm es un milímetro del carnet (85,6 mm = el ancho del marco), así cada
+   elemento va en las mismas coordenadas que en carnet_render.php.
+   ========================================================================= */
+.ds-cdiseno .card-header { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.ds-cdiseno__previa { background: var(--bs-body-bg); }
+/* Lo pegajoso es la COLUMNA (hija de la fila, que abarca los ajustes): pegada
+   dentro de su propia columna no tendría recorrido. */
+.ds-cdiseno__col-previa { position: sticky; top: 4.25rem; z-index: 3; align-self: flex-start; }
+.ds-cdiseno__marco { container-type: inline-size; max-width: 30rem; margin-inline: auto; }
+.ds-cdiseno__carnet {
+    --mm: calc(100cqw / 85.6);
+    position: relative; width: 100%; aspect-ratio: 85.6 / 53.98; overflow: hidden;
+    background: #fff; color: #000; border: 1px solid #c8c8c8; border-radius: calc(2 * var(--mm));
+    box-shadow: 0 .35rem 1rem rgb(0 0 0 / .18); font-family: Arial, Helvetica, sans-serif;
+}
+.ds-cdiseno__carnet > * { position: absolute; }
+.ds-cdiseno__carnet .cd-fondo,
+.ds-cdiseno__carnet .cd-velo { left: 0; top: 0; height: 100%; width: calc(var(--franja) * var(--mm)); object-fit: fill; }
+.ds-cdiseno__carnet .cd-velo { background: var(--color); opacity: var(--opacidad); }
+.ds-cdiseno__carnet .cd-linea { left: calc(20.6 * var(--mm)); top: 0; width: var(--mm); height: 100%; object-fit: fill; }
+.ds-cdiseno__carnet .cd-logo {
+    left: calc((49 - var(--logo) / 2) * var(--mm)); top: calc(2 * var(--mm));
+    width: calc(var(--logo) * var(--mm)); height: calc(var(--logo) * 17 / 18 * var(--mm)); object-fit: contain;
+}
+.ds-cdiseno__carnet .cd-qr {
+    left: calc(70.6 * var(--mm)); top: calc(2 * var(--mm)); width: calc(12 * var(--mm)); height: calc(12 * var(--mm));
+    display: grid; place-items: center; font-size: calc(12 * var(--mm)); line-height: 1;
+}
+.ds-cdiseno__carnet .cd-foto {
+    left: calc(62.6 * var(--mm)); top: calc(20 * var(--mm)); width: calc(20 * var(--mm)); height: calc(25 * var(--mm));
+    border: calc(.3 * var(--mm)) solid #c8c8c8; background: #f1f3f5; color: #adb5bd;
+    display: grid; place-items: center; font-size: calc(12 * var(--mm));
+}
+.ds-cdiseno__carnet.sin-fondo .cd-fondo,
+.ds-cdiseno__carnet.sin-linea .cd-linea,
+.ds-cdiseno__carnet.sin-logo .cd-logo,
+.ds-cdiseno__carnet.sin-qr .cd-qr { display: none; }
+.ds-cdiseno__carnet .cd-textos { inset: 0; }
+.ds-cdiseno__carnet .cd-t {
+    position: absolute; left: calc(var(--x) * var(--mm)); top: calc(var(--y) * var(--mm));
+    height: calc(var(--h) * var(--mm)); line-height: calc(var(--h) * var(--mm));
+    font-size: calc(var(--pt) * .3528 * var(--mm)); white-space: nowrap;
+}
+.ds-cdiseno__carnet .cd-b { font-weight: 700; }
+.ds-cdiseno__carnet .cd-nombre { line-height: calc(3 * var(--mm)); }
+.ds-cdiseno__carnet .cd-mes { width: calc(var(--w) * var(--mm)); text-align: center; background: var(--color); color: #fff; }
+.ds-cdiseno__carnet .cd-gris { color: #646464; }
+.ds-cdiseno__carnet .cd-fecha { width: calc(var(--w) * var(--mm)); text-align: right; color: #969696; }
+.ds-cdiseno__carnet .cd-pie { position: absolute; left: calc(var(--x) * var(--mm)); right: calc(3 * var(--mm)); top: calc(51.98 * var(--mm)); border-top: calc(.2 * var(--mm)) solid #dcdcdc; }
+
+.ds-cdiseno__grupo { font-size: .95rem; font-weight: 600; margin: 1.1rem 0 .6rem; padding-top: .9rem; border-top: 1px solid var(--bs-border-color); }
+.ds-cdiseno__grupo:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.ds-cdiseno__imagenes { display: grid; gap: .6rem; }
+.ds-cdiseno__imagen { display: flex; gap: .75rem; align-items: center; padding: .6rem; border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius-lg); }
+.ds-cdiseno__imagen > img { width: 3.25rem; height: 4.5rem; object-fit: contain; background: var(--bs-tertiary-bg); border-radius: var(--bs-border-radius); flex: none; }
+.ds-cdiseno__imagen-botones { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .35rem; }
+.ds-cdiseno__imagen-botones form { margin: 0; }
+.ds-cdiseno__rango { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: .75rem; margin-bottom: .6rem; }
+.ds-cdiseno__rango .form-range { grid-column: 1 / -1; }
+.ds-cdiseno__rango output { font-variant-numeric: tabular-nums; font-weight: 600; }
+.ds-cdiseno__campos { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: .35rem 1rem; }
+@media (min-width: 992px) { .ds-cdiseno__col-previa { top: 4.75rem; } }
+@media (max-width: 991.98px) {
+    /* En el teléfono la vista previa queda arriba mientras se baja por los ajustes. */
+    .ds-cdiseno__previa { margin: -.25rem -.25rem 0; padding: .25rem .25rem .6rem; border-bottom: 1px solid var(--bs-border-color); }
+    .ds-cdiseno__previa p { font-size: .8rem; text-align: center; }
+    /* Pegada arriba, la vista previa no debe tapar los ajustes. */
+    .ds-cdiseno__marco { max-width: min(100%, 18.5rem); }
+    .ds-cdiseno__previa p .d-block { display: none !important; }
+    .ds-cdiseno .form-check { min-height: 2.25rem; display: flex; align-items: center; gap: .5rem; }
+    .ds-cdiseno .form-check-input { margin-top: 0; }
+    .ds-cdiseno__acciones .btn, .ds-cdiseno__imagen .btn { min-height: 2.75rem; display: inline-flex; align-items: center; }
+    .ds-cdiseno__acciones { flex-wrap: wrap; }
+    .ds-cdiseno__acciones > * { flex: 1 1 auto; }
+    .ds-cdiseno__acciones .btn { width: 100%; justify-content: center; }
+}
+
+/* Color por mes en el teléfono: la muestra, estrecha; el nombre del color, entero. */
+@media (max-width: 575.98px) {
+    .ds-colormes th:first-child { width: auto !important; }
+    .ds-colormes th:last-child, .ds-colormes td:last-child { width: 2.75rem !important; padding-inline: .35rem; }
+    .ds-colormes th:last-child { font-size: 0; }
+    .ds-colormes .form-select { min-width: 0; width: 100%; padding-inline: .5rem 1.75rem; background-position: right .4rem center; }
+    .ds-colormes th:first-child, .ds-colormes td:first-child { width: 36% !important; }
+    .ds-colormes td small { display: block; line-height: 1.2; }
+}

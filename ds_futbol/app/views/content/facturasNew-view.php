@@ -20,6 +20,9 @@
 	/* Subpantalla de facturasList: no tiene entrada de menú propia, así
 	   que el control de acceso se hace aquí. Sin esto, al no estar
 	   registrada en seguridad_menu quedaría sin restricción. */
+	/* Servicio bajado por mantenimiento (Core › Facturación electrónica). */
+	if (!$insAlumno->servicioFacturacionActivo()) { $insFactura = $insAlumno; require "app/views/inc/facturacion-mantenimiento.php"; }
+
 	if (!puede_crear('facturasList')) {
 		http_response_code(403);
 		require_once "app/views/content/accesoDenegado-view.php";

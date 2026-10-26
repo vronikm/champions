@@ -12,10 +12,8 @@ $(function () {
         columnDefs: [{ targets: 4, orderable: false, searchable: false }],
         layout: { topStart: 'pageLength', topEnd: 'search', bottomStart: 'info', bottomEnd: { paging: { firstLast: false } } },
         language: {
-            // Con alumnos sin horario la vista no lista carnets (el aviso va encima).
-            emptyTable: (typeof CARNETS_BLOQUEADOS !== 'undefined' && CARNETS_BLOQUEADOS)
-                ? "Asigne el horario a los alumnos indicados arriba para listar los carnets"
-                : "No hay alumnos con pago de pensión este mes",
+            // Los alumnos sin horario no se listan: los avisa la vista, encima.
+            emptyTable: "No hay alumnos con pago de pensión y horario este mes",
             info: "_START_ a _END_ de _TOTAL_ alumnos",
             infoEmpty: "Sin alumnos",
             infoFiltered: "(de _MAX_)",

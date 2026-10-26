@@ -9,9 +9,10 @@
 	| la emisión: «Imprimir pendientes» imprime los de esa sede, o los de todas.
 	| El servidor acota siempre a las sedes del usuario (condicionSede).
 	|
-	| Alumnos con pago del mes y sin horario: mientras haya alguno EN ESA
-	| SEDE, la lista no se muestra; el aviso va encima de la tabla, nunca
-	| dentro (DataTables no admite filas con colspan).
+	| La lista trae sólo a los alumnos con horario asignado: son los que se
+	| imprimen. Los que tienen pago y no horario se avisan encima de la tabla,
+	| nunca dentro (DataTables no admite filas con colspan). Antes uno solo sin
+	| horario vaciaba la lista entera.
 	*/
 	$sedeId       = (int)($_GET['sede'] ?? 0);
 	$opcionesSede = $insCarnet->opcionesSedeCarnet($sedeId);
@@ -22,12 +23,10 @@
 	$cobrarReimpresion = $insCarnet->cobrarReimpresionCarnet();
 	$valorReimpresion  = $insCarnet->valorReimpresionCarnet();
 	$sinHorario = $insCarnet->verificarAlumnosSinHorarioAsignado($sedeId);
-	/* Las cifras son reales aunque la lista se bloquee por horarios pendientes;
-	   «por imprimir» es la cuenta del servidor, la misma que usa la impresión. */
-	$todos       = $insCarnet->alumnosCarnetMes($sedeId, []);
-	$impresos    = count(array_filter($todos, static fn($a) => !empty($a['fecha_impresion'])));
+	/* «Por imprimir» es la cuenta del servidor, la misma que usa la impresión. */
+	$alumnos     = $insCarnet->alumnosCarnetMes($sedeId);
+	$impresos    = count(array_filter($alumnos, static fn($a) => !empty($a['fecha_impresion'])));
 	$porImprimir = (int)($insCarnet->carnetPendientesImpresion($sedeId)[0]['total'] ?? 0);
-	$alumnos     = empty($sinHorario) ? $todos : [];
 
 	$formatter = new IntlDateFormatter('es_ES', IntlDateFormatter::NONE, IntlDateFormatter::NONE, 'America/Guayaquil', IntlDateFormatter::GREGORIAN, 'MMMM yyyy');
 	$mesActual = ucfirst($formatter->format(new DateTime()));
@@ -87,7 +86,7 @@
 						</form>
 
 						<div class="ds-carnet__cifras" aria-label="Resumen del mes">
-							<div><span class="ds-carnet__cifra"><?php echo count($todos); ?></span><span class="ds-carnet__rotulo">con carnet este mes</span></div>
+							<div><span class="ds-carnet__cifra"><?php echo count($alumnos); ?></span><span class="ds-carnet__rotulo">con carnet este mes</span></div>
 							<div><span class="ds-carnet__cifra text-success-emphasis"><?php echo $impresos; ?></span><span class="ds-carnet__rotulo">impresos</span></div>
 							<div><span class="ds-carnet__cifra text-warning-emphasis" id="contadorCarnets"><?php echo $porImprimir; ?></span><span class="ds-carnet__rotulo">por imprimir</span></div>
 						</div>
@@ -112,7 +111,7 @@
 				</div>
 
 				<?php if (!empty($sinHorario)): ?>
-				<div class="alert alert-danger" role="alert">
+				<div class="alert alert-warning" role="alert" id="avisoSinHorario">
 					<div class="d-flex align-items-start gap-2">
 						<i class="fas fa-exclamation-triangle mt-1" aria-hidden="true"></i>
 						<div class="flex-grow-1 min-w-0">
@@ -120,7 +119,7 @@
 							<?php $n = count($sinHorario); echo $n === 1
 								? 'un alumno con pago de este mes no tiene horario de entrenamiento asignado.'
 								: $n . ' alumnos con pago de este mes no tienen horario de entrenamiento asignado.'; ?>
-							Asigne el horario desde la ficha de cada alumno y vuelva a esta vista para listar los carnets.
+							No aparecen en la lista ni se imprimen hasta tenerlo: asígnelo desde la ficha de cada alumno.
 							<ul class="mb-0 mt-2 ps-3 ds-carnet__sin-horario">
 								<?php foreach ($sinHorario as $al): ?>
 								<li>
@@ -290,7 +289,6 @@
 	<script>
 		var APP_URL = '<?php echo APP_URL; ?>';
 		var COBRAR_REIMPRESION = <?php echo $cobrarReimpresion ? 'true' : 'false'; ?>;
-		var CARNETS_BLOQUEADOS = <?php echo empty($sinHorario) ? 'false' : 'true'; ?>;
 		var MES_ATRASADO_DEFAULT = <?php echo (int)date('n', strtotime('first day of last month')); ?>;
 		var ANIO_ATRASADO_DEFAULT = <?php echo (int)date('Y', strtotime('first day of last month')); ?>;
 		var MES_ACTUAL = <?php echo json_encode($mesActual, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG); ?>;

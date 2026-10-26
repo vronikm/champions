@@ -48,20 +48,12 @@
 		 * Acotado a las sedes del usuario (condicionSede); con $sede > 0, a
 		 * esa sede. Antes listaba los alumnos de todas las sedes a cualquiera.
 		 *
-		 * Regla heredada: mientras haya alumnos con pago y sin horario no se
-		 * listan carnets; primero se corrige el horario. Ahora vale por sede:
-		 * un alumno sin horario en otra sede no bloquea esta.
-		 *
-		 * @param array|null $alumnos_sin_horario El resultado de
-		 *        verificarAlumnosSinHorarioAsignado($sede) si la vista ya lo
-		 *        tiene, para no repetir la consulta.
+		 * Sólo los alumnos CON horario asignado: el carnet lleva el horario y
+		 * la impresión sólo emite los que lo tienen. Los que no, los avisa la
+		 * vista aparte (verificarAlumnosSinHorarioAsignado). Antes, uno solo
+		 * sin horario dejaba la lista entera vacía hasta corregirlo.
 		 */
-		public function alumnosCarnetMes(int $sede = 0, ?array $alumnos_sin_horario = null): array {
-			$alumnos_sin_horario ??= $this->verificarAlumnosSinHorarioAsignado($sede);
-			if(!empty($alumnos_sin_horario)) {
-				return [];
-			}
-
+		public function alumnosCarnetMes(int $sede = 0): array {
 			$parametros = [];
 			$sedeSql = $this->condicionSede('A.alumno_sedeid', $sede, $parametros);
 
@@ -95,6 +87,9 @@
 						   ) EP ON EP.pago_alumnoid = A.alumno_id
 						   LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
 						  WHERE A.alumno_estado = 'A' AND $sedeSql
+							AND EXISTS (SELECT 1 FROM asistencia_asignahorario AH
+										INNER JOIN asistencia_horario H ON H.horario_id = AH.asignahorario_horarioid
+										WHERE AH.asignahorario_alumnoid = A.alumno_id)
 						  ORDER BY (fecha_impresion IS NOT NULL), A.alumno_apellidopaterno, A.alumno_apellidomaterno, A.alumno_primernombre";
 
 			return $this->ejecutarConsulta($consulta, $parametros)->fetchAll();

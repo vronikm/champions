@@ -537,7 +537,8 @@ class coreController
         return $this->filas(
             "SELECT e.empleado_id,
                     COALESCE(e.empleado_nombre, CONCAT('Empleado #', e.empleado_id)) AS nombre,
-                    COALESCE(e.empleado_correo, '') AS correo, COALESCE(e.empleado_celular, '') AS celular
+                    COALESCE(e.empleado_correo, '') AS correo, COALESCE(e.empleado_celular, '') AS celular,
+                    COALESCE(e.empleado_sedeid, 0) AS sede
                FROM sujeto_empleado e
               WHERE e.empleado_estado = 'A'
                 AND (NOT EXISTS (SELECT 1 FROM seguridad_usuario u

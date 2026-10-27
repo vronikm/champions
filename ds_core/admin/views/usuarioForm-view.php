@@ -124,7 +124,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                                     <option value="0">Sin vincular</option>
                                     <?php foreach ($empleados as $e): ?>
                                         <option value="<?php echo (int)$e['empleado_id']; ?>"
-                                            data-correo="<?php echo $h($e['correo']); ?>" data-celular="<?php echo $h(preg_replace('/\D/', '', (string)$e['celular'])); ?>"
+                                            data-correo="<?php echo $h($e['correo']); ?>" data-celular="<?php echo $h(preg_replace('/\D/', '', (string)$e['celular'])); ?>" data-sede="<?php echo (int)$e['sede']; ?>"
                                             <?php echo $empleadoSel === (int)$e['empleado_id'] ? 'selected' : ''; ?>>
                                             <?php echo $h($e['nombre']); ?>
                                         </option>
@@ -429,6 +429,18 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     caja.addEventListener('change', aplicar);
     if (rol) { rol.addEventListener('change', aplicar); }
+
+    /* Al elegir la persona, su sede (la de su ficha) queda marcada, si aún
+       no hay ninguna: es la que casi siempre corresponde. No pisa lo elegido. */
+    var persona = document.getElementById('usuario_empleadoid');
+    function sedeDeLaPersona() {
+        var op = persona && persona.selectedOptions[0], sede = op && op.dataset.sede;
+        if (!sede || (todas && todas.checked) || lista.querySelector('input:checked')) { return; }
+        var casilla = document.getElementById('sede' + sede);
+        if (casilla) { casilla.checked = true; }
+    }
+    if (persona) { persona.addEventListener('change', sedeDeLaPersona); }
+    sedeDeLaPersona();
     aplicar();
 })();
 </script>

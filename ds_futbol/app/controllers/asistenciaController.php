@@ -1786,9 +1786,14 @@
 			return $fila ?: null;
 		}
 
-		/** ¿Puede la sesión tomar asistencia en este horario? Administración, quien lo dicta o quien tiene su sede. */
+		/**
+		 * ¿Puede la sesión tomar asistencia en este horario? Quien lo dicta o
+		 * quien tiene su sede (con «todas las sedes», cualquiera). Es alcance
+		 * por sede (sedes_de_la_sesion); qué DÍAS se marcan es otra cosa y va
+		 * por rol: puedeMarcarOtrosDias().
+		 */
 		public function puedeTomarAsistencia(int $horarioId): bool {
-			if ($this->sedesDeLaSesion() === null) { return true; }          /* roles 1 y 2 */
+			if ($this->sedesDeLaSesion() === null) { return true; }
 			$fila = $this->ejecutarConsulta("SELECT H.horario_sedeid,
 						SUM(D.detalle_profesorid = :empleado) AS dicta
 					FROM asistencia_horario H
@@ -1799,6 +1804,16 @@
 			return (int)$fila['dicta'] > 0 || in_array((int)$fila['horario_sedeid'], $this->sedesDeLaSesion(), true);
 		}
 
+		/**
+		 * ¿Puede marcar un día que no sea hoy? Administración (roles 1 y 2),
+		 * el mismo criterio que el selector de fecha de asistenciaAlumno-view.
+		 * Va por rol y no por sedes: dar «todas las sedes» a un profesor le
+		 * amplía los horarios, no le permite corregir otros días.
+		 */
+		public function puedeMarcarOtrosDias(): bool {
+			return in_array(rol_actual(), [1, 2], true);
+		}
+
 		/** La fecha pedida, como Y-m-d, si la sesión puede marcarla; si no, ''. */
 		private function fechaDeMarca(string $fecha): string {
 			$fecha = trim($fecha);
@@ -1806,7 +1821,7 @@
 			if (!$d) { return ''; }
 			$f = $d->format('Y-m-d');
 			if ($f > date('Y-m-d')) { return ''; }                            /* nunca días futuros */
-			if ($this->sedesDeLaSesion() !== null && $f !== date('Y-m-d')) { return ''; }   /* profesor: sólo hoy */
+			if (!$this->puedeMarcarOtrosDias() && $f !== date('Y-m-d')) { return ''; }   /* profesor: sólo hoy */
 			return $f;
 		}
 

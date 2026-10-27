@@ -9,6 +9,13 @@ if (file_exists(__DIR__ . "/../../config/server.php")) {
     require_once __DIR__ . "/../../config/server.php";
 }
 
+/* Las reglas de acceso del ecosistema (sedes_de_la_sesion y compañía). La
+   aplicación ya las carga desde session_start.php, pero un controlador no
+   debe depender de eso: sin ellas, el primero que filtra por sede muere con
+   «Call to undefined function». Sólo define funciones; cargarlo dos veces
+   no hace nada. */
+require_once __DIR__ . "/../../../ds_core/inc/seguridad.php";
+
 class mainModel
 {
     private $server = DB_SERVER;

@@ -1982,6 +1982,131 @@ class coreController
     }
 
     /** Política de cobro por reimpresión de carnet. */
+    /*======================================================================
+      Redes sociales (Core › Redes sociales, migración 073)
+      ======================================================================
+      Perfiles de la escuela y la conexión con Meta (página de Facebook y
+      cuenta profesional de Instagram) para publicar las felicitaciones de
+      cumpleaños desde Fútbol. Sólo el superadministrador: el token publica
+      en nombre de la escuela. Las funciones están en ds_core/inc/redes.php.
+      ====================================================================*/
+
+    /** Las últimas publicaciones en redes (rastro: qué, dónde, quién, resultado). */
+    public function publicacionesRedes(int $limite = 12): array
+    {
+        return $this->filas(
+            "SELECT P.pub_red, P.pub_estado, P.pub_error, P.pub_usuario, P.pub_fecha,
+                    CONCAT_WS(' ', A.alumno_primernombre, A.alumno_apellidopaterno) AS alumno
+               FROM redes_publicacion P LEFT JOIN sujeto_alumno A ON A.alumno_id = P.pub_alumnoid
+              ORDER BY P.pub_id DESC LIMIT " . max(1, min(50, $limite)));
+    }
+
+    /** Una dirección de perfil: https y del dominio de la red ('' = vacía). */
+    private function urlDeRed(string $url, array $dominios): ?string
+    {
+        $url = trim($url);
+        if ($url === '') { return ''; }
+        $p = parse_url($url);
+        $host = strtolower($p['host'] ?? '');
+        if (($p['scheme'] ?? '') !== 'https') { return null; }
+        foreach ($dominios as $d) {
+            if ($host === $d || str_ends_with($host, '.' . $d)) { return mb_substr($url, 0, 255); }
+        }
+        return null;
+    }
+
+    public function guardarRedes(): string
+    {
+        if (!es_superadministrador()) {
+            return $this->alerta('simple', 'Acceso restringido', 'Solo el superadministrador configura las redes sociales.', 'error');
+        }
+        $actual = redes_config();
+        $perfiles = [
+            'url_facebook'  => ['Facebook',  ['facebook.com', 'fb.com']],
+            'url_instagram' => ['Instagram', ['instagram.com']],
+            'url_tiktok'    => ['TikTok',    ['tiktok.com']],
+            'url_youtube'   => ['YouTube',   ['youtube.com', 'youtu.be']],
+        ];
+        $d = [];
+        foreach ($perfiles as $campo => [$red, $dominios]) {
+            $v = $this->urlDeRed((string)($_POST[$campo] ?? ''), $dominios);
+            if ($v === null) {
+                return $this->alerta('simple', 'Dirección no válida', "La dirección de $red debe empezar por https:// y ser de " . $dominios[0] . '.', 'warning');
+            }
+            $d[$campo] = $v;
+        }
+        $wa = preg_replace('/\D/', '', (string)($_POST['whatsapp'] ?? ''));
+        if ($wa !== '' && !preg_match('/^(09\d{8}|5939\d{8})$/', $wa)) {
+            return $this->alerta('simple', 'WhatsApp no válido', 'Escriba un celular de 10 dígitos que empiece por 09.', 'warning');
+        }
+        $d['whatsapp'] = $wa;
+
+        $d['fb_activo']    = ($_POST['fb_activo'] ?? '') === 'S' ? 'S' : 'N';
+        $d['fb_pagina_id'] = preg_replace('/\D/', '', (string)($_POST['fb_pagina_id'] ?? ''));
+        $d['ig_activo']    = ($_POST['ig_activo'] ?? '') === 'S' ? 'S' : 'N';
+        $d['ig_cuenta_id'] = preg_replace('/\D/', '', (string)($_POST['ig_cuenta_id'] ?? ''));
+        $version = trim((string)($_POST['graph_version'] ?? 'v21.0'));
+        $d['graph_version'] = preg_match('/^v\d{1,2}\.\d$/', $version) ? $version : 'v21.0';
+        $d['cumple_mensaje']  = mb_substr(trim((string)($_POST['cumple_mensaje'] ?? '')), 0, 1500);
+        $d['cumple_hashtags'] = mb_substr(trim(preg_replace('/\s+/', ' ', (string)($_POST['cumple_hashtags'] ?? ''))), 0, 300);
+        if ($d['cumple_mensaje'] === '') {
+            return $this->alerta('simple', 'Falta el mensaje', 'Escriba el mensaje de cumpleaños (puede usar {nombre}, {edad}, {sede}, {escuela}).', 'warning');
+        }
+
+        /* El token: sólo se toca si se escribe uno nuevo o se pide quitarlo. */
+        $token = trim((string)($_POST['fb_token'] ?? ''));
+        $quitar = ($_POST['fb_token_quitar'] ?? '') === 'S';
+        $hayToken = $quitar ? false : ($token !== '' || $actual['token_guardado']);
+        if ($d['fb_activo'] === 'S' && ($d['fb_pagina_id'] === '' || !$hayToken)) {
+            return $this->alerta('simple', 'Faltan datos de Facebook', 'Para publicar en Facebook hacen falta el id de la página y su token.', 'warning');
+        }
+        if ($d['ig_activo'] === 'S' && ($d['ig_cuenta_id'] === '' || !$hayToken)) {
+            return $this->alerta('simple', 'Faltan datos de Instagram', 'Para publicar en Instagram hacen falta el id de la cuenta profesional y el token de la página vinculada.', 'warning');
+        }
+
+        try {
+            $sets = []; $par = [];
+            foreach ($d as $c => $v) { $sets[] = "$c = :$c"; $par[":$c"] = $v; }
+            if ($quitar) { $sets[] = 'fb_token_cifrado = NULL'; $sets[] = "fb_pagina_nombre = ''"; }
+            elseif ($token !== '') { $sets[] = 'fb_token_cifrado = :tok'; $par[':tok'] = redes_cifrar($token); }
+            $sets[] = 'updated_by = :por'; $sets[] = 'updated_at = NOW()';
+            $par[':por'] = mb_substr((string)($_SESSION['usuario'] ?? ''), 0, 50);
+            $n = $this->escribir("UPDATE redes_config SET " . implode(', ', $sets) . " WHERE config_lock = 'X'", $par);
+        } catch (\Throwable $e) {
+            return $this->alerta('simple', 'No se guardó', $e->getMessage(), 'error');
+        }
+        if ($n < 0) {
+            return $this->alerta('simple', 'No se guardó', 'No se pudo guardar. ¿Se aplicó la migración 073?', 'error');
+        }
+        return $this->alerta('recargar', 'Redes guardadas', 'La configuración de redes sociales se actualizó.', 'success');
+    }
+
+    /** Prueba el token: nombre de la página e Instagram vinculado (y lo guarda). */
+    public function probarRedes(): string
+    {
+        if (!es_superadministrador()) {
+            return $this->alerta('simple', 'Acceso restringido', 'Solo el superadministrador configura las redes sociales.', 'error');
+        }
+        $cfg = redes_config();
+        if ($cfg['fb_pagina_id'] === '' || !$cfg['token_guardado']) {
+            return $this->alerta('simple', 'Faltan datos', 'Guarde primero el id de la página y su token.', 'warning');
+        }
+        $r = redes_graph('GET', rawurlencode($cfg['fb_pagina_id']),
+            ['fields' => 'name,instagram_business_account{id,username}', 'access_token' => redes_token()], $cfg['graph_version']);
+        if (!$r['ok']) {
+            return $this->alerta('simple', 'Sin conexión con Meta', $r['error'], 'error');
+        }
+        $nombre = mb_substr((string)($r['datos']['name'] ?? ''), 0, 150);
+        $ig = $r['datos']['instagram_business_account'] ?? null;
+        $par = [':n' => $nombre];
+        $extra = '';
+        if ($ig && $cfg['ig_cuenta_id'] === '') { $extra = ', ig_cuenta_id = :ig'; $par[':ig'] = (string)$ig['id']; }
+        $this->escribir("UPDATE redes_config SET fb_pagina_nombre = :n$extra WHERE config_lock = 'X'", $par);
+        $texto = "Conectado con la página «{$nombre}».";
+        $texto .= $ig ? ' Instagram vinculado: @' . ($ig['username'] ?? $ig['id']) . '.' : ' La página no tiene una cuenta de Instagram profesional vinculada.';
+        return $this->alerta('recargar', 'Conexión correcta', $texto, 'success');
+    }
+
     /** Imágenes del carnet (franja y línea decorativa) de la escuela. */
     public function imagenesCarnet(): array
     {

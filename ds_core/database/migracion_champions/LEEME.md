@@ -14,7 +14,7 @@ MYSQL=/ruta/a/mysql MYSQL_OPTS="-u USUARIO -pCLAVE" \
   ds_core/database/migracion_champions/aplicar_migracion.sh BASE
 ```
 
-Aplica los 74 archivos en el orden correcto y se detiene en el primer error.
+Aplica los 75 archivos en el orden correcto y se detiene en el primer error.
 Antes de empezar comprueba que `BASE` sea una copia de SoccerEasy **sin migrar**:
 si ya tiene `facturas_electronicas`, no aplica nada, porque varias migraciones no
 se pueden repetir.
@@ -81,6 +81,10 @@ en desarrollo y llevar el resultado a producción con un volcado (ver más abajo
     cada usuario es una (`sedes_de_la_sesion()`); para que nadie pierda
     acceso, los roles 1 y 2 quedan con «todas» y quien no tenía sede recibe la
     de su ficha de empleado. Se ajusta en Core › Usuarios. Repetible.
+14. `073_redes_sociales.sql`: configuración de redes sociales (perfiles y
+    conexión con Meta, token cifrado) y el registro de publicaciones; menú
+    «Redes sociales» en Core. Las felicitaciones de cumpleaños se publican
+    desde Fútbol › Cumpleaños, sólo con autorización de imagen. Repetible.
 
 ```bash
 mysql -u USUARIO -p --default-character-set=utf8mb4 BASE < ARCHIVO.sql

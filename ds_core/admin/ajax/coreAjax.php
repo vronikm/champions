@@ -126,6 +126,8 @@ switch ($_POST['modulo_core']) {
     case 'restablecerSegundoFactor': echo $insCore->restablecerSegundoFactor(); break;
     /* Tarjeta de cumpleaños. Una plantilla por marco y sólo una activa; el
        generador de Basketball lee siempre la activa. */
+    case 'guardarRedes':     echo $insCore->guardarRedes();       break;
+    case 'probarRedes':      echo $insCore->probarRedes();        break;
     case 'guardarPlantillaCumple':  echo $insCore->guardarPlantillaCumple();  break;
     case 'nuevaPlantillaCumple':    echo $insCore->nuevaPlantillaCumple();    break;
     case 'activarPlantillaCumple':  echo $insCore->activarPlantillaCumple();  break;

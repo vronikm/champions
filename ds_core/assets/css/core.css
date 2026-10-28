@@ -1117,3 +1117,18 @@ td.ds-tabla-acciones .ds-hueco {
     .ds-sedes .form-check { min-height: 2.5rem; display: flex; align-items: center; gap: .5rem; }
     .ds-sedes .form-check-input { margin-top: 0; }
 }
+
+/* Core › Redes sociales */
+.ds-redes .card-header { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.ds-redes + .ds-redes { margin-top: 1rem; }
+.ds-redes__red { font-size: .95rem; font-weight: 600; margin: 1rem 0 .5rem; padding-top: .75rem; border-top: 1px solid var(--bs-border-color); }
+.ds-redes__red:first-of-type { margin-top: .5rem; }
+.ds-redes__marcas { display: flex; flex-wrap: wrap; gap: .35rem; }
+.ds-redes__previa { background: var(--bs-tertiary-bg); border-radius: var(--bs-border-radius-lg); padding: .75rem 1rem; }
+.ds-redes__previa p { white-space: pre-line; }
+.ds-redes__ayuda summary { cursor: pointer; color: var(--bs-link-color); font-size: .9rem; }
+.ds-redes__historial .list-group-item { font-size: .9rem; }
+@media (max-width: 575.98px) {
+    .ds-redes .ds-acciones .btn { flex: 1 1 100%; min-height: 2.75rem; }
+    .ds-redes__marcas .btn { min-height: 2.5rem; }
+}

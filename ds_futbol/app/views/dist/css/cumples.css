@@ -528,3 +528,19 @@
     .cumple-picker__boton, .cumple-cal__hoy { min-height: 44px; }
     .cumple-cal__nav { width: 44px; height: 44px; }
 }
+
+/* Publicar la felicitación (migración 073). */
+.alumno-card .cumple-acciones { display: flex; flex-wrap: wrap; justify-content: center; gap: .4rem; }
+.alumno-card .btn-publicar { background: var(--cumple-amarillo); color: var(--cumple-azul); }
+.alumno-card .btn-publicar:hover { background: var(--cumple-amarillo); color: var(--cumple-azul); filter: brightness(.95); }
+.alumno-card .cumple-sin-imagen { display: inline-flex; align-items: center; gap: .3rem; font-size: .78rem; color: var(--bs-secondary-color); padding: 6px 4px; }
+.alumno-card .cumple-publicada { display: flex; justify-content: center; gap: .6rem; margin-top: .45rem; font-size: .78rem; color: var(--bs-success-text-emphasis); }
+.cumple-publicar__tarjeta { display: block; width: 100%; max-width: 22rem; margin: 0 auto; border-radius: .5rem; box-shadow: 0 .25rem .75rem rgb(0 0 0 / .15); background: var(--bs-tertiary-bg); aspect-ratio: 1 / 1; object-fit: contain; }
+.cumple-publicar__acciones { flex-wrap: wrap; gap: .4rem; }
+@media (pointer: coarse) { .alumno-card .cumple-acciones > * { min-height: 44px; display: inline-flex; align-items: center; } }
+@media (max-width: 575.98px) { .cumple-publicar__acciones .btn { flex: 1 1 calc(50% - .4rem); min-height: 2.75rem; } }
+/* Las acciones del modal en rejilla: 2×2 y «Publicar» a lo ancho. */
+.cumple-publicar__acciones { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+.cumple-publicar__acciones > * { margin: 0 !important; }
+.cumple-publicar__acciones [data-accion="publicar"] { grid-column: 1 / -1; }
+@media (min-width: 576px) { .cumple-publicar__acciones { grid-template-columns: repeat(3, auto) 1fr; } .cumple-publicar__acciones [data-accion="publicar"] { grid-column: auto; justify-self: end; } }

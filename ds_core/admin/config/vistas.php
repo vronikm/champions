@@ -23,4 +23,5 @@ return [
     'puntoEmisionList',
     'carnetConfig',
     'tarjetaCumple',
+    'redesSociales',
 ];

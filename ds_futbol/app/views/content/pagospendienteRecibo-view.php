@@ -18,23 +18,7 @@
 	// Capturamos el valor enviado en la URL
 	$envio = $url[2] ?? ""; // <---- Asegúrate que $url esté disponible. $url[2] sería 1 o 0
 
-	if($envio !== ""){
-		if($envio == "1"){
-			$alerta = [
-				"tipo" => "simple",
-				"titulo" => "Correo enviado",
-				"texto" => "El correo fue enviado exitosamente.",
-				"icono" => "success"
-			];
-		} elseif($envio == "0"){
-			$alerta = [
-				"tipo" => "simple",
-				"titulo" => "Error de envío",
-				"texto" => "No se pudo enviar el correo. Por favor, intente nuevamente.",
-				"icono" => "error"
-			];
-		}
-	}
+	/* El aviso se arma más abajo, cuando ya se conoce el correo del representante. */
 
 	$datos=$insAlumno->generarReciboPendiente($pagoid);
 	
@@ -72,6 +56,19 @@
 	   y el saldo, lo que queda pendiente después de ella. */
 	$limpio = static fn ($t) => trim(preg_replace('/\s+/u', ' ', (string)$t));
 	$repreCorreo = trim((string)($datos['CORREO_REP'] ?? ''));
+
+	/*----------  Resultado del envío por correo (ReciboEnvio vuelve con /1/, /0/ o /2/)  ----------*/
+	$paraQuien = $repreCorreo !== '' ? ' a ' . $repreCorreo : '';
+	$alerta = match ((string)$envio) {
+		'1' => ['tipo' => 'simple', 'icono' => 'success', 'titulo' => 'Recibo enviado',
+		        'texto' => 'El recibo se envió por correo' . $paraQuien . '.'],
+		'0' => ['tipo' => 'simple', 'icono' => 'error', 'titulo' => 'No se pudo enviar el correo',
+		        'texto' => 'El recibo no se envió' . $paraQuien . '. Revise que el correo del representante esté bien escrito e inténtelo de nuevo; '
+		                 . 'si sigue fallando, el servidor no tiene configurado el correo saliente. Mientras tanto, puede enviarlo por WhatsApp.'],
+		'2' => ['tipo' => 'simple', 'icono' => 'warning', 'titulo' => 'Sin correo del representante',
+		        'texto' => 'El representante no tiene un correo válido registrado. Agréguelo en su ficha o envíe el recibo por WhatsApp.'],
+		default => '',
+	};
 	$enlaceRecibo = $insAlumno->enlacePublicoAbono((int)$pagoid);
 	$waDatos = [
 		'tipo'     => 'abono',
@@ -367,6 +364,8 @@
 		document.addEventListener("DOMContentLoaded", function() {
 			let alerta = <?php echo json_encode($alerta); ?>;
 			alertas_ajax(alerta); // Usamos tu función de alertas que ya tienes en ajax.js
+			/* Sin el /1/ o /0/ en la dirección: recargar no vuelve a avisar. */
+			history.replaceState(null, '', location.pathname.replace(/\/[012]\/?$/, '/'));
 		});
 		</script>
 	<?php endif; ?>

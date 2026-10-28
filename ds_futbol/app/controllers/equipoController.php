@@ -4,6 +4,48 @@
 
 	class equipoController extends mainModel{
 
+		/* «Todas las sedes» en el formulario: un equipo con niños de todas.
+		   Se guarda como equipo_sedeid = 0 (migración 076). */
+		const TODAS_LAS_SEDES = 'T';
+
+		/**
+		 * Sede y valor de inscripción del formulario, validados.
+		 * Devuelve ['sede' => int (0 = todas), 'valor' => ?string] o un
+		 * mensaje de error. «Todas las sedes» sólo la elige quien ve todas las
+		 * sedes (o deja la que ya tenía el equipo): un usuario de una sede no
+		 * arma equipos de las demás. Una sede concreta, de las suyas.
+		 */
+		private function sedeYValorDelFormulario(?int $sedeActual = null)
+		{
+			$sede = (string)($_POST['equipo_sedeid'] ?? '');
+			if ($sede === self::TODAS_LAS_SEDES) {
+				if (sedes_de_la_sesion() !== null && $sedeActual !== 0) {
+					return 'Sólo quien tiene acceso a todas las sedes puede armar un equipo de todas las sedes.';
+				}
+				$sedeId = 0;
+			} else {
+				$sedeId = (int)$sede;
+				if ($sedeId <= 0) {
+					return 'Elija la sede del equipo.';
+				}
+				if ($sedeId !== $sedeActual && !sede_en_la_sesion($sedeId)) {
+					return 'La sede elegida no está entre las suyas.';
+				}
+			}
+
+			/* Valor: «25», «25.50» o «25,50»; vacío = sin definir. */
+			$valor = trim(str_replace(',', '.', (string)($_POST['equipo_valorinscripcion'] ?? '')));
+			if ($valor === '') {
+				$valor = null;
+			} elseif (!preg_match('/^\d{1,6}(\.\d{1,2})?$/', $valor)) {
+				return 'El valor de inscripción debe ser un número, con hasta dos decimales (por ejemplo 25 o 25.50).';
+			} else {
+				$valor = number_format((float)$valor, 2, '.', '');
+			}
+
+			return ['sede' => $sedeId, 'valor' => $valor];
+		}
+
 		/*----------  Controlador registrar usuario  ----------*/
 		public function registrarEquipoControlador(){
 			# Almacenando datos#
@@ -16,9 +58,9 @@
 			$equipo_estado		= "A";
 
 			# Verificando campos obligatorios #
-			/* (int): en PHP 8, "" == 0 es FALSO, así que una sede o un profesor
-			   sin elegir —valor vacío— pasaba esta comprobación. */
-			if($equipo_nombre=="" || $equipo_categoria=="" || (int)$equipo_sedeid <= 0 || (int)$equipo_profesorid <= 0){
+			/* (int): en PHP 8, "" == 0 es FALSO, así que un profesor sin
+			   elegir —valor vacío— pasaba esta comprobación. */
+			if($equipo_nombre=="" || $equipo_categoria=="" || (int)$equipo_profesorid <= 0){
 				$alerta=[
 					"tipo"=>"simple",
 					"titulo"=>"Error",
@@ -26,7 +68,12 @@
 					"icono"=>"error"
 				];
 				return json_encode($alerta);
-			}			
+			}
+			$sedeValor = $this->sedeYValorDelFormulario();
+			if (is_string($sedeValor)) {
+				return json_encode(["tipo"=>"simple", "titulo"=>"Revise los datos", "texto"=>$sedeValor, "icono"=>"warning"], JSON_UNESCAPED_UNICODE);
+			}
+			$equipo_sedeid = $sedeValor['sede'];			
 
 			# Directorio de imagenes #
 			$img_dir="../views/imagenes/fotos/equipos/";
@@ -133,6 +180,11 @@
 					"campo_nombre"=>"equipo_categoria",
 					"campo_marcador"=>":Categoria",
 					"campo_valor"=>$equipo_categoria
+				],
+				[
+					"campo_nombre"=>"equipo_valorinscripcion",
+					"campo_marcador"=>":ValorInscripcion",
+					"campo_valor"=>$sedeValor['valor']
 				],		
 				[
 					"campo_nombre"=>"equipo_estado",
@@ -192,7 +244,7 @@
 		public function listarEquiposTorneo($equipo_torneoid){
 			$tabla="";
 			$torneo = (int)$equipo_torneoid;
-			$consulta_datos="SELECT s.sede_nombre, e.equipo_id, e.equipo_nombre, e.equipo_foto, e.equipo_categoria,
+			$consulta_datos="SELECT s.sede_nombre, e.equipo_sedeid, e.equipo_valorinscripcion, e.equipo_id, e.equipo_nombre, e.equipo_foto, e.equipo_categoria,
 								emp.empleado_nombre,
 								CASE WHEN e.equipo_estado='A' THEN 'Activo'
 								     WHEN e.equipo_estado='I' THEN 'Inactivo'
@@ -232,6 +284,14 @@
 				$profesor = trim((string)$rows['empleado_nombre']) !== ''
 					? $h($rows['empleado_nombre']) : '<span class="text-body-secondary">Sin profesor</span>';
 
+				/* Sede 0: un equipo con niños de todas las sedes (migración 076). */
+				$sede = (int)$rows['equipo_sedeid'] === 0
+					? '<i class="fas fa-layer-group" aria-hidden="true"></i> Todas las sedes'
+					: ($rows['sede_nombre'] !== null ? $h($rows['sede_nombre']) : '');
+				$valor = $rows['equipo_valorinscripcion'] !== null
+					? '$' . number_format((float)$rows['equipo_valorinscripcion'], 2, '.', ',')
+					: '<span class="text-body-secondary">Sin definir</span>';
+
 				$tabla.='
 					<tr>
 						<td class="ds-ficha__principal">
@@ -240,11 +300,12 @@
 								<div>
 									<div class="ds-ficha__nombre">'.$h($rows['equipo_nombre']).'</div>
 									<div class="ds-ficha__meta"><i class="fas fa-tag" aria-hidden="true"></i> '.$h($rows['equipo_categoria']).'
-										'.($rows['sede_nombre'] !== null ? ' · '.$h($rows['sede_nombre']) : '').'</div>
+										'.($sede !== '' ? ' · '.$sede : '').'<span class="ds-equipo__valor-meta"> · Inscripción '.$valor.'</span></div>
 								</div>
 							</div>
 						</td>
 						<td class="ds-ficha__dato" data-etiqueta="Profesor">'.$profesor.'</td>
+						<td class="ds-ficha__dato ds-equipo__valor ds-col-opcional" data-etiqueta="Inscripción por alumno" data-order="'.(float)$rows['equipo_valorinscripcion'].'">'.$valor.'</td>
 						<td class="ds-ficha__estado" data-order="'.$h($rows['ESTADO']).'">'.$badge.'</td>
 						<td class="ds-tabla-acciones ds-ficha__acciones"><div class="ds-ficha__botones">
 							<a href="'.APP_URL.'jugadorLista/'.$torneo.'/'.$id.'/" class="btn btn-primary btn-sm ds-ficha__primario"><i class="fas fa-list me-1" aria-hidden="true"></i>Jugadores</a>
@@ -275,18 +336,22 @@
 			return $datos;
 		}
 
-		public function BuscarEquipo($equipo_id){		
-			$consulta_datos=("SELECT equipo_id, equipo_profesorid, equipo_nombre, equipo_torneoid, sede_id, sede_nombre, equipo_categoria, equipo_foto,
-								CASE WHEN equipo_estado = 'A' THEN 'Activo' 
-									 WHEN equipo_estado = 'I' THEN 'Inactivo' 
-									 ELSE equipo_estado 
-								END AS ESTADO 
-							 FROM torneo_equipo, general_sede
-							 WHERE equipo_sedeid = sede_id
-							 	AND equipo_estado IN ('A','I')
-							 	AND equipo_id = :equipo");	
+		/* LEFT JOIN con la sede: un equipo de «todas las sedes» (equipo_sedeid
+		   = 0) no tiene fila en general_sede y, con el JOIN de antes, no se
+		   encontraba. sede_id sigue siendo el del equipo (0 = todas). */
+		public function BuscarEquipo($equipo_id){
+			$consulta_datos=("SELECT e.equipo_id, e.equipo_profesorid, e.equipo_nombre, e.equipo_torneoid, e.equipo_sedeid AS sede_id,
+								COALESCE(s.sede_nombre, 'Todas las sedes') AS sede_nombre, e.equipo_categoria, e.equipo_foto, e.equipo_valorinscripcion,
+								CASE WHEN e.equipo_estado = 'A' THEN 'Activo'
+									 WHEN e.equipo_estado = 'I' THEN 'Inactivo'
+									 ELSE e.equipo_estado
+								END AS ESTADO
+							 FROM torneo_equipo e
+							 LEFT JOIN general_sede s ON s.sede_id = e.equipo_sedeid
+							 WHERE e.equipo_estado IN ('A','I')
+							 	AND e.equipo_id = :equipo");
 
-			$datos = $this->ejecutarConsulta($consulta_datos, [':equipo' => (int)$equipo_id]);		
+			$datos = $this->ejecutarConsulta($consulta_datos, [':equipo' => (int)$equipo_id]);
 			return $datos;
 		}
 		public function actualizarEquipoControlador(){
@@ -318,9 +383,9 @@
 			$equipo_categoria	= $this->limpiarCadena($_POST['equipo_categoria']);
 						
 			# Verificando campos obligatorios #
-			/* (int): en PHP 8, "" == 0 es FALSO, así que una sede o un profesor
-			   sin elegir —valor vacío— pasaba esta comprobación. */
-			if($equipo_nombre=="" || $equipo_categoria=="" || (int)$equipo_sedeid <= 0 || (int)$equipo_profesorid <= 0){
+			/* (int): en PHP 8, "" == 0 es FALSO, así que un profesor sin
+			   elegir —valor vacío— pasaba esta comprobación. */
+			if($equipo_nombre=="" || $equipo_categoria=="" || (int)$equipo_profesorid <= 0){
 				$alerta=[
 					"tipo"=>"simple",
 					"titulo"=>"Error",
@@ -329,6 +394,11 @@
 				];
 				return json_encode($alerta);
 			}
+			$sedeValor = $this->sedeYValorDelFormulario((int)$equipo['equipo_sedeid']);
+			if (is_string($sedeValor)) {
+				return json_encode(["tipo"=>"simple", "titulo"=>"Revise los datos", "texto"=>$sedeValor, "icono"=>"warning"], JSON_UNESCAPED_UNICODE);
+			}
+			$equipo_sedeid = $sedeValor['sede'];
 
 			$equipo_datos_reg=[
 				[
@@ -355,6 +425,11 @@
 					"campo_nombre"=>"equipo_categoria",
 					"campo_marcador"=>":Categoria",
 					"campo_valor"=>$equipo_categoria
+				],
+				[
+					"campo_nombre"=>"equipo_valorinscripcion",
+					"campo_marcador"=>":ValorInscripcion",
+					"campo_valor"=>$sedeValor['valor']
 				],		
 				[
 					"campo_nombre"=>"equipo_estado",
@@ -592,21 +667,31 @@
 			return json_encode($alerta);
 		}
 		
+		/**
+		 * Las sedes para el formulario: las de la sesión y, para quien ve todas
+		 * (o si el equipo ya es de todas), «Todas las sedes». $sedeid null = alta
+		 * sin elegir; 0 = todas.
+		 */
 		public function listarOptionSede($sedeid){
 			$option="";
-
-			$consulta_datos="SELECT sede_id, sede_nombre FROM general_sede ORDER BY sede_nombre";
-
-			$datos = $this->ejecutarConsulta($consulta_datos);
-			$datos = $datos->fetchAll();
 			$h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+
+			if (sedes_de_la_sesion() === null || $sedeid === 0) {
+				$option .= '<option value="' . self::TODAS_LAS_SEDES . '"' . ($sedeid === 0 ? ' selected' : '') . '>Todas las sedes</option>';
+			}
+
+			/* La sede que ya tiene el equipo se ofrece aunque no sea de las suyas:
+			   si no, al editar caería en «Seleccione» sin que nadie lo pidiera. */
+			$datos = $this->ejecutarConsulta(
+				"SELECT sede_id, sede_nombre FROM general_sede
+				  WHERE " . sql_sedes_de_la_sesion('sede_id') . " OR sede_id = :actual
+				  ORDER BY sede_nombre", [':actual' => (int)$sedeid])->fetchAll();
 			foreach($datos as $rows){
-				$sel = ((int)$sedeid === (int)$rows['sede_id']) ? ' selected' : '';
+				$sel = ($sedeid !== null && (int)$sedeid === (int)$rows['sede_id']) ? ' selected' : '';
 				$option.='<option value="'.(int)$rows['sede_id'].'"'.$sel.'>'.$h($rows['sede_nombre']).'</option>';
 			}
 			return $option;
 		}
-
 		public function listarResponsable($equipo_profesorid){
 			$option="";
 

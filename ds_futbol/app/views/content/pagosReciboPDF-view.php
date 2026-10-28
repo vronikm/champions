@@ -111,7 +111,11 @@
     $pdf->SetXY( 46, 71 ); $pdf->SetFont( "Arial", "", 10 ); $pdf->Cell( 20, 0, mb_convert_encoding(ucfirst($insAlumno->textoLetras($datos['PAGO_INICIAL'])), 'ISO-8859-1', 'UTF-8'), 0, 0, 'L');
 
     $pdf->SetXY( 15, 80 ); $pdf->SetFont( "Arial", "B", 10 ); $pdf->Cell( 20, -3, "Por concepto de:", 0, 0, 'L');
-    $pdf->SetXY( 46, 80 ); $pdf->SetFont( "Arial", "", 10 ); $pdf->Cell( 20, -3, mb_convert_encoding($datos['RUBRO']." ".$datos['torneo_nombre']." ".$datos['pago_periodo'].", ".$datos['pago_concepto'], 'ISO-8859-1', 'UTF-8'), 0, 0, 'L');
+    /* «Por concepto de»: el rubro, el torneo y el período, y el detalle tras una coma,
+       sin huecos si falta alguno; encajado en su renglón (74-81 mm) aunque sea largo. */
+    $concepto = implode(' ', array_filter(array_map('trim', [(string)$datos['RUBRO'], (string)$datos['torneo_nombre'], (string)$datos['pago_periodo']]), 'strlen'));
+    $detalle = trim((string)$datos['pago_concepto']);
+    ds_pdf_texto_encajado($pdf, mb_convert_encoding($concepto . ($detalle !== '' ? ', ' . $detalle : ''), 'ISO-8859-1', 'UTF-8'), 46, 74.5, 152, 6.5);
 
     $pdf->SetXY( 15, 89 ); $pdf->SetFont( "Arial", "B", 10 ); $pdf->Cell( 20, -7, "Forma de pago:", 0, 0, 'L');
     $pdf->SetXY( 46, 89 ); $pdf->SetFont( "Arial", "", 10 ); $pdf->Cell( 20, -7, mb_convert_encoding($datos['FORMAPAGO'], 'ISO-8859-1', 'UTF-8'), 0, 0, 'L');

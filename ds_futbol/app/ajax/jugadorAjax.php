@@ -22,6 +22,11 @@
 			echo $insjugador->agregarJugador();
 		}
 
+		/* Pagar la inscripción al torneo y agregar al equipo (jugadorNew). */
+		if($_POST["modulo_jugador"]=="registrar_pago_inscripcion"){
+			echo $insjugador->pagarInscripcionControlador();
+		}
+
 		if($_POST['modulo_jugador']=="eliminar"){
 			echo $insjugador->eliminarJugador();
 		}			

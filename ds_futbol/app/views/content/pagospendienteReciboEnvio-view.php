@@ -106,7 +106,11 @@
         $pdf->SetXY( 46, 71 ); $pdf->SetFont( "Arial", "", 10 ); $pdf->Cell( 20, 0, mb_convert_encoding(ucfirst($insAlumno->textoLetras($datos['transaccion_valor'])), 'ISO-8859-1', 'UTF-8'), 0, 0, 'L');
 
         $pdf->SetXY( 15, 80 ); $pdf->SetFont( "Arial", "B", 10 ); $pdf->Cell( 20, -3, "Por concepto de:", 0, 0, 'L');
-        $pdf->SetXY( 46, 80 ); $pdf->SetFont( "Arial", "", 10 ); $pdf->Cell( 20, -3, mb_convert_encoding($datos['RUBRO']." ".$datos['pago_periodo'].", ".$datos['transaccion_concepto'], 'ISO-8859-1', 'UTF-8'), 0, 0, 'L');
+        /* «Por concepto de»: el rubro, el torneo y el período, y el detalle tras una coma,
+           sin huecos si falta alguno; encajado en su renglón (74-81 mm) aunque sea largo. */
+        $concepto = implode(' ', array_filter(array_map('trim', [(string)$datos['RUBRO'], (string)$datos['pago_periodo']]), 'strlen'));
+        $detalle = trim((string)$datos['transaccion_concepto']);
+        ds_pdf_texto_encajado($pdf, mb_convert_encoding($concepto . ($detalle !== '' ? ', ' . $detalle : ''), 'ISO-8859-1', 'UTF-8'), 46, 74.5, 152, 6.5);
 
         $pdf->SetXY( 15, 89 ); $pdf->SetFont( "Arial", "B", 10 ); $pdf->Cell( 20, -7, "Forma de pago:", 0, 0, 'L');
         $pdf->SetXY( 46, 89 ); $pdf->SetFont( "Arial", "", 10 ); $pdf->Cell( 20, -7, mb_convert_encoding($datos['FORMAPAGO'], 'ISO-8859-1', 'UTF-8'), 0, 0, 'L');
@@ -190,20 +194,22 @@
 	$body .= $file_content."\r\n\r\n";
 	$body .= "--".$uid."--";
     
-    chmod($file_path, 0777);
-	unlink($file_path);
-	header("Location: ".APP_URL."pagospendienteRecibo/".$pagoid."/");
-    
-	// Enviar el correo
-	if (mail($to, $subject, $body, $headers)) {
-		$envio = 1;
-	}else{
-        $envio = 0;
-
-    }
-
-	chmod($file_path, 0777);
-	unlink($file_path);
+	/* Una sola redirección, con el resultado (ver pagosReciboEnvio-view.php):
+	   1 enviado, 0 falló, 2 sin correo. */
+	@unlink($file_path);
+	if (!filter_var(trim((string)$to), FILTER_VALIDATE_EMAIL)) {
+		$envio = 2;
+	} else {
+		$avisoCorreo = '';
+		set_error_handler(function ($n, $texto) use (&$avisoCorreo) { $avisoCorreo = trim((string)$texto); return true; });
+		try {
+			$envio = mail($to, $subject, $body, $headers) ? 1 : 0;
+		} finally {
+			restore_error_handler();
+		}
+		if ($envio === 0) { error_log('[abono ' . $pagoid . '] mail() no envió: ' . $avisoCorreo); }
+	}
 	header("Location: ".APP_URL."pagospendienteRecibo/".$pagoid."/$envio/");
+	exit();
      //header("Location: ../presupuestos_from.php?idprof=".$idprof."&id=".$cliente_id);
    	// Envio de correo -----------------------------------

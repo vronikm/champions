@@ -387,4 +387,49 @@ if (!function_exists('ds_organizacion')) {
 
         return $ok ? $destino : '';
     }
+
+    /**
+     * Un texto dentro de un recuadro de un renglón de un PDF (FPDF), sin
+     * salirse: con la letra de $tamMax si cabe; si no, más pequeña hasta
+     * $tamMin; y si aun así no cabe, en dos líneas dentro del mismo alto
+     * (la segunda se recorta con «…» si hiciera falta). Centrado en vertical.
+     *
+     * $texto ya en la codificación del PDF (Windows-1252 / ISO-8859-1).
+     * Lo usan los recibos («Por concepto de»), donde un torneo de nombre largo
+     * más el concepto del pago se salía del recibo.
+     */
+    function ds_pdf_texto_encajado(object $pdf, string $texto, float $x, float $y, float $ancho, float $alto,
+                                   string $estilo = '', float $tamMax = 10, float $tamMin = 7): void
+    {
+        $texto = trim(preg_replace('/\s+/', ' ', $texto));
+        for ($t = $tamMax; $t >= $tamMin; $t -= 0.5) {
+            $pdf->SetFont('Arial', $estilo, $t);
+            if ($pdf->GetStringWidth($texto) <= $ancho) {
+                $pdf->SetXY($x, $y);
+                $pdf->Cell($ancho, $alto, $texto, 0, 0, 'L');
+                return;
+            }
+        }
+
+        /* Dos líneas con la letra mínima: la primera, todas las palabras que quepan. */
+        $pdf->SetFont('Arial', $estilo, $tamMin);
+        $palabras = explode(' ', $texto);
+        $linea1 = '';
+        while ($palabras && $pdf->GetStringWidth(trim($linea1 . ' ' . $palabras[0])) <= $ancho) {
+            $linea1 = trim($linea1 . ' ' . array_shift($palabras));
+        }
+        $linea2 = implode(' ', $palabras);
+        $puntos = chr(133);   /* «…» en Windows-1252 */
+        if ($pdf->GetStringWidth($linea2) > $ancho) {
+            while ($linea2 !== '' && $pdf->GetStringWidth($linea2 . $puntos) > $ancho) {
+                $linea2 = substr($linea2, 0, -1);
+            }
+            $linea2 = rtrim($linea2) . $puntos;
+        }
+        $mitad = $alto / 2;
+        $pdf->SetXY($x, $y);
+        $pdf->Cell($ancho, $mitad, $linea1, 0, 0, 'L');
+        $pdf->SetXY($x, $y + $mitad);
+        $pdf->Cell($ancho, $mitad, $linea2, 0, 0, 'L');
+    }
 }

@@ -14,7 +14,7 @@ MYSQL=/ruta/a/mysql MYSQL_OPTS="-u USUARIO -pCLAVE" \
   ds_core/database/migracion_champions/aplicar_migracion.sh BASE
 ```
 
-Aplica los 77 archivos en el orden correcto y se detiene en el primer error.
+Aplica los 78 archivos en el orden correcto y se detiene en el primer error.
 Antes de empezar comprueba que `BASE` sea una copia de SoccerEasy **sin migrar**:
 si ya tiene `facturas_electronicas`, no aplica nada, porque varias migraciones no
 se pueden repetir.
@@ -93,6 +93,10 @@ en desarrollo y llevar el resultado a producción con un volcado (ver más abajo
     (tratamiento de datos, uso de imagen y el formulario en papel), editables en Core › Textos de
     autorizaciones, con una versión por cada cambio; menú en Core. Sin
     versiones vale el texto de `ds_form/config/consentimientos.php`. Repetible.
+17. `076_equipo_valor_inscripcion.sql`: valor de inscripción de cada equipo de
+    torneo (lo que se cobra a cada alumno que juega con él). Un equipo de
+    «todas las sedes» se guarda con `equipo_sedeid = 0`, sin cambio de
+    esquema. Repetible.
 
 ```bash
 mysql -u USUARIO -p --default-character-set=utf8mb4 BASE < ARCHIVO.sql

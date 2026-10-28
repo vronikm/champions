@@ -273,8 +273,12 @@
    del listado mide unos 700 px y la tabla de Torneos pedía 843. Las columnas
    marcadas .ds-col-opcional (th y td) se ocultan en ese tramo; el dato sigue
    en la ficha y en pantallas grandes. */
+/* Equipos: el valor de inscripción va en su columna; donde ésta se oculta
+   (abajo), debajo del nombre. */
+.ds-equipo__valor-meta { display: none; }
 @media (min-width: 992px) and (max-width: 1279.98px) {
     .ds-crud__tabla .ds-col-opcional { display: none; }
+    .ds-crud__tabla .ds-equipo__valor-meta { display: inline; }
     /* Y el rango de fechas puede partirse en dos líneas: sin esto aún
        faltaban ~25 px a 992. */
     .ds-crud__tabla .ds-ficha__nowrap { white-space: normal; }

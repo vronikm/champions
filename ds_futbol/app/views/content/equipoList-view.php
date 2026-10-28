@@ -27,7 +27,8 @@
 	$equipo_profesorid = 0;
 	$equipo_nombre     = '';
 	$equipo_categoria  = '';
-	$equipo_sedeid     = 0;
+	$equipo_sedeid     = null;   /* null: sin elegir; 0: todas las sedes (migración 076) */
+	$equipo_valor      = '';
 
 	if ($equipo_id > 0) {
 		$datosEquipo = $insEquipo->BuscarEquipo($equipo_id);
@@ -41,6 +42,7 @@
 			$equipo_nombre     = $datosEquipo['equipo_nombre'];
 			$equipo_categoria  = $datosEquipo['equipo_categoria'];
 			$equipo_sedeid     = (int)$datosEquipo['sede_id'];
+			$equipo_valor      = $datosEquipo['equipo_valorinscripcion'] !== null ? number_format((float)$datosEquipo['equipo_valorinscripcion'], 2, '.', '') : '';
 		} else {
 			$equipo_id = 0;
 		}
@@ -159,10 +161,14 @@
 										<?php /* El marcador va con value="" para que «required» lo
 										         rechace en el navegador; el servidor lo vuelve a
 										         comprobar ((int) <= 0). */ ?>
-										<select class="form-select" id="equipo_sedeid" name="equipo_sedeid" required>
-											<option value=""<?php echo $equipo_sedeid > 0 ? '' : ' selected'; ?>>Seleccione una sede</option>
+										<?php /* «Todas las sedes»: un equipo con niños de todas las sedes
+										         (se guarda como sede 0). La ofrece listarOptionSede a quien
+										         ve todas las sedes. */ ?>
+										<select class="form-select" id="equipo_sedeid" name="equipo_sedeid" required aria-describedby="equipo_sede_ayuda">
+											<option value=""<?php echo $equipo_sedeid === null ? ' selected' : ''; ?>>Seleccione una sede</option>
 											<?php echo $insEquipo->listarOptionSede($equipo_sedeid); ?>
 										</select>
+										<div class="form-text" id="equipo_sede_ayuda">«Todas las sedes» si el equipo junta niños de varias sedes.</div>
 									</div>
 									<div class="col-12 col-md-6">
 										<label for="equipo_profesorid" class="form-label">Profesor a cargo <span class="text-danger" aria-hidden="true">*</span></label>
@@ -170,6 +176,16 @@
 											<option value=""<?php echo $equipo_profesorid > 0 ? '' : ' selected'; ?>>Seleccione un profesor</option>
 											<?php echo $insEquipo->listarResponsable($equipo_profesorid); ?>
 										</select>
+									</div>
+									<div class="col-12 col-md-6">
+										<label for="equipo_valorinscripcion" class="form-label">Valor de la inscripción por alumno</label>
+										<div class="input-group">
+											<span class="input-group-text">$</span>
+											<input type="text" class="form-control" id="equipo_valorinscripcion" name="equipo_valorinscripcion"
+											       inputmode="decimal" maxlength="9" pattern="\d{1,6}([.,]\d{1,2})?" placeholder="0.00"
+											       value="<?php echo $h($equipo_valor); ?>" aria-describedby="equipo_valor_ayuda">
+										</div>
+										<div class="form-text" id="equipo_valor_ayuda">Lo que se cobra a cada alumno que juega el torneo con este equipo. Déjelo vacío si aún no está definido.</div>
 									</div>
 								</div>
 								<p class="small text-body-secondary mt-2 mb-0"><span class="text-danger">*</span> Campos obligatorios.</p>
@@ -202,6 +218,7 @@
 								<tr>
 									<th>Equipo</th>
 									<th>Profesor a cargo</th>
+									<th class="ds-col-opcional">Inscripción</th>
 									<th>Estado</th>
 									<th class="text-end"><span class="visually-hidden">Acciones</span></th>
 								</tr>
@@ -238,8 +255,9 @@
 				pageLength: 10,
 				order: [],                      /* el del servidor: categoría y nombre */
 				columnDefs: [
-					{ targets: 2, type: 'string' },
-					{ targets: 3, orderable: false, searchable: false }
+					{ targets: 2, type: 'num' },
+					{ targets: 3, type: 'string' },
+					{ targets: 4, orderable: false, searchable: false }
 				],
 				layout: {
 					topStart: null,

@@ -74,6 +74,141 @@
 			};
 		}
 
+		/*
+		| AUTORIZACIONES LOPDP (las de Consentimientos LOPDP)
+		|
+		| Lo vigente de cada alumno es su última fila de cada tipo en
+		| alumno_consentimiento; de ahí sale el estado del representante y por
+		| dónde autorizó: el formulario de inscripción en línea (FORMULARIO),
+		| el enlace de autorización (ENLACE) o el sistema (ADMIN). Mismo
+		| criterio de «pendiente» que consentimientoController::alumnoPendiente:
+		| sin datos autorizados, o sin respuesta sobre la imagen.
+		*/
+		private static function ultimoConsentimiento(string $tipo, string $campo, string $alumno = 'a.alumno_id'): string
+		{
+			/* $campo: una columna de c, o una expresión ya escrita sobre c. */
+			$expr = str_contains($campo, '(') ? $campo : "c.$campo";
+			return "(SELECT $expr FROM alumno_consentimiento c WHERE c.consent_alumnoid = $alumno AND c.consent_tipo = '$tipo'
+			          ORDER BY c.consent_fecha DESC, c.consent_id DESC LIMIT 1)";
+		}
+
+		/** Filtro «Autorización» de la búsqueda (sobre los alumnos de sus sedes). */
+		private function condicionAutorizacion(string $aut): string
+		{
+			$alumnos = "SELECT 1 FROM sujeto_alumno a WHERE a.alumno_repreid = repre_id AND a.alumno_estado <> 'E'
+			              AND " . sql_sedes_de_la_sesion('a.alumno_sedeid');
+			$pendiente = "(COALESCE(" . self::ultimoConsentimiento('DATOS', 'consent_otorgado') . ", 'X') <> 'S'
+			               OR " . self::ultimoConsentimiento('IMAGEN', 'consent_otorgado') . " IS NULL)";
+			$por = static fn(string $origen) => "EXISTS ($alumnos AND ("
+				. self::ultimoConsentimiento('DATOS', "CONCAT(c.consent_otorgado, c.consent_origen)") . " = 'S$origen' OR "
+				. self::ultimoConsentimiento('IMAGEN', "CONCAT(c.consent_otorgado, c.consent_origen)") . " = 'S$origen'))";
+			return match ($aut) {
+				'P'     => "EXISTS ($alumnos AND $pendiente)",
+				'C'     => "EXISTS ($alumnos) AND NOT EXISTS ($alumnos AND $pendiente)",
+				'E'     => $por('ENLACE'),
+				'F'     => $por('FORMULARIO'),
+				default => '1 = 1',
+			};
+		}
+
+		/**
+		 * Las autorizaciones de los representantes de una página, por tipo:
+		 * [repre_id => ['DATOS' => ['estado' => S|N|null, 'origenes' => [...], 'fecha' => ...], 'IMAGEN' => …, 'alumnos' => n]]
+		 *   S     todos sus alumnos la tienen otorgada
+		 *   N     alguno la revocó o no la autoriza (y a ninguno le falta)
+		 *   null  a alguno le falta (pendiente)
+		 */
+		private function autorizacionesRepresentantes(array $ids): array
+		{
+			if (!$ids) { return []; }
+			$lista = implode(',', array_map('intval', $ids));
+			return self::agregarAutorizaciones($this->filasAutorizacion(
+				"a.alumno_repreid IN ($lista) AND a.alumno_estado <> 'E' AND " . sql_sedes_de_la_sesion('a.alumno_sedeid')), 'repre');
+		}
+
+		/**
+		 * Las de un representante, para su ficha: el resumen (como en el
+		 * listado) y cada alumno por su id. Los mismos alumnos que muestra la
+		 * ficha: activos e inactivos.
+		 */
+		public function autorizacionesFicha(int $repreid): array
+		{
+			$filas = $this->filasAutorizacion("a.alumno_repreid = " . (int)$repreid . " AND a.alumno_estado IN ('A','I')");
+			return [
+				'resumen' => self::agregarAutorizaciones($filas, 'repre')[$repreid] ?? null,
+				'alumnos' => self::agregarAutorizaciones($filas, 'alumno'),
+			];
+		}
+
+		/** Lo vigente de cada tipo para los alumnos que cumplen $condicion (sobre «a»). */
+		private function filasAutorizacion(string $condicion): array
+		{
+			return $this->ejecutarConsulta(
+				"SELECT a.alumno_repreid AS repre, a.alumno_id AS alumno,
+				        " . self::ultimoConsentimiento('DATOS', 'consent_otorgado') . " AS datos,
+				        " . self::ultimoConsentimiento('DATOS', 'consent_origen') . " AS datos_origen,
+				        " . self::ultimoConsentimiento('DATOS', 'consent_fecha') . " AS datos_fecha,
+				        " . self::ultimoConsentimiento('IMAGEN', 'consent_otorgado') . " AS imagen,
+				        " . self::ultimoConsentimiento('IMAGEN', 'consent_origen') . " AS imagen_origen,
+				        " . self::ultimoConsentimiento('IMAGEN', 'consent_fecha') . " AS imagen_fecha
+				   FROM sujeto_alumno a
+				  WHERE $condicion"
+			)->fetchAll(\PDO::FETCH_ASSOC);
+		}
+
+		/** Agrupa las filas de filasAutorizacion() por representante o por alumno. */
+		private static function agregarAutorizaciones(array $filas, string $clave): array
+		{
+			$res = [];
+			foreach ($filas as $f) {
+				$r = (int)$f[$clave];
+				$res[$r] ??= ['alumnos' => 0,
+				              'DATOS'  => ['falta' => 0, 'no' => 0, 'origenes' => [], 'fecha' => ''],
+				              'IMAGEN' => ['falta' => 0, 'no' => 0, 'origenes' => [], 'fecha' => '']];
+				$res[$r]['alumnos']++;
+				foreach (['DATOS' => 'datos', 'IMAGEN' => 'imagen'] as $tipo => $c) {
+					$t = &$res[$r][$tipo];
+					if ($f[$c] === null) { $t['falta']++; }
+					elseif ($f[$c] === 'N') { $t['no']++; }
+					else {
+						$t['origenes'][$f[$c . '_origen']] = true;
+						$t['fecha'] = max($t['fecha'], (string)$f[$c . '_fecha']);
+					}
+					unset($t);
+				}
+			}
+			foreach ($res as &$r) {
+				foreach (['DATOS', 'IMAGEN'] as $tipo) {
+					$t = $r[$tipo];
+					$r[$tipo]['estado'] = $t['falta'] > 0 ? null : ($t['no'] > 0 ? 'N' : 'S');
+					$r[$tipo]['origenes'] = array_keys($t['origenes']);
+				}
+			}
+			return $res;
+		}
+
+		/** Una autorización (listado y ficha): estado y por dónde se dio. */
+		public static function chipAutorizacion(string $etiqueta, array $t): string
+		{
+			$ORIGEN = ['ENLACE' => ['Enlace', 'text-bg-primary'], 'FORMULARIO' => ['Formulario', 'text-bg-info'], 'ADMIN' => ['Administrador', 'text-bg-warning']];
+			$fecha = $t['fecha'] !== '' ? date('d/m/Y', strtotime($t['fecha'])) : '';
+			[$clase, $icono, $estado, $titulo] = match ($t['estado']) {
+				'S'     => ['ds-repres__aut--si', 'fa-circle-check', 'autorizado', 'Autorizado' . ($fecha ? ' (último: ' . $fecha . ')' : '')],
+				'N'     => ['ds-repres__aut--no', 'fa-circle-xmark', $etiqueta === 'Imagen' ? 'no autoriza' : 'revocado', $etiqueta === 'Imagen' ? 'No autoriza el uso de imagen' : 'Revocado'],
+				default => ['ds-repres__aut--falta', 'fa-hourglass-half', 'pendiente', 'Falta la autorización de algún alumno'],
+			};
+			$origenes = '';
+			if ($t['estado'] !== null) {
+				foreach ($t['origenes'] as $o) {
+					[$texto, $color] = $ORIGEN[$o] ?? [$o, 'text-bg-secondary'];
+					$origenes .= ' <span class="badge ' . $color . '">' . $texto . '</span>';
+				}
+			}
+			return '<span class="ds-repres__aut ' . $clase . '" title="' . $etiqueta . ': ' . $titulo . '">'
+			     . '<i class="fas ' . $icono . '" aria-hidden="true"></i> <strong>' . $etiqueta . '</strong> '
+			     . '<span class="ds-repres__aut-estado">' . $estado . '</span>' . $origenes . '</span>';
+		}
+
 		public function representantesServidor(array $peticion): array
 		{
 			$dibujo  = (int)($peticion['draw'] ?? 1);
@@ -124,6 +259,10 @@
 				$donde .= " AND (repre_apellidopaterno LIKE :ape1 OR repre_apellidomaterno LIKE :ape2)";
 				$par[':ape1'] = $par[':ape2'] = $criterio('apellido') . '%';
 			}
+			$aut = in_array($criterio('autorizacion'), ['P', 'C', 'E', 'F'], true) ? $criterio('autorizacion') : 'T';
+			if ($aut !== 'T') {
+				$donde .= " AND " . $this->condicionAutorizacion($aut);
+			}
 			if ($criterio('nombre') !== '') {
 				$donde .= " AND (repre_primernombre LIKE :nom1 OR repre_segundonombre LIKE :nom2)";
 				$par[':nom1'] = $par[':nom2'] = $criterio('nombre') . '%';
@@ -171,6 +310,7 @@
 			$puedeCrear    = puede('crear', 'representanteList');
 			$puedeEditar   = puede('editar', 'representanteList');
 			$puedeEliminar = puede('eliminar', 'representanteList');
+			$autorizaciones = $this->autorizacionesRepresentantes(array_column($filas, 'repre_id'));
 
 			$datos = [];
 			foreach ($filas as $r) {
@@ -191,17 +331,26 @@
 				                  ? ' <span class="small text-body-secondary text-nowrap">' . ($nActivos === 0 ? 'ninguno activo' : $nActivos . ($nActivos === 1 ? ' activo' : ' activos')) . '</span>'
 				                  : '');
 
-				/* Protección de datos: el formulario, un BOTÓN (antes un icono
-				   suelto de 12 px, difícil de acertar), y su estado. Quien puede
-				   editar lo cambia con el mismo botón (Firmado / Pendiente). */
-				$celdaDatos = '<div class="ds-repres__datos">'
-				            . '<a href="' . APP_URL . 'representanteFLPD/' . $id . '/" target="_blank" rel="noopener" class="btn btn-sm btn-light border" title="Abrir el formulario de protección de datos">'
-				            . '<i class="fas fa-file-signature me-1" aria-hidden="true"></i>Formulario</a>'
+				/* Protección de datos, en dos partes:
+				   1. Las autorizaciones LOPDP de sus alumnos (Consentimientos
+				      LOPDP): datos e imagen, y por dónde se dieron — el enlace,
+				      el formulario de inscripción en línea o el sistema.
+				   2. El formulario en papel (Formulario LPD): un BOTÓN (antes un
+				      icono suelto de 12 px) y su estado; quien puede editar lo
+				      cambia con el mismo botón (Firmado / Pendiente). */
+				$aut = $autorizaciones[$id] ?? null;
+				$celdaAut = $aut
+					? '<div class="ds-repres__auts">' . self::chipAutorizacion('Datos', $aut['DATOS']) . self::chipAutorizacion('Imagen', $aut['IMAGEN']) . '</div>'
+					: '<div class="ds-repres__auts"><span class="small text-body-secondary">Sin alumnos en sus sedes</span></div>';
+				$celdaDatos = $celdaAut
+				            . '<div class="ds-repres__datos">'
+				            . '<a href="' . APP_URL . 'representanteFLPD/' . $id . '/" target="_blank" rel="noopener" class="btn btn-sm btn-light border" title="Abrir el formulario de protección de datos en papel">'
+				            . '<i class="fas fa-file-signature me-1" aria-hidden="true"></i>Formulario LPD</a>'
 				            . ($puedeEditar
 				                ? '<button type="button" class="btn btn-sm ' . ($firmado ? 'btn-success' : 'btn-warning') . ' js-repre" data-accion="estadofirmado" data-id="' . $id . '"'
-				                  . ' title="' . ($firmado ? 'Marcar como pendiente' : 'Marcar como firmado') . '">'
-				                  . '<i class="fas ' . ($firmado ? 'fa-circle-check' : 'fa-hourglass-half') . ' me-1" aria-hidden="true"></i>' . ($firmado ? 'Firmado' : 'Pendiente') . '</button>'
-				                : '<span class="badge ' . ($firmado ? 'text-bg-success' : 'text-bg-warning') . '">' . ($firmado ? 'Firmado' : 'Pendiente') . '</span>')
+				                  . ' title="Formulario en papel: ' . ($firmado ? 'firmado. Marcar como pendiente' : 'pendiente. Marcar como firmado') . '">'
+				                  . '<i class="fas ' . ($firmado ? 'fa-circle-check' : 'fa-hourglass-half') . ' me-1" aria-hidden="true"></i>' . ($firmado ? 'Firmado' : 'Sin firmar') . '</button>'
+				                : '<span class="badge ' . ($firmado ? 'text-bg-success' : 'text-bg-warning') . '" title="Formulario en papel">' . ($firmado ? 'Firmado' : 'Sin firmar') . '</span>')
 				            . '</div>';
 
 				$botones = '<a href="' . APP_URL . 'representanteProfile/' . $id . '/" class="btn btn-primary btn-sm ds-ficha__primario"><i class="fas fa-id-card me-1" aria-hidden="true"></i>Ver ficha</a>';

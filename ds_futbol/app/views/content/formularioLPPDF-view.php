@@ -77,9 +77,11 @@
                 ds_pdf_imagen_encajada($this, $this->logoPath, 10, 8, 25, 25, 'L');
             }
           
+            /* El título es editable (Core › Textos de autorizaciones): se
+               parte en las líneas que haga falta, a la derecha del logo. */
             $this->SetFont('Arial', 'B', 10);
-            $this->Cell(0, 5, mb_convert_encoding('FORMULARIO DE CONSENTIMIENTO INFORMADO DE RECOLECCIÓN ', 'ISO-8859-1', 'UTF-8'), 0, 1, 'R');
-            $this->Cell(0, 5, mb_convert_encoding('Y TRATAMIENTO DE DATOS PERSONALES', 'ISO-8859-1', 'UTF-8'), 0, 1,'R');
+            $this->SetX(40);
+            $this->MultiCell(0, 5, $this->subtitle, 0, 'R');
             $this->Cell(0, 5, $this->title, 0, 1,'R');
             $this->Ln(5);
         }
@@ -101,7 +103,13 @@
 
     $titulo = mb_convert_encoding(ds_nombre_organizacion_may($repre_sedeid), 'ISO-8859-1', 'UTF-8');
 
+    /* El texto vigente del formulario en papel (Core › Textos de
+       autorizaciones); sin versiones, el de siempre. */
+    $form = consent_formulario(ds_nombre_organizacion() ?: DS_HUB_NAME, (string)($sede_nombre ?? ''), (string)($sede_email ?? ds_email_organizacion()));
+
     $pdf = new PDF($titulo, $logo);
+    $pdf->subtitle = mb_convert_encoding($form['titulo'], 'Windows-1252', 'UTF-8');
+    $pdf->SetAutoPageBreak(true, 15);
     $pdf->AddPage();
 
     $pdf->SetFont('Arial', 'B', 10);
@@ -114,54 +122,11 @@
     $pdf->AddBullet(mb_convert_encoding('Nombre del representante: '.$datos["REPRESENTANTE"], 'ISO-8859-1', 'UTF-8'),5);
     $pdf->AddBullet(mb_convert_encoding('Identificación del representante: '.$datos["repre_identificacion"], 'ISO-8859-1', 'UTF-8'),5);
 
-    $pdf->SetFont('Arial', 'B', 10);
-    $pdf->Cell(0, 10, '2. Finalidad del Tratamiento de Datos', 0, 2, 'L');
-    
-    $pdf->SetFont('Arial', '', 9);
-    // Agregar contenido del formulario
-    $text2 = mb_convert_encoding("En ".ds_nombre_organizacion($repre_sedeid).", recolectamos y tratamos los datos personales de nuestros alumnos y sus representantes legales con las siguientes finalidades:", 'ISO-8859-1', 'UTF-8');
-       
-    // Escribir el texto en el PDF
-    $pdf->MultiCell(0,5, $text2);
-
-    $pdf->AddBullet(mb_convert_encoding('Gestión administrativa y operativa de la inscripción, pagos mensuales y participación del alumno en las actividades de '.ds_nombre_organizacion($repre_sedeid).'.', 'ISO-8859-1', 'UTF-8'),5);
-    $pdf->AddBullet(mb_convert_encoding('Comunicación de eventos, horarios de entrenamiento, fechas de torneos, actividades y todo tipo de información relevante.', 'ISO-8859-1', 'UTF-8'),5);
-    $pdf->AddBullet(mb_convert_encoding('Atención de situaciones de emergencia, incluyendo acceso a información de contacto y datos médicos básicos proporcionados por el representante legal.', 'ISO-8859-1', 'UTF-8'),5);
-    $pdf->AddBullet(mb_convert_encoding('Registro de contenido audiovisual (fotos y videos) para la promoción de actividades en redes sociales y material institucional, siempre con el consentimiento del representante del alumno.', 'ISO-8859-1', 'UTF-8'),5);
-    
-    $pdf->SetFont('Arial', 'B', 10);
-    $pdf->Cell(0, 10, '3. Datos a ser recolectados', 0, 2, 'L');
-   
-    $pdf->SetFont('Arial', '', 9);
-    // Agregar contenido del formulario
-    $text3 = mb_convert_encoding("Con el fin de llevar a cabo las finalidades descritas, recolectaremos los siguientes datos personales:", 'ISO-8859-1', 'UTF-8');
-    $pdf->MultiCell(0,5, $text3);
-    $pdf->AddBullet(mb_convert_encoding('Datos del alumno: Tipo de identificación, número de identificación, apellido paterno, apellido materno, primer nombre, segundo nombre, nacionalidad, fecha de nacimiento, dirección, tiene hermanos, sexo, fotografías del documento de identificación (anverso y reverso).', 'ISO-8859-1', 'UTF-8'),5);
-    $pdf->AddBullet(mb_convert_encoding('Contacto de emergencia del alumno: Celular, nombre, parentesco.', 'ISO-8859-1', 'UTF-8'),5);
-    $pdf->AddBullet(mb_convert_encoding('Datos del representante: Tipo de identificación, número de identificación, apellido paterno, apellido materno, primer nombre, segundo nombre, parentesco, sexo, dirección, correo, celular y si requiere factura.', 'ISO-8859-1', 'UTF-8'),5);
-    $pdf->AddBullet(mb_convert_encoding('Información médica: Tipo de sangre, peso, talla, enfermedad diagnosticada, medicamentos, alergia a medicamentos, alergia a objetos, cirugías, dispone de carnet de vacunación COVID y vacunación habitual.', 'ISO-8859-1', 'UTF-8'),5);
-    $pdf->AddBullet(mb_convert_encoding('Contenido audiovisual (fotos y videos): Se podrán tomar y usar imágenes de los alumnos en actividades propias de '.ds_nombre_organizacion_may($repre_sedeid).' con fines promocionales o informativos.', 'ISO-8859-1', 'UTF-8'),5);
-    
-    $pdf->SetFont('Arial', 'B', 10);
-    $pdf->Cell(0, 10, '4. Derechos del Titular de los Datos', 0, 2, 'L');
-   
-    $pdf->SetFont('Arial', '', 9);
-    $text4 = mb_convert_encoding("El titular de los datos o su representante tiene derecho a acceder, rectificar, cancelar u oponerse al tratamiento de los datos personales en cualquier momento, de conformidad con la Ley de Protección de Datos Personales en Ecuador. Para ejercer estos derechos, puede contactarse a través del correo: ".$sede_email.'.', 'ISO-8859-1', 'UTF-8');
-    $pdf->MultiCell(0,5, $text4);
-
-    $pdf->SetFont('Arial', 'B', 10);
-    $pdf->Cell(0, 10, '5. Seguridad de los Datos', 0, 2, 'L');
-   
-    $pdf->SetFont('Arial', '', 9);
-    $text5 = mb_convert_encoding(ds_nombre_organizacion_may($repre_sedeid)." adopta medidas de seguridad razonables y adecuadas para proteger los datos personales contra el acceso no autorizado, pérdida, destrucción, alteración o uso indebido.", 'ISO-8859-1', 'UTF-8');
-    $pdf->MultiCell(0,5, $text5);
-
-    $pdf->SetFont('Arial', 'B', 10);
-    $pdf->Cell(0, 10, '6. Consentimiento', 0, 2, 'L');
-
-    $pdf->SetFont('Arial', '', 9);
-    $text6 = mb_convert_encoding("Declaro que he leído y comprendido los términos de este consentimiento y autorizo a ".ds_nombre_organizacion($repre_sedeid)." a recolectar y tratar los datos personales mencionados, en los términos señalados en este documento.", 'ISO-8859-1', 'UTF-8');
-    $pdf->MultiCell(0,5, $text6);
+    /* Secciones 2 a 6 y las autorizaciones del pie: el texto vigente de
+       Core › Textos de autorizaciones (FORMULARIO); sin versiones, el de
+       siempre (ds_core/inc/consentimientos.php). */
+    $pdf->Ln(2);
+    consent_pdf_html($pdf, $form['texto']);
 
     $pdf->SetFont('Arial', '', 9);
     $textl ="__________________________________________________________________________________________________________";
@@ -169,8 +134,7 @@
 
     $pdf->SetFont('Arial', '', 9);
     $pdf->Cell(0, 5, '', 0, 2, 'L');
-    $text7 = mb_convert_encoding("Sí, autorizo el uso de imágenes del alumno (fotos y videos) en las redes sociales y material promocional de ".ds_nombre_organizacion_may($repre_sedeid)." $sede_nombre.\n Sí, consiento el tratamiento de los datos personales del alumno con las finalidades descritas.", 'ISO-8859-1', 'UTF-8');
-    $pdf->MultiCell(0,5, $text7);
+    $pdf->MultiCell(0,5, mb_convert_encoding(implode("\n", $form['pie']), 'Windows-1252', 'UTF-8'));
 
     $pdf->SetFont('Arial', '', 9);
     $texti ="__________________________________________________________________________________________________________";
@@ -178,7 +142,9 @@
 
     $pdf->SetFont('Arial', '', 9);
     $textf ="Firma del representante legal: ____________________________                     Fecha:".$fechaHora;
-    $pdf->MultiCell(0,30, $textf);
+    /* La firma con su fecha, juntas: si no caben, pasan las dos a la hoja siguiente. */
+    $pdf->Ln(12);
+    $pdf->Cell(0, 5, $textf, 0, 1);
 
     // Salida del PDF
     $pdf->Output('I', 'Formulario_Proteccion_Datos.pdf');

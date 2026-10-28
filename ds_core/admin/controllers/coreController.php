@@ -3209,4 +3209,103 @@ class coreController
                          . 'No se guardó nada.'];
     }
 
+    /*======================================================================
+      Textos de las autorizaciones LOPDP (migración 075)
+      ======================================================================
+      Los que acepta el representante en el formulario de inscripción y en
+      el enlace de autorización. Cada cambio es una versión nueva; la lógica
+      común está en ds_core/inc/consentimientos.php.
+      ====================================================================*/
+
+    /**
+     * Las versiones de un tipo, de la más nueva a la más vieja, con cuántas
+     * aceptaciones hay de cada una (por el hash del texto). Al final, el
+     * texto original del archivo, como versión 0.
+     */
+    public function versionesTextoConsentimiento(string $tipo): array
+    {
+        $escuela = ds_nombre_organizacion() ?: DS_HUB_NAME;
+        $versiones = $this->filas(
+            "SELECT texto_version AS version, texto_titulo AS titulo, texto_contenido AS texto, texto_casilla AS casilla,
+                    texto_usuario AS usuario, texto_fecha AS fecha
+               FROM consentimiento_texto WHERE texto_tipo = :t ORDER BY texto_version DESC",
+            [':t' => $tipo]
+        );
+        $archivo = consent_originales()[$tipo] ?? null;
+        if ($archivo) {
+            $versiones[] = ['version' => 0, 'titulo' => $archivo['titulo'], 'texto' => $archivo['texto'],
+                            'casilla' => $archivo['casilla'], 'usuario' => '', 'fecha' => ''];
+        }
+        /* Las aceptaciones sólo se cuentan en los de línea: el de papel se firma
+           y se registra a mano, sin huella del texto. */
+        $hashes = array_map(static fn($v) => consent_hash($v['texto'], $escuela), $versiones);
+        $cuentas = $hashes && isset(CONSENT_TIPOS[$tipo]) ? array_column($this->filas(
+            "SELECT consent_textohash AS h, COUNT(*) AS n FROM alumno_consentimiento
+              WHERE consent_tipo = ? AND consent_textohash IN (" . implode(',', array_fill(0, count($hashes), '?')) . ")
+              GROUP BY consent_textohash",
+            array_merge([$tipo], $hashes)
+        ), 'n', 'h') : [];
+        foreach ($versiones as $i => $v) {
+            $versiones[$i]['hash'] = $hashes[$i];
+            $versiones[$i]['aceptaciones'] = isset(CONSENT_TIPOS[$tipo]) ? (int)($cuentas[$hashes[$i]] ?? 0) : null;
+        }
+        return $versiones;
+    }
+
+    /** Guarda una versión nueva del texto de un tipo (sólo superadministrador). */
+    public function guardarTextoConsentimiento(): string
+    {
+        if (!es_superadministrador()) {
+            return $this->alerta('simple', 'Acceso restringido', 'Solo el superadministrador cambia los textos de las autorizaciones.', 'error');
+        }
+        $tipo = (string)($_POST['tipo'] ?? '');
+        if (!isset(CONSENT_EDITABLES[$tipo])) {
+            return $this->alerta('simple', 'Dato inválido', 'El tipo de autorización no es válido.', 'error');
+        }
+        $limpio  = static fn($t, $max) => mb_substr(trim(preg_replace('/\s+/u', ' ', strip_tags((string)$t))), 0, $max);
+        $titulo  = $limpio($_POST['titulo'] ?? '', 200);
+        /* En el de papel, la casilla son las autorizaciones del pie: una por línea. */
+        $casilla = $tipo === 'FORMULARIO'
+            ? mb_substr(implode("\n", array_filter(array_map(static fn($l) => $limpio($l, 600), explode("\n", (string)($_POST['casilla'] ?? ''))), 'strlen')), 0, 600)
+            : $limpio($_POST['casilla'] ?? '', 300);
+        $texto   = consent_limpiar_html((string)($_POST['texto'] ?? ''));
+
+        if (mb_strlen($titulo) < 5) {
+            return $this->alerta('simple', 'Falta el título', 'Escriba el título de la autorización.', 'warning');
+        }
+        if (mb_strlen(trim(strip_tags($texto))) < 50) {
+            return $this->alerta('simple', 'Falta el texto', 'El texto de la autorización está vacío o es demasiado corto.', 'warning');
+        }
+        if (mb_strlen($texto) > 20000) {
+            return $this->alerta('simple', 'Texto demasiado largo', 'El texto no puede pasar de 20.000 caracteres.', 'warning');
+        }
+        if (mb_strlen($casilla) < 5) {
+            return $this->alerta('simple', 'Falta la casilla', $tipo === 'FORMULARIO'
+                ? 'Escriba las autorizaciones que van al pie del formulario, una por línea.'
+                : 'Escriba lo que dice la casilla que marca el representante para aceptar.', 'warning');
+        }
+
+        $vigente = consent_vigentes_crudos()[$tipo];
+        if ($vigente['titulo'] === $titulo && $vigente['texto'] === $texto && $vigente['casilla'] === $casilla) {
+            return $this->alerta('simple', 'Sin cambios', 'El texto es igual al vigente: no se creó otra versión.', 'info');
+        }
+
+        /* La versión se calcula en la misma sentencia; si dos guardan a la
+           vez, la clave única (tipo, versión) rechaza a uno en vez de pisarlo. */
+        $n = $this->escribir(
+            "INSERT INTO consentimiento_texto (texto_tipo, texto_version, texto_titulo, texto_contenido, texto_casilla, texto_usuario, texto_fecha)
+             SELECT :t, COALESCE(MAX(texto_version), 0) + 1, :ti, :tx, :ca, :u, NOW() FROM consentimiento_texto WHERE texto_tipo = :t2",
+            [':t' => $tipo, ':t2' => $tipo, ':ti' => $titulo, ':tx' => $texto, ':ca' => $casilla,
+             ':u' => mb_substr((string)($_SESSION['usuario'] ?? ''), 0, 50)]
+        );
+        if ($n !== 1) {
+            return $this->alerta('simple', 'No se guardó', 'No se pudo guardar. ¿Se aplicó la migración 075? Si alguien guardó a la vez, recargue e inténtelo de nuevo.', 'error');
+        }
+        $version = (int)$this->escalar("SELECT MAX(texto_version) FROM consentimiento_texto WHERE texto_tipo = :t", [':t' => $tipo]);
+        return $this->alerta('recargar', 'Texto guardado',
+            $tipo === 'FORMULARIO'
+                ? 'Desde ahora el formulario en papel (pantalla y PDF) sale con la versión ' . $version . '.'
+                : 'Desde ahora los representantes ven la versión ' . $version . ' de «' . CONSENT_TIPOS[$tipo] . '». Las aceptaciones anteriores siguen ligadas al texto que vieron.', 'success');
+    }
+
 }

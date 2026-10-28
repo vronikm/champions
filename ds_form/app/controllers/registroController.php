@@ -344,13 +344,10 @@ class registroController extends mainModel
     {
         static $textos = null;
 
-        if ($textos === null) {
-            $textos = require __DIR__ . "/../../config/consentimientos.php";
-
-            foreach ($textos as $tipo => $bloque) {
-                $textos[$tipo]['texto'] = str_replace('{ESCUELA}', ESCUELA_NOMBRE, $bloque['texto']);
-            }
-        }
+        /* La versión vigente de Core › Textos de autorizaciones (migración
+           075); sin versiones, config/consentimientos.php, como siempre.
+           ds_core/inc/consentimientos.php. */
+        $textos ??= consent_textos_vigentes(ESCUELA_NOMBRE);
 
         return $textos;
     }

@@ -14,7 +14,7 @@ MYSQL=/ruta/a/mysql MYSQL_OPTS="-u USUARIO -pCLAVE" \
   ds_core/database/migracion_champions/aplicar_migracion.sh BASE
 ```
 
-Aplica los 76 archivos en el orden correcto y se detiene en el primer error.
+Aplica los 77 archivos en el orden correcto y se detiene en el primer error.
 Antes de empezar comprueba que `BASE` sea una copia de SoccerEasy **sin migrar**:
 si ya tiene `facturas_electronicas`, no aplica nada, porque varias migraciones no
 se pueden repetir.
@@ -89,6 +89,10 @@ en desarrollo y llevar el resultado a producción con un volcado (ver más abajo
     LOPDP que Fútbol › Consentimientos envía por WhatsApp o correo a los
     representantes que aún no autorizan (un solo uso, con vencimiento). Lo
     que responden queda en `alumno_consentimiento` con origen ENLACE. Repetible.
+16. `075_consentimiento_texto.sql`: los textos de las autorizaciones LOPDP
+    (tratamiento de datos, uso de imagen y el formulario en papel), editables en Core › Textos de
+    autorizaciones, con una versión por cada cambio; menú en Core. Sin
+    versiones vale el texto de `ds_form/config/consentimientos.php`. Repetible.
 
 ```bash
 mysql -u USUARIO -p --default-character-set=utf8mb4 BASE < ARCHIVO.sql

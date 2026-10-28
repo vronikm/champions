@@ -132,6 +132,7 @@ switch ($_POST['modulo_core']) {
     case 'nuevaPlantillaCumple':    echo $insCore->nuevaPlantillaCumple();    break;
     case 'activarPlantillaCumple':  echo $insCore->activarPlantillaCumple();  break;
     case 'eliminarPlantillaCumple': echo $insCore->eliminarPlantillaCumple(); break;
+    case 'guardarTextoConsentimiento': echo $insCore->guardarTextoConsentimiento(); break;
 
     default:
         core_rechazar(400, [

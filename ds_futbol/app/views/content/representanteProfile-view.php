@@ -27,6 +27,17 @@
 	$firmado     = $r['repre_firmado'] === 'S';
 	$activos     = count(array_filter($hijos, fn($a) => $a['alumno_estado'] === 'A'));
 
+	/* Autorizaciones LOPDP de sus alumnos (Consentimientos LOPDP): el resumen
+	   y las de cada uno. «Completas»: datos autorizados y respuesta sobre la
+	   imagen (un «no autorizo» también es respuesta). */
+	$auts     = $insRepre->autorizacionesFicha((int)$repreid);
+	$resumen  = $auts['resumen'];
+	$completa = $resumen && $resumen['DATOS']['estado'] === 'S' && $resumen['IMAGEN']['estado'] !== null;
+	$NOMBRES_ORIGEN = ['ENLACE' => 'el enlace de autorización', 'FORMULARIO' => 'el formulario de inscripción en línea', 'ADMIN' => 'registro en el sistema'];
+	$origenes = $resumen ? array_values(array_unique(array_merge($resumen['DATOS']['origenes'], $resumen['IMAGEN']['origenes']))) : [];
+	$enLinea  = array_values(array_intersect(['ENLACE', 'FORMULARIO'], $origenes));
+	$lista    = static fn(array $p) => count($p) > 1 ? implode(', ', array_slice($p, 0, -1)) . ' y ' . end($p) : ($p[0] ?? '');
+
 	$edad = static function ($fecha): string {
 		if (!$fecha || str_starts_with((string)$fecha, '0000')) { return ''; }
 		try { $a = (new DateTime($fecha))->diff(new DateTime('today'))->y; } catch (Exception $e) { return ''; }
@@ -86,12 +97,40 @@
 									</div>
 								</div>
 
-								<?php /* La autorización de datos de los menores (LOPDP): a la
-								         vista, porque es lo que hay que pedirle si falta. */ ?>
-								<div class="ds-repre__lopdp <?php echo $firmado ? 'ds-repre__lopdp--ok' : 'ds-repre__lopdp--pendiente'; ?>">
-									<i class="fas <?php echo $firmado ? 'fa-circle-check' : 'fa-file-signature'; ?>" aria-hidden="true"></i>
-									<span><strong>Protección de datos:</strong> <?php echo $firmado ? 'formulario firmado' : 'pendiente de firma'; ?></span>
-									<a href="<?php echo APP_URL; ?>representanteFLPD/<?php echo (int)$repreid; ?>/" target="_blank" rel="noopener" class="ds-repre__lopdp-enlace">Formulario</a>
+								<?php /* Las autorizaciones LOPDP de sus alumnos, a la vista: es lo
+								         que hay que pedirle si falta. Salen de Consentimientos LOPDP
+								         (por el enlace, el formulario de inscripción o el sistema);
+								         el formulario en papel va aparte, en los botones. */ ?>
+								<div class="ds-repre__lopdp <?php echo !$resumen ? 'ds-repre__lopdp--neutro' : ($completa ? 'ds-repre__lopdp--ok' : 'ds-repre__lopdp--pendiente'); ?>" id="autorizacionesLopdp">
+									<div class="ds-repre__lopdp-titulo">
+										<i class="fas <?php echo $completa ? 'fa-shield-halved' : 'fa-hourglass-half'; ?>" aria-hidden="true"></i>
+										<strong>Autorizaciones LOPDP</strong>
+										<span class="ms-auto"><?php echo !$resumen ? 'sin alumnos' : ($completa ? 'completas' : 'pendientes'); ?></span>
+									</div>
+									<?php if ($resumen): ?>
+										<?php if ($completa): ?>
+											<p class="ds-repre__lopdp-texto">
+												Cuenta con la autorización de los <strong>Consentimientos LOPDP</strong>
+												<?php echo $origenes ? 'por ' . $h($lista(array_map(fn($o) => $NOMBRES_ORIGEN[$o] ?? $o, $origenes))) : ''; ?>.
+											</p>
+										<?php elseif ($enLinea): ?>
+											<p class="ds-repre__lopdp-texto">
+												Ya respondió en parte por <?php echo $h($lista(array_map(fn($o) => $NOMBRES_ORIGEN[$o], $enLinea))); ?>; falta lo que se indica.
+											</p>
+										<?php endif; ?>
+										<div class="ds-repres__auts mb-0">
+											<?php echo app\controllers\representanteController::chipAutorizacion('Datos', $resumen['DATOS']); ?>
+											<?php echo app\controllers\representanteController::chipAutorizacion('Imagen', $resumen['IMAGEN']); ?>
+										</div>
+										<?php if (!$completa && function_exists('puede') && puede('crear', 'consentimientoList')): ?>
+											<a href="<?php echo APP_URL; ?>consentimientoList/?autorizacion=P" class="ds-repre__lopdp-enlace">
+												<i class="fas fa-paper-plane me-1" aria-hidden="true"></i>Enviar la autorización
+											</a>
+										<?php endif; ?>
+									<?php endif; ?>
+									<?php if ($firmado): ?>
+										<p class="ds-repre__lopdp-texto mb-0"><i class="fas fa-file-signature me-1" aria-hidden="true"></i>Formulario en papel firmado.</p>
+									<?php endif; ?>
 								</div>
 
 								<div class="ds-perfil__acciones">
@@ -102,6 +141,10 @@
 										<a href="<?php echo APP_URL; ?>alumnoNew/<?php echo (int)$repreid; ?>/" class="btn btn-sm btn-secondary"><i class="fas fa-plus me-1" aria-hidden="true"></i>Nuevo alumno</a>
 										<a href="<?php echo APP_URL; ?>representanteVinc/<?php echo (int)$repreid; ?>/" class="btn btn-sm btn-secondary"><i class="fas fa-link me-1" aria-hidden="true"></i>Vincular alumno</a>
 									<?php endif; ?>
+									<a href="<?php echo APP_URL; ?>representanteFLPD/<?php echo (int)$repreid; ?>/" target="_blank" rel="noopener" class="btn btn-sm btn-light border"
+									   title="Formulario de protección de datos en papel<?php echo $firmado ? ' (firmado)' : ''; ?>">
+										<i class="fas fa-file-signature me-1" aria-hidden="true"></i>Formulario LPD
+									</a>
 								</div>
 							</div>
 						</div>
@@ -146,6 +189,12 @@
 															<span class="ds-repre__alumno-datos">
 																<strong><?php echo $h($nombreA); ?></strong>
 																<span><?php echo $h(implode(' · ', $meta)); ?></span>
+																<?php if ($autA = $auts['alumnos'][(int)$a['alumno_id']] ?? null): ?>
+																	<span class="ds-repre__alumno-aut">
+																		<?php echo app\controllers\representanteController::chipAutorizacion('Datos', $autA['DATOS']); ?>
+																		<?php echo app\controllers\representanteController::chipAutorizacion('Imagen', $autA['IMAGEN']); ?>
+																	</span>
+																<?php endif; ?>
 															</span>
 															<span class="badge <?php echo $activo ? 'text-bg-success' : 'text-bg-secondary'; ?>"><?php echo $activo ? 'Activo' : 'Inactivo'; ?></span>
 															<i class="fas fa-chevron-right ds-repre__alumno-ir" aria-hidden="true"></i>
@@ -207,6 +256,14 @@
 						</div>
 					</div>
 
+				</div>
+
+				<?php /* Al final, de vuelta al listado (no «atrás»: se puede haber
+				         llegado desde un alumno, un pago o un enlace). */ ?>
+				<div class="ds-perfil__pie">
+					<a href="<?php echo APP_URL; ?>representanteList/" class="btn btn-secondary" id="btnRegresar">
+						<i class="fas fa-arrow-left me-1" aria-hidden="true"></i>Regresar
+					</a>
 				</div>
 			</div>
 		</section>

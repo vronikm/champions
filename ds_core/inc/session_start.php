@@ -161,6 +161,7 @@
     require_once __DIR__ . "/sri.php";
     require_once __DIR__ . "/carnet_diseno.php";
     require_once __DIR__ . "/redes.php";
+    require_once __DIR__ . "/consentimientos.php";
 
     /* Subida y normalizacion de imagenes. Vive en el nucleo porque la
        validacion de un archivo subido es identica en todos los modulos

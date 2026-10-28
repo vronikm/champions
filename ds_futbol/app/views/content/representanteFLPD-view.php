@@ -38,6 +38,9 @@
 <?php
 	/* La cabecera es comun a todas las vistas: ds_futbol/app/views/inc/cabecera.php */
 	$tituloVista = 'Formulario PDP';
+	/* Las secciones 2 a 6 y el pie, editables en Core › Textos de autorizaciones. */
+	$form = consent_formulario(ds_nombre_organizacion() ?: DS_HUB_NAME, (string)($sede_nombre ?? ''), (string)($sede_email ?? ds_email_organizacion()));
+	$cabeceraExtra = '<style>.ds-flpd { font-size: .95rem; } .ds-flpd ul { padding-left: 1.4rem; } .ds-flpd__texto p:has(> strong:only-child) { font-weight: 600; margin: 1.1rem 0 .4rem; } .ds-flpd__pie { border-top: 1px solid var(--bs-border-color); border-bottom: 1px solid var(--bs-border-color); padding: .75rem 0; margin: 1rem 0; }</style>';
 	$extras      = array (0 => 'dropzone',1 => 'swal',);
 	require_once "app/views/inc/cabecera.php";
 ?>
@@ -75,9 +78,7 @@
 			<section class="app-content">
 				<div class="container-fluid">
 					<div class="row">
-						<div class="col-1">
-						</div>
-						<div class="col-10">
+						<div class="col-12 col-xl-10 offset-xl-1">
 							<!-- Main content -->
 							<div class="invoice p-3 mb-3">							
 								<!-- info row -->
@@ -97,79 +98,26 @@
 									<!-- /.col -->								
 								</div>
 								<!-- Table row -->
-								<div class="row" style="margin-right: 25px; margin-left: 25px;">	
-									<strong class="profile-username text-center">FORMULARIO DE CONSENTIMIENTO INFORMADO DE RECOLECCIÓN Y TRATAMIENTO DE DATOS PERSONALES</strong><br><br>																	
+								<div class="row mx-0 mx-md-4">	
+									<strong class="profile-username text-center"><?php echo htmlspecialchars($form['titulo']); ?></strong><br><br>																	
 								</div>
 								<!-- /.row -->
 								<div class="row">
-									<div class="col-12 table-responsive">
-										<table class="table table-striped table-sm">											
-											<tbody>
-												<tr>													
-													<th>1. Datos del Titular y Representante del alumno</th>																					
-												</tr>	
-												<tr>
-													<td colspan="3">- Nombre del representante: <?php echo $datos['REPRESENTANTE']; ?><br>
-																	- Número de identificación: <?php echo $datos['repre_identificacion']; ?>
-													</td>
-												</tr>
-												<tr>													
-													<th>2. Finalidad del tratamiento de datos</th>																					
-												</tr>	
-												<tr>													
-													<td colspan="3">En Escuela <?php echo mb_strtoupper(APP_NAME, 'UTF-8'); ?>, recolectamos y tratamos los datos personales de nuestros alumnos y sus representantes legales con las siguientes finalidades:<br>
-																	•	Gestión administrativa y operativa de la inscripción, pagos mensuales y participación del alumno en las actividades de la Escuela <?php echo mb_strtoupper(APP_NAME, 'UTF-8'); ?><br>
-																	•	Comunicación de eventos, horarios de entrenamiento, fechas de torneos, actividades y todo tipo de información relevante.<br>
-																	•	Atención de situaciones de emergencia, incluyendo acceso a información de contacto y datos médicos básicos proporcionados por el representante legal.<br>
-																	•	Registro de contenido audiovisual (fotos y videos) para la promoción de actividades en redes sociales y material institucional, siempre con el consentimiento del representante del alumno.
-													</td>												
-												</tr>
-												<tr>													
-													<th>3. Datos a ser recolectados</th>																					
-												</tr>	
-												<tr>													
-													<td colspan="3">Con el fin de llevar a cabo las finalidades descritas, recolectaremos los siguientes datos personales:<br>
-																	•	Datos del alumno: Tipo de identificación, número de identificación, apellido paterno, apellido materno, primer nombre, segundo nombre, nacionalidad, fecha de nacimiento, dirección, tiene hermanos, sexo, fotografías del documento de identificación (anverso y reverso).<br>
-																	•	Contacto de emergencia del alumno: Celular, nombre, parentesco.<br>
-																	•	Datos del representante: Tipo de identificación, número de identificación, apellido paterno, apellido materno, primer nombre, segundo nombre, parentesco, sexo, dirección, correo, celular y si requiere factura.<br>
-																	•	Información médica: Tipo de sangre, peso, talla, enfermedad diagnosticada, medicamentos, alergia a medicamentos, alergia a objetos, cirugías, dispone de carnet de vacunación COVID y vacunación habitual.<br>
-																	•	Contenido audiovisual (fotos y videos): Se podrán tomar y usar imágenes de los alumnos en actividades propias de la escuela con fines promocionales o informativos
-													</td>												
-												</tr>
-												<tr>													
-													<th>4. Derechos del Titular de los Datos</th>																					
-												</tr>	
-												<tr>													
-													<td colspan="3">El titular de los datos o su representante tiene derecho a acceder, rectificar, cancelar u oponerse al tratamiento de los datos personales en cualquier momento, de conformidad con la Ley de Protección de Datos Personales en Ecuador. Para ejercer estos derechos, puede contactarse a través del correo: <?php echo $sede_email ?></td>												
-												</tr>
-												<tr>													
-													<th>5. Seguridad de los Datos</th>																					
-												</tr>	
-												<tr>													
-													<td colspan="3">La escuela adopta medidas de seguridad razonables y adecuadas para proteger los datos personales contra el acceso no autorizado, pérdida, destrucción, alteración o uso indebido.</td>												
-												</tr>
-												<tr>													
-													<th>6. Consentimiento</th>																					
-												</tr>	
-												<tr>													
-													<td colspan="3">Declaro que he leído y comprendido los términos de este consentimiento y autorizo a la Escuela <?php echo mb_strtoupper(APP_NAME, 'UTF-8'); ?> a recolectar y tratar los datos personales mencionados, en los términos señalados en este documento.</td>												
-												</tr>
-												<tr>
-													<td></td>
-												</tr>
-												<tr>													
-													<td colspan="3">Sí, autorizo el uso de imágenes de mi(s) representado(s) (fotos y videos) en las redes sociales y material promocional de la Escuela <?php echo mb_strtoupper(APP_NAME, 'UTF-8'); ?> y en todas sus sedes.<br>
-																	Sí, consiento el tratamiento de los datos personales de mi(s) representado(s) con las finalidades descritas.<br>
-													</td>												
-												</tr>
-												<tr>
-													<td></td>
-												</tr>
-											</tbody>
-										</table>
-									</div>
-									<!-- accepted payments column -->
-									<div class="col-4">										
+									<div class="col-12 ds-flpd">
+										<?php /* Sección 1: la pone el sistema. De la 2 en adelante y las
+										         autorizaciones del pie: el texto vigente de Core › Textos de
+										         autorizaciones (FORMULARIO), el mismo que el PDF. */ ?>
+										<p class="ds-flpd__seccion"><strong>1. Datos del Titular y Representante del alumno</strong></p>
+										<ul>
+											<li>Nombre del representante: <?php echo htmlspecialchars($datos['REPRESENTANTE']); ?></li>
+											<li>Número de identificación: <?php echo htmlspecialchars($datos['repre_identificacion']); ?></li>
+										</ul>
+										<div class="ds-flpd__texto"><?php echo $form['texto']; ?></div>
+										<div class="ds-flpd__pie">
+											<?php foreach ($form['pie'] as $linea): ?>
+												<p class="mb-1"><?php echo htmlspecialchars($linea); ?></p>
+											<?php endforeach; ?>
+										</div>
 									</div>
 								</div>
 								<!-- /.row -->								
@@ -193,8 +141,6 @@
 							</div>
 							<!-- /.invoice -->							
 						</div><!-- /.col -->
-						<div class="col-1">
-						</div>
 					</div><!-- /.row -->
 				</div><!-- /.container-fluid -->
 			</section>

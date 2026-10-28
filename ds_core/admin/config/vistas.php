@@ -24,4 +24,5 @@ return [
     'carnetConfig',
     'tarjetaCumple',
     'redesSociales',
+    'consentimientoTextos',
 ];

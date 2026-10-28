@@ -6,6 +6,8 @@
 
 	/* Estado: el de sus alumnos (ver condicionEstadoRepresentante). */
 	$ESTADOS = ['A' => 'Con alumnos activos', 'I' => 'Con alumnos inactivos', 'S' => 'Sin alumnos', 'T' => 'Todos'];
+	/* Autorizaciones LOPDP (Consentimientos LOPDP): ver condicionAutorizacion. */
+	$AUTORIZACION = ['T' => 'Todas', 'P' => 'Por autorizar', 'C' => 'Completas', 'E' => 'Por enlace', 'F' => 'Por formulario'];
 ?>
   <body class="layout-fixed sidebar-expand-lg bg-body-tertiary">
     <div class="app-wrapper ds-core">
@@ -64,11 +66,19 @@
 								<label for="repre_nombre1" class="form-label">Nombre</label>
 								<input type="text" class="form-control" id="repre_nombre1" name="nombre" placeholder="Nombre">
 							</div>
-							<div class="col-12 col-sm-6 col-lg-3 col-xl">
+							<div class="col-6 col-sm-6 col-lg-3 col-xl">
 								<label for="repre_estado" class="form-label">Estado</label>
 								<select class="form-select" id="repre_estado" name="estado">
 									<?php foreach ($ESTADOS as $valor => $texto): ?>
 										<option value="<?php echo $valor; ?>"<?php echo $valor === 'A' ? ' selected' : ''; ?>><?php echo $texto; ?></option>
+									<?php endforeach; ?>
+								</select>
+							</div>
+							<div class="col-6 col-sm-6 col-lg-3 col-xl">
+								<label for="repre_autorizacion" class="form-label">Autorización</label>
+								<select class="form-select" id="repre_autorizacion" name="autorizacion">
+									<?php foreach ($AUTORIZACION as $valor => $texto): ?>
+										<option value="<?php echo $valor; ?>"<?php echo $valor === 'T' ? ' selected' : ''; ?>><?php echo $texto; ?></option>
 									<?php endforeach; ?>
 								</select>
 							</div>
@@ -92,6 +102,14 @@
 						</div>
 					</div>
 					<div class="card-body">
+						<p class="small text-body-secondary ds-repres__leyenda">
+							<strong>Autorizaciones LOPDP</strong> de sus alumnos (datos e imagen) y por dónde se dieron:
+							<span class="badge text-bg-primary">Enlace</span> el que se envía desde
+							<a href="<?php echo APP_URL; ?>consentimientoList/">Consentimientos LOPDP</a>,
+							<span class="badge text-bg-info">Formulario</span> el de inscripción en línea, o
+							<span class="badge text-bg-warning">Administrador</span> registrada en el sistema.
+							<strong>Formulario LPD</strong> es el de papel, que se firma en la sede.
+						</p>
 						<?php
 						/*
 						| EL CUERPO LLEGA DEL SERVIDOR, PAGINA A PAGINA
@@ -226,6 +244,7 @@
 		filtro.addEventListener('submit', function (e) { e.preventDefault(); tabla.ajax.reload(); });
 		filtro.addEventListener('reset', function () { setTimeout(function () { tabla.ajax.reload(); }, 0); });
 		document.getElementById('repre_estado').addEventListener('change', function () { tabla.ajax.reload(); });
+		document.getElementById('repre_autorizacion').addEventListener('change', function () { tabla.ajax.reload(); });
 
 		/* Delegado en el documento y no en cada boton: DataTables rehace las
 		   filas al paginar y ordenar, y los oyentes puestos fila a fila se pierden. */

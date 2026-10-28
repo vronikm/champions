@@ -801,12 +801,13 @@
    ========================================================================= */
 .ds-repre__avatar { width: 4.5rem; height: 4.5rem; border-radius: 50%; font-size: 1.5rem; }
 
+/* Las autorizaciones LOPDP de sus alumnos (Consentimientos LOPDP): el
+   estado, por dónde se dieron y, si falta algo, el atajo para pedirlas. */
 .ds-repre__lopdp {
     display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: .25rem .5rem;
-    padding: .6rem .75rem;
+    flex-direction: column;
+    gap: .4rem;
+    padding: .65rem .75rem;
     margin-bottom: 1rem;
     border-radius: var(--bs-border-radius);
     border: 1px solid;
@@ -814,8 +815,25 @@
 }
 .ds-repre__lopdp--ok        { border-color: var(--bs-success-border-subtle); background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
 .ds-repre__lopdp--pendiente { border-color: var(--bs-warning-border-subtle); background: var(--bs-warning-bg-subtle); color: var(--bs-warning-text-emphasis); }
-.ds-repre__lopdp span { flex: 1 1 10rem; }
-.ds-repre__lopdp-enlace { color: inherit; font-weight: 600; }
+.ds-repre__lopdp--neutro    { border-color: var(--bs-border-color); background: var(--bs-tertiary-bg); color: var(--bs-body-color); }
+.ds-repre__lopdp-titulo { display: flex; align-items: center; gap: .45rem; }
+.ds-repre__lopdp-texto { margin: 0; line-height: 1.4; }
+.ds-repre__lopdp .ds-repres__aut-estado { color: inherit; opacity: .85; }
+.ds-repre__lopdp-enlace { color: inherit; font-weight: 600; align-self: flex-start; }
+/* Las de cada alumno, debajo de su nombre. */
+.ds-repre__alumno-aut { display: flex; flex-wrap: wrap; gap: .1rem .75rem; margin-top: .15rem; }
+.ds-repre__alumno-datos .ds-repre__alumno-aut .ds-repres__aut { font-size: .78rem; color: var(--bs-body-color); flex-wrap: nowrap; white-space: nowrap; }
+/* «.ds-repre__alumno-datos span» agranda cualquier span: aquí no. */
+.ds-repre__alumno-datos .ds-repre__alumno-aut span.badge { font-size: .66rem; color: inherit; }
+.ds-repre__alumno-datos .ds-repre__alumno-aut .badge.text-bg-primary,
+.ds-repre__alumno-datos .ds-repre__alumno-aut .badge.text-bg-info,
+.ds-repre__alumno-datos .ds-repre__alumno-aut .badge.text-bg-warning { color: var(--bs-badge-color, inherit); }
+.ds-repre__alumno-datos .ds-repre__alumno-aut .ds-repres__aut-estado { font-size: inherit; }
+/* «Regresar», al final: a la derecha en escritorio, a todo lo ancho en el teléfono. */
+.ds-perfil__pie { display: flex; justify-content: flex-end; margin-top: 1.25rem; }
+@media (max-width: 575.98px) {
+    .ds-perfil__pie .btn { width: 100%; min-height: 2.75rem; }
+}
 
 /* Cada representado, una fila que se toca entera y abre su ficha. */
 .ds-repre__alumnos { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
@@ -884,6 +902,16 @@
    la celda de protección de datos: el botón del formulario (antes un icono
    suelto de 12 px) y el estado firmado / pendiente.
    ========================================================================= */
+/* Las autorizaciones LOPDP de sus alumnos: datos e imagen, con su origen. */
+.ds-repres__auts { display: flex; flex-direction: column; gap: .25rem; margin-bottom: .45rem; }
+.ds-repres__aut { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .3rem; font-size: .85rem; line-height: 1.3; }
+.ds-repres__aut > .fas { font-size: .95rem; }
+.ds-repres__aut-estado { color: var(--bs-secondary-color); }
+.ds-repres__aut--si > .fas { color: var(--bs-success); }
+.ds-repres__aut--no > .fas { color: var(--bs-emphasis-color); }
+.ds-repres__aut--falta > .fas { color: var(--bs-warning); }
+.ds-repres__aut--falta .ds-repres__aut-estado { color: var(--bs-warning-text-emphasis); font-weight: 600; }
+.ds-repres__leyenda .badge { font-size: .72rem; }
 .ds-repres__datos { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
 .ds-repres__datos .btn { white-space: nowrap; }
 #filtroRepre .btn { white-space: nowrap; }

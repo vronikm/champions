@@ -44,5 +44,7 @@ define('DIR_FOTOS_ALUMNO', __DIR__ . "/../../ds_futbol/app/views/imagenes/fotos/
    representante al abrir el enlace. */
 require_once __DIR__ . "/../../ds_core/inc/seguridad.php";
 require_once __DIR__ . "/../../ds_core/inc/organizacion.php";
+/* Los textos de las autorizaciones LOPDP (Core › Textos de autorizaciones). */
+require_once __DIR__ . "/../../ds_core/inc/consentimientos.php";
 
 define('ESCUELA_NOMBRE', ds_nombre_organizacion() ?: DS_HUB_NAME);

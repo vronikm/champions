@@ -360,7 +360,7 @@ class registroController extends mainModel
      * redacción, el hash cambia y las aceptaciones viejas siguen siendo
      * atribuibles a su versión.
      */
-    private function hashTexto(string $tipo): string
+    public function hashTexto(string $tipo): string
     {
         $textos = $this->textosConsentimiento();
 

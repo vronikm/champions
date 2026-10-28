@@ -176,6 +176,9 @@
 				}
 			},
 			autoWidth: false,
+			/* La caja de filtrar consulta al servidor: se espera a que se deje de
+			   escribir, no una petición por tecla. */
+			searchDelay: 350,
 			pageLength: largo,
 			lengthMenu: LARGOS,
 			order: [[0, "asc"]],
@@ -187,7 +190,7 @@
 			],
 			layout: {
 				topStart: 'pageLength',
-				topEnd: null,
+				topEnd: 'search',
 				bottomStart: 'info',
 				bottomEnd: { paging: { firstLast: false } }
 			},
@@ -200,6 +203,8 @@
 				loadingRecords: "Cargando...",
 				processing: "Buscando…",
 				zeroRecords: "Ningún representante coincide con la búsqueda",
+				search: "",
+				searchPlaceholder: "Filtrar por nombre, cédula o sede…",
 				paginate: { next: "Siguiente", previous: "Anterior" },
 				aria: {
 					sortAscending: ": ordenar de forma ascendente",

@@ -129,14 +129,26 @@
 				$par[':nom1'] = $par[':nom2'] = $criterio('nombre') . '%';
 			}
 			if ($buscado !== '') {
-				/* Una sola condicion sobre los campos que se ven: el usuario
-				   busca «lo que sea que recuerde», no una columna. */
-				$donde .= " AND (repre_identificacion LIKE :b
-				             OR repre_primernombre   LIKE :b
-				             OR repre_segundonombre  LIKE :b
-				             OR repre_apellidopaterno LIKE :b
-				             OR repre_apellidomaterno LIKE :b)";
-				$par[':b'] = '%' . $buscado . '%';
+				/* La caja «Filtrar por nombre, cédula o sede…»: el usuario busca
+				   «lo que sea que recuerde», no una columna. CADA palabra debe
+				   aparecer en la cédula, un nombre, un apellido o la sede de
+				   alguno de sus alumnos, así «maria perez» encuentra a María
+				   Pérez (antes se buscaba la frase entera en un solo campo y no
+				   la encontraba). La sede se mira sólo entre las del usuario. */
+				$palabras = array_slice(preg_split('/\s+/u', $buscado), 0, 5);
+				foreach ($palabras as $i => $palabra) {
+					$donde .= " AND (repre_identificacion LIKE :b$i
+					             OR repre_primernombre   LIKE :b$i
+					             OR repre_segundonombre  LIKE :b$i
+					             OR repre_apellidopaterno LIKE :b$i
+					             OR repre_apellidomaterno LIKE :b$i
+					             OR EXISTS (SELECT 1 FROM sujeto_alumno SA
+					                          JOIN general_sede GS ON GS.sede_id = SA.alumno_sedeid
+					                         WHERE SA.alumno_repreid = repre_id AND SA.alumno_estado <> 'E'
+					                           AND " . sql_sedes_de_la_sesion('SA.alumno_sedeid') . "
+					                           AND GS.sede_nombre LIKE :b$i))";
+					$par[":b$i"] = '%' . $palabra . '%';
+				}
 			}
 
 			/*----------  Recuentos: el universo del estado, y lo que queda al buscar  ----------*/

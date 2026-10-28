@@ -2835,6 +2835,30 @@
 			return true;
 		}
 
+		/**
+		 * Correo de texto, sin adjuntos, con el mismo correo saliente que las
+		 * facturas (Core › Facturación electrónica › Correo: SMTP si está
+		 * configurado, mail() si no). Lo usan otras pantallas, como el enlace
+		 * de autorización LOPDP (consentimientoController). Lanza
+		 * RuntimeException con un mensaje que se puede mostrar.
+		 *
+		 * DS_CORREO_CAPTURA sólo lo define una prueba (pruebas/qa_consentimiento_enlace.php):
+		 * el mensaje se anota en ese archivo y no sale. En el sistema no existe.
+		 */
+		public function enviarCorreoTexto($destinatario, $asunto, $mensaje){
+			$destinatario = trim((string)$destinatario);
+			if(!filter_var($destinatario, FILTER_VALIDATE_EMAIL)){
+				throw new \RuntimeException('El correo del destinatario no es válido.');
+			}
+			if(defined('DS_CORREO_CAPTURA')){
+				file_put_contents(DS_CORREO_CAPTURA, json_encode(['para' => $destinatario, 'asunto' => $asunto, 'mensaje' => $mensaje], JSON_UNESCAPED_UNICODE)."\n", FILE_APPEND | LOCK_EX);
+				return true;
+			}
+			$correo = $this->sriConfig()['correo'] ?? [];
+			$from = $correo['from'] ?? ds_email_organizacion();
+			return $this->enviarCorreoConAdjuntos($destinatario, $asunto, $mensaje, $from, [], $correo);
+		}
+
 		private function enviarCorreoFacturaSriLocal($facturaId){
 			$config = $this->sriConfig();
 			$conexion = $this->conectar();

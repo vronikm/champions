@@ -80,6 +80,50 @@ class TokenHelper
         return time() > $payload['exp'];
     }
 
+    /*----------  Enlace de autorización LOPDP (migración 074)  ----------*/
+
+    /**
+     * Valida el token de ds_form/autorizacion.php. Devuelve
+     * ['r' => repre_id, 'c' => código, 'exp' => int, 'expirado' => bool]
+     * si la firma es buena (vencido o no), o null si no lo es.
+     *
+     * La firma usa una llave derivada (ver ds_futbol TokenHelper): un token
+     * de inscripción no pasa aquí, ni uno de autorización en validar(),
+     * que exige sede_id.
+     */
+    public static function validarAutorizacion(string $token): ?array
+    {
+        $parts = explode('.', $token);
+        if (count($parts) !== 2) {
+            return null;
+        }
+
+        [$payloadB64, $signatureB64] = $parts;
+
+        $esperada = hash_hmac('sha256', $payloadB64, self::llaveAutorizacion());
+        if (!hash_equals($esperada, self::base64urlDecode($signatureB64))) {
+            return null;
+        }
+
+        $payload = json_decode(self::base64urlDecode($payloadB64), true);
+        if (!is_array($payload) || !isset($payload['r'], $payload['c'], $payload['exp'])
+            || !preg_match('/^[a-f0-9]{32}$/', (string)$payload['c'])) {
+            return null;
+        }
+
+        return [
+            'r'        => (int)$payload['r'],
+            'c'        => (string)$payload['c'],
+            'exp'      => (int)$payload['exp'],
+            'expirado' => time() > (int)$payload['exp'],
+        ];
+    }
+
+    private static function llaveAutorizacion(): string
+    {
+        return hash('sha256', 'ds-autorizacion-lopdp|' . TOKEN_SECRET);
+    }
+
     private static function base64urlDecode(string $data): string
     {
         return base64_decode(strtr($data, '-_', '+/'));

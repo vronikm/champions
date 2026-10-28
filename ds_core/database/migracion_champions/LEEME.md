@@ -14,7 +14,7 @@ MYSQL=/ruta/a/mysql MYSQL_OPTS="-u USUARIO -pCLAVE" \
   ds_core/database/migracion_champions/aplicar_migracion.sh BASE
 ```
 
-Aplica los 75 archivos en el orden correcto y se detiene en el primer error.
+Aplica los 76 archivos en el orden correcto y se detiene en el primer error.
 Antes de empezar comprueba que `BASE` sea una copia de SoccerEasy **sin migrar**:
 si ya tiene `facturas_electronicas`, no aplica nada, porque varias migraciones no
 se pueden repetir.
@@ -85,6 +85,10 @@ en desarrollo y llevar el resultado a producción con un volcado (ver más abajo
     conexión con Meta, token cifrado) y el registro de publicaciones; menú
     «Redes sociales» en Core. Las felicitaciones de cumpleaños se publican
     desde Fútbol › Cumpleaños, sólo con autorización de imagen. Repetible.
+15. `074_consentimiento_enlace.sql`: registro de los enlaces de autorización
+    LOPDP que Fútbol › Consentimientos envía por WhatsApp o correo a los
+    representantes que aún no autorizan (un solo uso, con vencimiento). Lo
+    que responden queda en `alumno_consentimiento` con origen ENLACE. Repetible.
 
 ```bash
 mysql -u USUARIO -p --default-character-set=utf8mb4 BASE < ARCHIVO.sql

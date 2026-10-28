@@ -34,6 +34,19 @@
 			echo $insConsentimiento->historialHTMLControlador();
 		}
 
+		/* El enlace de autorización (permiso crear, como registrar). */
+		if ($_POST['modulo_consentimiento'] == "generar_enlace") {
+			echo $insConsentimiento->generarEnlaceControlador();
+		}
+
+		if ($_POST['modulo_consentimiento'] == "generar_envio") {
+			echo $insConsentimiento->generarEnvioControlador();
+		}
+
+		if ($_POST['modulo_consentimiento'] == "generar_correo") {
+			echo $insConsentimiento->generarCorreoControlador();
+		}
+
 	} else {
 		session_destroy();
 		header("Location: " . APP_URL . "login/");

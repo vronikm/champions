@@ -84,6 +84,36 @@ class TokenHelper
         return 'https://wa.me/?text=' . rawurlencode($mensaje);
     }
 
+    /*----------  Enlace de autorización LOPDP (migración 074)  ----------*/
+
+    /**
+     * Token del enlace que pide las autorizaciones a un representante ya
+     * registrado (ds_form/autorizacion.php).
+     *
+     * Se firma con una llave DERIVADA de TOKEN_SECRET, no con la de
+     * inscripción: así ninguno de los dos enlaces sirve como el otro aunque
+     * alguien junte los campos. El código lo guarda consentimiento_enlace;
+     * sin esa fila, o ya usada, el enlace no vale.
+     */
+    public static function generarAutorizacion(int $repreId, string $codigo, int $expira): string
+    {
+        $payloadB64 = self::base64urlEncode(json_encode(['r' => $repreId, 'c' => $codigo, 'exp' => $expira]));
+        $firma = hash_hmac('sha256', $payloadB64, self::llaveAutorizacion());
+
+        return $payloadB64 . '.' . self::base64urlEncode($firma);
+    }
+
+    public static function urlAutorizacion(int $repreId, string $codigo, int $expira): string
+    {
+        return rtrim(FORM_URL, '/') . '/autorizacion.php?t=' . self::generarAutorizacion($repreId, $codigo, $expira);
+    }
+
+    /** La misma derivación que ds_form/app/models/TokenHelper::llaveAutorizacion(). */
+    private static function llaveAutorizacion(): string
+    {
+        return hash('sha256', 'ds-autorizacion-lopdp|' . TOKEN_SECRET);
+    }
+
     private static function base64urlEncode(string $data): string
     {
         return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');

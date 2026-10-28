@@ -2,6 +2,7 @@
 
 	namespace app\controllers;
 	use app\models\mainModel;
+	use app\models\TokenHelper;
 	use PDO;
 
 	/**
@@ -15,19 +16,30 @@
 	class consentimientoController extends mainModel {
 
 		const TIPOS   = ['DATOS', 'IMAGEN'];
-		const ORIGENES = ['FORMULARIO', 'ADMIN'];
+		/* ENLACE: lo respondió el representante en ds_form/autorizacion.php,
+		   desde el enlace que se le envió desde esta pantalla (migración 074). */
+		const ORIGENES = ['FORMULARIO', 'ADMIN', 'ENLACE'];
+
+		/* El enlace de autorización vale una semana y una sola respuesta. */
+		const VIGENCIA_ENLACE = 7 * 86400;
 
 		/**
 		 * Alumnos activos con el estado actual de cada consentimiento.
 		 * El estado vigente es la última fila de cada tipo.
+		 *
+		 * Ya no recibe una búsqueda: la caja de la tabla filtra al vuelo.
 		 */
-		public function listarConsentimientos($sedeid = '', $busqueda = '') {
+		public function listarConsentimientos($sedeid = '') {
 
 			$consulta = "SELECT a.alumno_id,
 								a.alumno_identificacion,
 								CONCAT_WS(' ', a.alumno_primernombre, a.alumno_apellidopaterno, a.alumno_apellidomaterno) AS alumno,
+								CONCAT_WS(' ', a.alumno_primernombre, a.alumno_apellidopaterno) AS alumno_corto,
 								a.alumno_repreid,
 								CONCAT_WS(' ', r.repre_primernombre, r.repre_apellidopaterno) AS representante,
+								r.repre_identificacion,
+								r.repre_celular,
+								r.repre_correo,
 								s.sede_nombre,
 								r.repre_firmado,
 								cd.consent_otorgado AS datos_otorgado,
@@ -65,17 +77,315 @@
 				$parametros[':sede'] = intval($sedeid);
 			}
 
-			if (trim($busqueda) !== '') {
-				$consulta .= " AND (a.alumno_identificacion LIKE :b
-								 OR a.alumno_primernombre LIKE :b
-								 OR a.alumno_apellidopaterno LIKE :b
-								 OR a.alumno_apellidomaterno LIKE :b)";
-				$parametros[':b'] = '%' . trim($busqueda) . '%';
-			}
-
 			$consulta .= " ORDER BY a.alumno_apellidopaterno, a.alumno_primernombre";
 
 			return $this->ejecutarConsulta($consulta, $parametros)->fetchAll(PDO::FETCH_ASSOC);
+		}
+
+		/**
+		 * Un alumno está pendiente si no tiene autorizado el tratamiento de
+		 * datos (sin registro o revocado) o si nunca se decidió sobre su
+		 * imagen. Un «no autorizo» la imagen es una respuesta: no se insiste.
+		 */
+		public static function alumnoPendiente(array $f): bool {
+			return $f['datos_otorgado'] !== 'S' || $f['imagen_otorgado'] === null;
+		}
+
+		/**
+		 * Los representantes con algún hijo pendiente, a partir de las filas de
+		 * listarConsentimientos() (ya filtradas por sede), con el último enlace
+		 * que se les envió.
+		 */
+		public function representantesPendientes(array $filas) {
+			$repres = [];
+			foreach ($filas as $f) {
+				if (!self::alumnoPendiente($f)) { continue; }
+				$id = (int)$f['alumno_repreid'];
+				$repres[$id] ??= [
+					'repre_id'      => $id,
+					'representante' => $f['representante'],
+					'identificacion'=> $f['repre_identificacion'],
+					'celular'       => $f['repre_celular'],
+					'correo'        => filter_var(trim((string)$f['repre_correo']), FILTER_VALIDATE_EMAIL) ? trim((string)$f['repre_correo']) : '',
+					'whatsapp'      => self::celularWhatsApp($f['repre_celular']),
+					'alumnos'       => [],
+					'ultimo'        => null,
+				];
+				$repres[$id]['alumnos'][] = [
+					'nombre' => $f['alumno_corto'],
+					'sede'   => $f['sede_nombre'],
+					'datos'  => $f['datos_otorgado'],
+					'imagen' => $f['imagen_otorgado'],
+				];
+			}
+
+			foreach ($this->ultimosEnlaces(array_keys($repres)) as $id => $e) {
+				$repres[$id]['ultimo'] = $e;
+			}
+
+			uasort($repres, static fn($a, $b) => strcmp($a['representante'], $b['representante']));
+			return array_values($repres);
+		}
+
+		/**
+		 * El último enlace ENVIADO de cada representante ([] sin la migración
+		 * 074). Los que sólo se prepararon al abrir el modal (SIN_ENVIAR) no
+		 * cuentan: nadie los recibió.
+		 */
+		private function ultimosEnlaces(array $repreIds) {
+			if (!$repreIds) { return []; }
+			try {
+				$ids = implode(',', array_map('intval', $repreIds));
+				$filas = $this->ejecutarConsulta(
+					"SELECT e.enlace_repreid, e.enlace_canal, e.enlace_usuario, e.enlace_fecha, e.enlace_expira, e.enlace_usado
+					   FROM consentimiento_enlace e
+					  WHERE e.enlace_repreid IN ($ids)
+					    AND e.enlace_id = (SELECT MAX(e2.enlace_id) FROM consentimiento_enlace e2
+					                        WHERE e2.enlace_repreid = e.enlace_repreid AND e2.enlace_canal <> 'SIN_ENVIAR')"
+				)->fetchAll(PDO::FETCH_ASSOC);
+			} catch (\Throwable $e) {
+				return [];
+			}
+			$salida = [];
+			foreach ($filas as $f) { $salida[(int)$f['enlace_repreid']] = $f; }
+			return $salida;
+		}
+
+		/** 0991234567 → 593991234567 para wa.me; '' si no parece un celular. */
+		public static function celularWhatsApp($celular) {
+			$n = preg_replace('/\D+/', '', (string)$celular);
+			if (preg_match('/^09\d{8}$/', $n)) { return '593' . substr($n, 1); }
+			if (preg_match('/^5939\d{8}$/', $n)) { return $n; }
+			return '';
+		}
+
+		/*----------  Enlace de autorización (migración 074)  ----------*/
+
+		/**
+		 * Prepara el enlace al abrir el modal «Enviar autorización», para que
+		 * se vea el mensaje y el enlace antes de mandarlos. Op «generar_enlace»
+		 * (permiso crear, como registrar).
+		 *
+		 * Queda como SIN_ENVIAR hasta que se envía (generar_envio). Si este
+		 * usuario ya tiene uno así, abierto y vigente, se reutiliza: abrir y
+		 * cerrar el modal no llena la tabla de enlaces.
+		 */
+		public function generarEnlaceControlador() {
+			$enlace = $this->crearEnlace(intval($_POST['repre_id'] ?? 0), 'SIN_ENVIAR');
+			if (isset($enlace['error'])) {
+				return $this->alerta('No se preparó el enlace', $enlace['error'], 'error');
+			}
+
+			return json_encode([
+				'tipo'      => 'enlace',
+				'enlace_id' => $enlace['id'],
+				'url'       => $enlace['url'],
+				'cuerpo'    => $enlace['cuerpo'],
+				'pie'       => $enlace['pie'],
+				'mensaje'   => $enlace['cuerpo'] . "\n\n" . $enlace['pie'],
+				'expira'    => date('d/m/Y', $enlace['expira']),
+				'correo'    => $enlace['repre']['correo'],
+				'celular'   => $enlace['repre']['celular'],
+				'hijos'     => $enlace['repre']['lista'],
+			], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+		}
+
+		/**
+		 * Envía (o anota que se envió) el enlace preparado. Op «generar_envio».
+		 *
+		 *   WHATSAPP, COPIA   el navegador ya abrió WhatsApp o copió el mensaje;
+		 *                     aquí sólo queda constancia del canal.
+		 *   CORREO            sale desde el servidor, al correo indicado en el
+		 *                     modal (o al de la ficha), con el texto que se
+		 *                     editó. El enlace va siempre: no depende del texto.
+		 *
+		 * Si el correo no sale, el enlace sigue SIN_ENVIAR.
+		 */
+		public function generarEnvioControlador() {
+			$canal = strtoupper($this->limpiarCadena($_POST['canal'] ?? ''));
+			if (!in_array($canal, ['WHATSAPP', 'CORREO', 'COPIA'], true)) {
+				return $this->alerta('Dato inválido', 'El canal indicado no es válido.', 'error');
+			}
+
+			try {
+				$fila = $this->ejecutarConsulta(
+					"SELECT enlace_id, enlace_repreid, enlace_codigo, enlace_expira, enlace_usado
+					   FROM consentimiento_enlace WHERE enlace_id = :id",
+					[':id' => intval($_POST['enlace_id'] ?? 0)]
+				)->fetch(PDO::FETCH_ASSOC);
+			} catch (\Throwable $e) {
+				$fila = false;
+			}
+			$repre = $fila ? $this->representanteEnAlcance((int)$fila['enlace_repreid']) : null;
+			if (!$fila || $repre === null) {
+				return $this->alerta('No encontrado', 'El enlace no existe o el representante no pertenece a sus sedes.', 'error');
+			}
+			if ($fila['enlace_usado'] !== null || strtotime($fila['enlace_expira']) < time()) {
+				return $this->alerta('Enlace no vigente', 'Ese enlace ya se respondió o venció. Cierre y vuelva a abrir «Enviar autorización».', 'warning');
+			}
+
+			$expira = strtotime($fila['enlace_expira']);
+			$url    = TokenHelper::urlAutorizacion((int)$fila['enlace_repreid'], $fila['enlace_codigo'], $expira);
+			$destino = '';
+
+			if ($canal === 'CORREO') {
+				$destino = trim((string)($_POST['correo'] ?? ''));
+				$destino = $destino !== '' ? $destino : $repre['correo'];
+				if (!filter_var($destino, FILTER_VALIDATE_EMAIL)) {
+					return $this->alerta('Correo no válido', 'Escriba un correo válido para el representante.', 'error');
+				}
+				/* El cuerpo lo pudo corregir el usuario; el pie con el enlace no. */
+				$cuerpo = trim(str_replace("\r", '', strip_tags((string)($_POST['cuerpo'] ?? ''))));
+				$cuerpo = $cuerpo !== '' ? mb_substr($cuerpo, 0, 1500) : $this->cuerpoMensaje($repre);
+				try {
+					$asunto = 'Autorización de datos e imagen — ' . ds_nombre_organizacion();
+					(new facturasController())->enviarCorreoTexto($destino, $asunto, $cuerpo . "\n\n" . $this->pieMensaje($url, $expira));
+				} catch (\Throwable $e) {
+					return $this->alerta('No se envió el correo', $e->getMessage(), 'error');
+				}
+			}
+
+			$this->ejecutarConsulta(
+				"UPDATE consentimiento_enlace SET enlace_canal = :canal, enlace_fecha = NOW(), enlace_usuario = :u WHERE enlace_id = :id",
+				[':canal' => $canal, ':u' => $_SESSION['usuario'] ?? '', ':id' => $fila['enlace_id']]
+			);
+
+			$textos = [
+				'CORREO'   => ['Correo enviado', 'Se envió la autorización a ' . $destino . '. El enlace vence el ' . date('d/m/Y', $expira) . '.'],
+				'WHATSAPP' => ['Listo', 'Quedó anotado el envío por WhatsApp.'],
+				'COPIA'    => ['Mensaje copiado', 'Péguelo donde quiera enviarlo. El enlace vence el ' . date('d/m/Y', $expira) . '.'],
+			][$canal];
+			return $this->alerta($textos[0], $textos[1], 'success');
+		}
+
+		/**
+		 * Envío masivo: un enlace nuevo por correo al de la ficha, con el texto
+		 * de siempre. Op «generar_correo». Si el correo no sale, el enlace se
+		 * borra: no queda constancia de un envío que no ocurrió.
+		 */
+		public function generarCorreoControlador() {
+			$enlace = $this->crearEnlace(intval($_POST['repre_id'] ?? 0), 'CORREO');
+			if (isset($enlace['error'])) {
+				return $this->alerta('No se envió', $enlace['error'], 'error');
+			}
+			$correo = $enlace['repre']['correo'];
+
+			try {
+				$asunto = 'Autorización de datos e imagen — ' . ds_nombre_organizacion();
+				(new facturasController())->enviarCorreoTexto($correo, $asunto, $enlace['cuerpo'] . "\n\n" . $enlace['pie']);
+			} catch (\Throwable $e) {
+				$this->ejecutarConsulta("DELETE FROM consentimiento_enlace WHERE enlace_id = :id", [':id' => $enlace['id']]);
+				return $this->alerta('No se envió el correo', $e->getMessage(), 'error');
+			}
+
+			return $this->alerta('Correo enviado', 'Se envió el enlace a ' . $correo . '. Vence el ' . date('d/m/Y', $enlace['expira']) . '.', 'success');
+		}
+
+		/**
+		 * Crea (o, para SIN_ENVIAR, reutiliza) la fila del enlace y arma la
+		 * dirección y el mensaje.
+		 * Devuelve ['id','url','cuerpo','pie','expira','repre'] o ['error' => texto].
+		 */
+		private function crearEnlace(int $repreId, string $canal) {
+			$usuario = $_SESSION['usuario'] ?? '';
+			if ($usuario === '') {
+				return ['error' => 'Vuelva a iniciar sesión.'];
+			}
+			if ($faltan = TokenHelper::configFaltante()) {
+				return ['error' => 'Falta configurar en el servidor: ' . implode(', ', $faltan) . '.'];
+			}
+
+			$repre = $this->representanteEnAlcance($repreId);
+			if ($repre === null) {
+				return ['error' => 'El representante no existe o no tiene alumnos activos en sus sedes.'];
+			}
+			if ($canal === 'CORREO' && $repre['correo'] === '') {
+				return ['error' => 'El representante no tiene un correo válido registrado. Corríjalo en su ficha o use WhatsApp.'];
+			}
+
+			try {
+				$previo = $canal !== 'SIN_ENVIAR' ? false : $this->ejecutarConsulta(
+					"SELECT enlace_id, enlace_codigo, enlace_expira FROM consentimiento_enlace
+					  WHERE enlace_repreid = :r AND enlace_usuario = :u AND enlace_canal = 'SIN_ENVIAR'
+					    AND enlace_usado IS NULL AND enlace_expira > NOW() + INTERVAL 1 DAY
+					  ORDER BY enlace_id DESC LIMIT 1",
+					[':r' => $repreId, ':u' => $usuario]
+				)->fetch(PDO::FETCH_ASSOC);
+
+				if ($previo) {
+					[$id, $codigo, $expira] = [(int)$previo['enlace_id'], $previo['enlace_codigo'], strtotime($previo['enlace_expira'])];
+				} else {
+					$codigo = bin2hex(random_bytes(16));
+					$expira = time() + self::VIGENCIA_ENLACE;
+					$this->ejecutarConsulta(
+						"INSERT INTO consentimiento_enlace (enlace_repreid, enlace_codigo, enlace_canal, enlace_usuario, enlace_fecha, enlace_expira)
+						 VALUES (:r, :c, :canal, :u, NOW(), :exp)",
+						[':r' => $repreId, ':c' => $codigo, ':canal' => $canal, ':u' => $usuario, ':exp' => date('Y-m-d H:i:s', $expira)]
+					);
+					$id = (int)$this->ejecutarConsulta("SELECT enlace_id FROM consentimiento_enlace WHERE enlace_codigo = :c", [':c' => $codigo])->fetchColumn();
+				}
+			} catch (\Throwable $e) {
+				return ['error' => 'Falta aplicar la migración 074 (consentimiento_enlace) en la base de datos.'];
+			}
+
+			$url = TokenHelper::urlAutorizacion($repreId, $codigo, $expira);
+			return [
+				'id'     => $id,
+				'url'    => $url,
+				'expira' => $expira,
+				'repre'  => $repre,
+				'cuerpo' => $this->cuerpoMensaje($repre),
+				'pie'    => $this->pieMensaje($url, $expira),
+			];
+		}
+
+		/*
+		 * El texto del WhatsApp y del correo, en dos partes: el cuerpo, que se
+		 * puede corregir en el modal, y el pie con el enlace, que no. Sin
+		 * cédulas ni datos de los menores más allá del nombre.
+		 */
+		private static function nombrePropio($t) {
+			return mb_convert_case(mb_strtolower(trim(html_entity_decode((string)$t, ENT_QUOTES, 'UTF-8')), 'UTF-8'), MB_CASE_TITLE, 'UTF-8');
+		}
+
+		private function cuerpoMensaje(array $repre) {
+			return 'Hola, ' . self::nombrePropio($repre['primernombre']) . ".\n\n"
+				 . ds_nombre_organizacion() . ' necesita su autorización como representante de ' . $repre['lista']
+				 . ' para el tratamiento de datos personales y para el uso de imagen (LOPDP).';
+		}
+
+		private function pieMensaje(string $url, int $expira) {
+			return "Puede leerlas y responder en este enlace:\n" . $url . "\n\n"
+				 . 'El enlace es personal, sirve una sola vez y vence el ' . date('d/m/Y', $expira) . '.';
+		}
+
+		/**
+		 * El representante, si tiene algún alumno activo en las sedes de la
+		 * sesión, con los nombres de esos alumnos para el mensaje.
+		 */
+		private function representanteEnAlcance(int $repreId) {
+			$alumnos = $this->ejecutarConsulta(
+				"SELECT CONCAT_WS(' ', a.alumno_primernombre, a.alumno_apellidopaterno) AS nombre,
+						r.repre_primernombre, r.repre_celular, r.repre_correo
+				   FROM sujeto_alumno a
+				   INNER JOIN alumno_representante r ON r.repre_id = a.alumno_repreid
+				  WHERE a.alumno_repreid = :r AND a.alumno_estado = 'A' AND " . sql_sedes_de_la_sesion('a.alumno_sedeid') . "
+				  ORDER BY a.alumno_fechanacimiento, a.alumno_primernombre",
+				[':r' => $repreId]
+			)->fetchAll(PDO::FETCH_ASSOC);
+			if (!$alumnos) { return null; }
+
+			$correo = trim((string)$alumnos[0]['repre_correo']);
+			$hijos  = array_map([self::class, 'nombrePropio'], array_column($alumnos, 'nombre'));
+			return [
+				'primernombre' => $alumnos[0]['repre_primernombre'],
+				'correo'       => filter_var($correo, FILTER_VALIDATE_EMAIL) ? $correo : '',
+				'celular'      => preg_replace('/\D+/', '', (string)$alumnos[0]['repre_celular']),
+				'whatsapp'     => self::celularWhatsApp($alumnos[0]['repre_celular']),
+				'alumnos'      => $hijos,
+				/* «Pedro», «Pedro y Lucía», «Pedro, Lucía y Tomás» */
+				'lista'        => count($hijos) > 1 ? implode(', ', array_slice($hijos, 0, -1)) . ' y ' . end($hijos) : $hijos[0],
+			];
 		}
 
 		/**
@@ -202,9 +512,11 @@
 				$accion     = ($h['consent_otorgado'] === 'S')
 							? '<span class="badge text-bg-success">Otorgado</span>'
 							: '<span class="badge text-bg-secondary">Revocado</span>';
-				$origen     = ($h['consent_origen'] === 'FORMULARIO')
-							? '<span class="badge text-bg-info">Formulario de inscripción</span>'
-							: '<span class="badge text-bg-warning">Registrado por administrador</span>';
+				$origen     = match ($h['consent_origen']) {
+								'FORMULARIO' => '<span class="badge text-bg-info">Formulario de inscripción</span>',
+								'ENLACE'     => '<span class="badge text-bg-primary">Enlace de autorización</span>',
+								default      => '<span class="badge text-bg-warning">Registrado por administrador</span>',
+							};
 
 				$html .= '<tr>'
 					  . '<td><span class="badge ' . $badgeTipo . '">' . htmlspecialchars($h['consent_tipo']) . '</span></td>'

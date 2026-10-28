@@ -3,11 +3,21 @@
 
 	$insConsent = new consentimientoController();
 
-	$sedeFiltro = isset($url[1]) ? $insConsent->limpiarCadena($url[1]) : '';
+	/*----------  Búsqueda de representantes  ----------
+	   Por GET, para que el filtro sobreviva a recargar y se pueda compartir.
+	   Al abrir: alumnos ACTIVOS de todas las sedes de la sesión. Una sede
+	   ajena en la dirección se ignora (y la regla de sedes va siempre). */
+	$sedes  = $insConsent->sedesDeLaBusqueda();
+	$sedeId = (int)($_GET['sede'] ?? ($url[1] ?? 0));
+	$sedeId = isset($sedes[$sedeId]) ? $sedeId : 0;
+	/* «Todas» sólo tiene sentido con más de una sede; con una, es esa. */
+	if (count($sedes) === 1) { $sedeId = (int)array_key_first($sedes); }
+	$estado = array_key_exists($_GET['estado'] ?? '', consentimientoController::ESTADOS) ? $_GET['estado'] : 'A';
+	$autorizacion = array_key_exists($_GET['autorizacion'] ?? '', consentimientoController::AUTORIZACION) ? $_GET['autorizacion'] : 'T';
 
-	/* La búsqueda por ?q= se fue: las dos tablas filtran al vuelo. */
-	$filas      = $insConsent->listarConsentimientos($sedeFiltro);
-	$pendientes = $insConsent->representantesPendientes($filas);
+	$filas      = $insConsent->listarConsentimientos($sedeId, $estado);
+	$repres     = $insConsent->representantesListado($filas, $autorizacion);
+	$filtrada   = $sedeId !== 0 && count($sedes) > 1 || $estado !== 'A' || $autorizacion !== 'T';
 
 	$puedeEnviar = puede('crear', 'consentimientoList');
 	$h = static fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
@@ -15,7 +25,9 @@
 
 	$totalAlumnos   = count($filas);
 	$alumnosPend    = count(array_filter($filas, [consentimientoController::class, 'alumnoPendiente']));
-	$conCorreo      = count(array_filter($pendientes, static fn($p) => $p['correo'] !== ''));
+	$porAutorizar   = count(array_filter($repres, static fn($p) => $p['pendiente']));
+	$conCorreo      = count(array_filter($repres, static fn($p) => $p['pendiente'] && $p['activos'] > 0 && $p['correo'] !== ''));
+	$etiquetaAlumnos = ['A' => 'Alumnos activos', 'I' => 'Alumnos inactivos', 'T' => 'Alumnos (activos e inactivos)'][$estado];
 
 	/* Devuelve el badge del estado de un consentimiento */
 	function badgeConsent($otorgado, $origen, $fecha, $usuario) {
@@ -155,18 +167,69 @@
 		<section class="app-content">
 			<div class="container-fluid ds-crud">
 
+				<!-- =================== Búsqueda de representantes =================== -->
+				<form method="GET" action="<?php echo APP_URL; ?>consentimientoList/" class="card ds-crud__form ds-consent__busqueda mb-3" id="busqueda" role="search" aria-label="Búsqueda de representantes">
+					<div class="card-header">
+						<h3 class="card-title"><i class="fas fa-magnifying-glass me-2" aria-hidden="true"></i>Búsqueda de representantes</h3>
+						<?php if ($filtrada): ?>
+							<div class="card-tools">
+								<a href="<?php echo APP_URL; ?>consentimientoList/" class="btn btn-sm btn-link px-0" id="busquedaLimpiar">
+									<i class="fas fa-rotate-left me-1" aria-hidden="true"></i>Quitar filtros
+								</a>
+							</div>
+						<?php endif; ?>
+					</div>
+					<div class="card-body">
+						<div class="row g-3 align-items-end">
+							<div class="col-12 col-md-4">
+								<label for="busquedaSede" class="form-label">Sede</label>
+								<?php /* Sólo las sedes de la sesión. Con una sola no hay nada que elegir. */ ?>
+								<select class="form-select" id="busquedaSede" name="sede" <?php echo count($sedes) <= 1 ? 'disabled' : ''; ?>>
+									<?php if (count($sedes) > 1): ?>
+										<option value="0" <?php echo $sedeId === 0 ? 'selected' : ''; ?>><?php echo sedes_de_la_sesion() === null ? 'Todas las sedes' : 'Todas mis sedes'; ?></option>
+									<?php endif; ?>
+									<?php foreach ($sedes as $id => $nombre): ?>
+										<option value="<?php echo (int)$id; ?>" <?php echo $sedeId === (int)$id ? 'selected' : ''; ?>><?php echo $h($nombre); ?></option>
+									<?php endforeach; ?>
+								</select>
+							</div>
+							<div class="col-6 col-md-3">
+								<label for="busquedaEstado" class="form-label">Estado del alumno</label>
+								<select class="form-select" id="busquedaEstado" name="estado">
+									<?php foreach (consentimientoController::ESTADOS as $valor => $texto): ?>
+										<option value="<?php echo $valor; ?>" <?php echo $estado === $valor ? 'selected' : ''; ?>><?php echo $h($texto); ?></option>
+									<?php endforeach; ?>
+								</select>
+							</div>
+							<div class="col-6 col-md-3">
+								<label for="busquedaAutorizacion" class="form-label">Autorización</label>
+								<select class="form-select" id="busquedaAutorizacion" name="autorizacion">
+									<?php foreach (consentimientoController::AUTORIZACION as $valor => $texto): ?>
+										<option value="<?php echo $valor; ?>" <?php echo $autorizacion === $valor ? 'selected' : ''; ?>><?php echo $h($texto); ?></option>
+									<?php endforeach; ?>
+								</select>
+							</div>
+							<div class="col-12 col-md-2">
+								<button type="submit" class="btn btn-primary w-100" id="busquedaBuscar">
+									<i class="fas fa-magnifying-glass me-1" aria-hidden="true"></i>Buscar
+								</button>
+							</div>
+						</div>
+					</div>
+				</form>
+
 				<div class="ds-consent__resumen" role="list">
-					<div class="ds-consent__cifra" role="listitem"><strong><?php echo $totalAlumnos; ?></strong><span>Alumnos activos</span></div>
+					<div class="ds-consent__cifra" role="listitem"><strong><?php echo $totalAlumnos; ?></strong><span><?php echo $etiquetaAlumnos; ?></span></div>
 					<div class="ds-consent__cifra" role="listitem"><strong><?php echo $totalAlumnos - $alumnosPend; ?></strong><span>Con respuesta completa</span></div>
-					<div class="ds-consent__cifra" role="listitem"><strong><?php echo count($pendientes); ?></strong><span>Representantes por autorizar</span></div>
+					<div class="ds-consent__cifra" role="listitem"><strong><?php echo $porAutorizar; ?></strong><span>Representantes por autorizar</span></div>
 				</div>
 
-				<!-- =================== Pedir la autorización =================== -->
+				<!-- =================== Representantes =================== -->
 				<div class="card ds-crud__lista" id="pendientes">
 					<div class="card-header">
 						<h3 class="card-title">
-							<i class="fas fa-paper-plane me-2" aria-hidden="true"></i>Pedir la autorización
-							<span class="badge text-bg-secondary ms-1"><?php echo count($pendientes); ?></span>
+							<i class="fas fa-users me-2" aria-hidden="true"></i>Representantes
+							<span class="badge text-bg-secondary ms-1" id="totalRepres"><?php echo count($repres); ?></span>
 						</h3>
 						<?php if ($puedeEnviar && $conCorreo > 0): ?>
 							<div class="card-tools">
@@ -177,28 +240,31 @@
 						<?php endif; ?>
 					</div>
 					<div class="card-body">
-						<?php if (!$pendientes): ?>
-							<p class="mb-0 text-body-secondary"><i class="fas fa-circle-check text-success me-1" aria-hidden="true"></i>
-								Todos los representantes respondieron las dos autorizaciones.</p>
+						<?php if (!$repres): ?>
+							<p class="mb-0 text-body-secondary" id="sinRepres"><i class="fas fa-circle-info me-1" aria-hidden="true"></i>
+								<?php echo $autorizacion === 'P' && $totalAlumnos > 0
+									? 'Todos los representantes de esta búsqueda respondieron las dos autorizaciones.'
+									: 'No hay representantes con alumnos que cumplan esta búsqueda.'; ?></p>
 						<?php else: ?>
 							<p class="small text-body-secondary">
-								Representantes con algún alumno sin autorización de <strong>tratamiento de datos</strong> o sin respuesta sobre el
-								<strong>uso de imagen</strong>. Reciben un enlace que muestra sólo las dos autorizaciones: lo abren en el teléfono,
-								las leen y responden. El enlace es personal, vence en 7 días y sirve una sola vez.
+								Representantes con al menos un alumno <?php echo ['A' => 'activo', 'I' => 'inactivo', 'T' => 'activo o inactivo'][$estado]; ?>
+								<?php echo $sedeId ? 'en ' . $h($sedes[$sedeId]) : (count($sedes) > 1 ? 'en sus sedes' : ''); ?>.
+								A quien le falta la autorización de <strong>tratamiento de datos</strong> o la respuesta sobre el <strong>uso de imagen</strong>
+								se le envía un enlace que muestra sólo las dos autorizaciones; es personal, vence en 7 días y sirve una sola vez.
 							</p>
 							<table id="tablaPendientes" class="table table-hover align-middle ds-crud__tabla" style="width:100%">
 								<thead>
 									<tr>
 										<th>Representante</th>
 										<th>Alumnos</th>
-										<th>Envío</th>
+										<th>Estado</th>
 										<th class="text-end"><span class="visually-hidden">Acciones</span></th>
 									</tr>
 								</thead>
 								<tbody>
-								<?php foreach ($pendientes as $p): ?>
+								<?php foreach ($repres as $p): ?>
 									<tr data-repre="<?php echo (int)$p['repre_id']; ?>">
-										<td class="ds-ficha__principal">
+										<td class="ds-ficha__principal" data-search="<?php echo $h($p['representante'] . ' ' . $p['identificacion'] . ' ' . implode(' ', array_unique(array_column($p['alumnos'], 'sede')))); ?>">
 											<div class="ds-ficha__nombre"><?php echo $h($p['representante']); ?></div>
 											<div class="ds-ficha__meta">
 												<?php echo $h($p['identificacion']); ?>
@@ -209,21 +275,34 @@
 											<ul class="ds-consent__hijos">
 												<?php foreach ($p['alumnos'] as $a): ?>
 													<li><span class="ds-consent__hijo"><?php echo $h($a['nombre']); ?></span>
+														<?php if ($a['estado'] !== 'A'): ?><span class="badge text-bg-light border">Inactivo</span><?php endif; ?>
+														<?php if ($sedeId === 0 && count($sedes) > 1): ?><span class="ds-ficha__meta"><?php echo $h($a['sede']); ?></span><?php endif; ?>
 														<?php echo chipConsent('Datos', $a['datos']); ?>
 														<?php echo chipConsent('Imagen', $a['imagen']); ?></li>
 												<?php endforeach; ?>
 											</ul>
 										</td>
-										<td class="ds-ficha__estado" data-p="envio"><?php echo ultimoEnvio($p['ultimo']); ?></td>
+										<td class="ds-ficha__estado" data-p="envio">
+											<?php echo $p['pendiente'] ? ultimoEnvio($p['ultimo']) : '<span class="badge text-bg-success"><i class="fas fa-check me-1" aria-hidden="true"></i>Completa</span>'; ?>
+										</td>
 										<td class="ds-ficha__acciones">
-											<?php if ($puedeEnviar): ?>
+											<?php if ($puedeEnviar && $p['pendiente']): ?>
 											<div class="ds-ficha__botones">
-												<?php /* Un solo botón: el canal se elige en el modal, viendo el mensaje. */ ?>
-												<button type="button" class="btn btn-sm btn-primary ds-ficha__primario" data-autorizacion
-														data-nombre="<?php echo $h($p['representante']); ?>"
-														data-con-correo="<?php echo $p['correo'] !== '' ? '1' : '0'; ?>">
-													<i class="fas fa-paper-plane me-1" aria-hidden="true"></i><?php echo $p['ultimo'] ? 'Reenviar autorización' : 'Enviar autorización'; ?>
-												</button>
+												<?php if ($p['activos'] > 0): ?>
+													<?php /* Un solo botón: el canal se elige en el modal, viendo el mensaje. */ ?>
+													<button type="button" class="btn btn-sm btn-primary ds-ficha__primario" data-autorizacion
+															data-nombre="<?php echo $h($p['representante']); ?>"
+															data-con-correo="<?php echo $p['correo'] !== '' ? '1' : '0'; ?>">
+														<i class="fas fa-paper-plane me-1" aria-hidden="true"></i><?php echo $p['ultimo'] ? 'Reenviar autorización' : 'Enviar autorización'; ?>
+													</button>
+												<?php else: ?>
+													<?php /* El enlace pide la autorización por los alumnos activos: sin ninguno, no hay qué enviar. */ ?>
+													<span class="d-inline-block w-100" tabindex="0" title="Sin alumnos activos: el enlace pide la autorización sólo por alumnos activos">
+														<button type="button" class="btn btn-sm btn-outline-secondary ds-ficha__primario w-100" disabled>
+															<i class="fas fa-ban me-1" aria-hidden="true"></i>Sin alumnos activos
+														</button>
+													</span>
+												<?php endif; ?>
 											</div>
 											<?php endif; ?>
 										</td>
@@ -263,7 +342,8 @@
 								<tr>
 									<td class="ds-ficha__principal" data-search="<?php echo $h($f['alumno'] . ' ' . $f['alumno_identificacion'] . ' ' . $f['sede_nombre']); ?>">
 										<div class="ds-ficha__nombre"><?php echo $h($f['alumno']); ?></div>
-										<div class="ds-ficha__meta"><?php echo $h($f['alumno_identificacion']); ?> · <?php echo $h($f['sede_nombre']); ?></div>
+										<div class="ds-ficha__meta"><?php echo $h($f['alumno_identificacion']); ?> · <?php echo $h($f['sede_nombre']); ?>
+											<?php if ($f['alumno_estado'] !== 'A'): ?><span class="badge text-bg-light border ms-1">Inactivo</span><?php endif; ?></div>
 									</td>
 									<td class="ds-ficha__dato" data-etiqueta="Representante"><?php echo $h($f['representante']); ?></td>
 									<td class="ds-ficha__dato" data-etiqueta="Datos"><?php echo badgeConsent($f['datos_otorgado'], $f['datos_origen'], $f['datos_fecha'], $f['datos_usuario']); ?></td>
@@ -462,6 +542,18 @@
 <script>
 document.addEventListener('DOMContentLoaded', function () {
 	var AJAX = '<?php echo APP_URL; ?>app/ajax/consentimientoAjax.php';
+
+	/* Búsqueda de representantes: cada cambio busca, sin tener que pulsar
+	   «Buscar» (que queda para quien navega con teclado o sin JavaScript). */
+	var busqueda = document.getElementById('busqueda');
+	busqueda.querySelectorAll('select').forEach(function (s) {
+		s.addEventListener('change', function () {
+			var b = document.getElementById('busquedaBuscar');
+			b.disabled = true;
+			b.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>Buscando…';
+			busqueda.submit();
+		});
+	});
 
 	/* Tabla en escritorio, fichas en el teléfono (futbol.css, .ds-crud).
 	   Una sola caja de filtrar por tabla: la búsqueda por ?q= ya no existe. */

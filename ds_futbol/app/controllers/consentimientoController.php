@@ -23,16 +23,24 @@
 		/* El enlace de autorización vale una semana y una sola respuesta. */
 		const VIGENCIA_ENLACE = 7 * 86400;
 
+		/* Estado del alumno en la búsqueda: los mismos que Alumnos (alumnoList). */
+		const ESTADOS = ['A' => 'Activos', 'I' => 'Inactivos', 'T' => 'Activos e inactivos'];
+		/* Situación del representante respecto a las autorizaciones. */
+		const AUTORIZACION = ['T' => 'Todos', 'P' => 'Por autorizar', 'C' => 'Con respuesta completa'];
+
 		/**
-		 * Alumnos activos con el estado actual de cada consentimiento.
-		 * El estado vigente es la última fila de cada tipo.
+		 * Alumnos con el estado actual de cada consentimiento. El estado
+		 * vigente es la última fila de cada tipo.
 		 *
-		 * Ya no recibe una búsqueda: la caja de la tabla filtra al vuelo.
+		 * $estado: A (por defecto) · I · T, como en Alumnos. $sedeid: una de las
+		 * sedes de la sesión o 0 para todas las suyas; una sede ajena no da
+		 * nada, porque la regla de sedes va siempre.
 		 */
-		public function listarConsentimientos($sedeid = '') {
+		public function listarConsentimientos($sedeid = '', $estado = 'A') {
 
 			$consulta = "SELECT a.alumno_id,
 								a.alumno_identificacion,
+								a.alumno_estado,
 								CONCAT_WS(' ', a.alumno_primernombre, a.alumno_apellidopaterno, a.alumno_apellidomaterno) AS alumno,
 								CONCAT_WS(' ', a.alumno_primernombre, a.alumno_apellidopaterno) AS alumno_corto,
 								a.alumno_repreid,
@@ -61,13 +69,9 @@
 								ON ci.consent_id = (SELECT c3.consent_id FROM alumno_consentimiento c3
 													 WHERE c3.consent_alumnoid = a.alumno_id AND c3.consent_tipo = 'IMAGEN'
 													 ORDER BY c3.consent_fecha DESC, c3.consent_id DESC LIMIT 1)
-						 WHERE a.alumno_estado = 'A'";
+						 WHERE " . $this->condicionEstadoAlumno('a.alumno_estado', $estado);
 
 			$parametros = [];
-
-			// Los roles no administrativos solo ven sus sedes asignadas
-			$rolid   = $_SESSION['rol'] ?? null;
-			$usuario = $_SESSION['usuario'] ?? '';
 
 			/* Las sedes de la sesión: sedes_de_la_sesion() (ds_core/inc/seguridad.php). */
 			$consulta .= " AND " . sql_sedes_de_la_sesion('a.alumno_sedeid');
@@ -82,6 +86,13 @@
 			return $this->ejecutarConsulta($consulta, $parametros)->fetchAll(PDO::FETCH_ASSOC);
 		}
 
+		/** Las sedes que la sesión puede elegir en la búsqueda (id => nombre). */
+		public function sedesDeLaBusqueda() {
+			return $this->ejecutarConsulta(
+				"SELECT sede_id, sede_nombre FROM general_sede WHERE " . sql_sedes_de_la_sesion('sede_id') . " ORDER BY sede_nombre"
+			)->fetchAll(PDO::FETCH_KEY_PAIR);
+		}
+
 		/**
 		 * Un alumno está pendiente si no tiene autorizado el tratamiento de
 		 * datos (sin registro o revocado) o si nunca se decidió sobre su
@@ -92,14 +103,20 @@
 		}
 
 		/**
-		 * Los representantes con algún hijo pendiente, a partir de las filas de
-		 * listarConsentimientos() (ya filtradas por sede), con el último enlace
-		 * que se les envió.
+		 * Los representantes de las filas de listarConsentimientos() (ya
+		 * filtradas por sede y estado del alumno), con sus alumnos, si tienen
+		 * algo pendiente y el último enlace que se les envió.
+		 *
+		 *   pendiente   algún alumno de la búsqueda está pendiente
+		 *   activos     alumnos ACTIVOS en las sedes de la sesión: el enlace
+		 *               sólo pide la autorización por ellos, así que sin
+		 *               ninguno no se puede enviar (búsqueda de inactivos)
+		 *
+		 * $autorizacion: T todos · P por autorizar · C con respuesta completa.
 		 */
-		public function representantesPendientes(array $filas) {
+		public function representantesListado(array $filas, $autorizacion = 'T') {
 			$repres = [];
 			foreach ($filas as $f) {
-				if (!self::alumnoPendiente($f)) { continue; }
 				$id = (int)$f['alumno_repreid'];
 				$repres[$id] ??= [
 					'repre_id'      => $id,
@@ -109,22 +126,49 @@
 					'correo'        => filter_var(trim((string)$f['repre_correo']), FILTER_VALIDATE_EMAIL) ? trim((string)$f['repre_correo']) : '',
 					'whatsapp'      => self::celularWhatsApp($f['repre_celular']),
 					'alumnos'       => [],
+					'pendiente'     => false,
+					'activos'       => 0,
 					'ultimo'        => null,
 				];
+				$repres[$id]['pendiente'] = $repres[$id]['pendiente'] || self::alumnoPendiente($f);
 				$repres[$id]['alumnos'][] = [
 					'nombre' => $f['alumno_corto'],
 					'sede'   => $f['sede_nombre'],
+					'estado' => $f['alumno_estado'],
 					'datos'  => $f['datos_otorgado'],
 					'imagen' => $f['imagen_otorgado'],
 				];
 			}
 
+			if ($autorizacion === 'P' || $autorizacion === 'C') {
+				$repres = array_filter($repres, static fn($r) => $r['pendiente'] === ($autorizacion === 'P'));
+			}
+
+			foreach ($this->activosPorRepresentante(array_keys($repres)) as $id => $n) {
+				$repres[$id]['activos'] = $n;
+			}
 			foreach ($this->ultimosEnlaces(array_keys($repres)) as $id => $e) {
 				$repres[$id]['ultimo'] = $e;
 			}
 
 			uasort($repres, static fn($a, $b) => strcmp($a['representante'], $b['representante']));
 			return array_values($repres);
+		}
+
+		/** Sólo los que tienen algo pendiente (lo usa la prueba del enlace). */
+		public function representantesPendientes(array $filas) {
+			return $this->representantesListado($filas, 'P');
+		}
+
+		/** Alumnos activos de cada representante en las sedes de la sesión. */
+		private function activosPorRepresentante(array $repreIds) {
+			if (!$repreIds) { return []; }
+			$ids = implode(',', array_map('intval', $repreIds));
+			return array_map('intval', $this->ejecutarConsulta(
+				"SELECT alumno_repreid, COUNT(*) FROM sujeto_alumno
+				  WHERE alumno_repreid IN ($ids) AND alumno_estado = 'A' AND " . sql_sedes_de_la_sesion('alumno_sedeid') . "
+				  GROUP BY alumno_repreid"
+			)->fetchAll(PDO::FETCH_KEY_PAIR));
 		}
 
 		/**

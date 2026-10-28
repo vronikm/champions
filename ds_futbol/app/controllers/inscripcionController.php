@@ -123,7 +123,8 @@ class inscripcionController extends mainModel
         return count($this->listarPendientesInscripcion());
     }
 
-    public function listarPendientesInscripcion($sedeid = '', $busqueda = '')
+    /* Ya no recibe una búsqueda: la caja de la tabla filtra al vuelo. */
+    public function listarPendientesInscripcion($sedeid = '')
     {
         $interna = "SELECT a.alumno_id,
                            a.alumno_identificacion,
@@ -168,14 +169,6 @@ class inscripcionController extends mainModel
         if ($sedeid !== '' && intval($sedeid) > 0) {
             $interna .= " AND a.alumno_sedeid = :sede";
             $parametros[':sede'] = intval($sedeid);
-        }
-
-        if (trim($busqueda) !== '') {
-            $interna .= " AND (a.alumno_identificacion LIKE :b
-                            OR a.alumno_primernombre LIKE :b
-                            OR a.alumno_apellidopaterno LIKE :b
-                            OR a.alumno_apellidomaterno LIKE :b)";
-            $parametros[':b'] = '%' . trim($busqueda) . '%';
         }
 
         /* El filtro "le falta algo" va en una consulta externa: los contadores

@@ -3,11 +3,15 @@
 
     $insInscripcion = new inscripcionController();
 
-    $sedeFiltro = isset($_GET['sede']) ? $insInscripcion->limpiarCadena($_GET['sede']) : '';
-    $busqueda   = isset($_GET['q'])    ? $insInscripcion->limpiarCadena($_GET['q'])    : '';
+    /* Sede: sólo las de la sesión (sedes_de_la_sesion). Una sede ajena en la
+       dirección se ignora; «Todas» sólo con más de una; con una, es esa. La
+       búsqueda por ?q= se fue: la caja de la tabla filtra al vuelo. */
+    $sedes  = array_column($insInscripcion->listarSedesActivas(), 'sede_nombre', 'sede_id');
+    $sedeId = (int)($_GET['sede'] ?? 0);
+    $sedeId = isset($sedes[$sedeId]) ? $sedeId : 0;
+    if (count($sedes) === 1) { $sedeId = (int)array_key_first($sedes); }
 
-    $sedes  = $insInscripcion->listarSedesActivas();
-    $filas  = $insInscripcion->listarPendientesInscripcion($sedeFiltro, $busqueda);
+    $filas  = $insInscripcion->listarPendientesInscripcion($sedeId);
 
     /* Badge de un requisito: verde si está cubierto, rojo si falta */
     function badgePendiente($cubierto, $textoOk, $textoFalta) {
@@ -73,22 +77,18 @@ CSS;
                             <span class="badge text-bg-warning ms-1"><?php echo count($filas); ?></span>
                         </h3>
                         <div class="card-tools">
-                            <form method="GET" class="form-inline">
-                                <select name="sede" class="form-select form-select-sm me-2">
-                                    <option value="">Todas las sedes</option>
-                                    <?php foreach ($sedes as $sede): ?>
-                                        <option value="<?php echo $sede['sede_id']; ?>"
-                                            <?php echo ((string)$sedeFiltro === (string)$sede['sede_id']) ? 'selected' : ''; ?>>
-                                            <?php echo htmlspecialchars($sede['sede_nombre']); ?>
-                                        </option>
+                            <form method="GET" action="<?php echo APP_URL; ?>inscripcionPendientes/" id="filtroSede" class="d-flex align-items-center gap-2">
+                                <label for="inscSede" class="visually-hidden">Sede</label>
+                                <?php /* Con una sola sede no hay nada que elegir. */ ?>
+                                <select name="sede" id="inscSede" class="form-select form-select-sm" <?php echo count($sedes) <= 1 ? 'disabled' : ''; ?>>
+                                    <?php if (count($sedes) > 1): ?>
+                                        <option value="0" <?php echo $sedeId === 0 ? 'selected' : ''; ?>><?php echo sedes_de_la_sesion() === null ? 'Todas las sedes' : 'Todas mis sedes'; ?></option>
+                                    <?php endif; ?>
+                                    <?php foreach ($sedes as $id => $nombre): ?>
+                                        <option value="<?php echo (int)$id; ?>" <?php echo $sedeId === (int)$id ? 'selected' : ''; ?>><?php echo htmlspecialchars($nombre); ?></option>
                                     <?php endforeach; ?>
                                 </select>
-                                <div class="input-group input-group-sm" style="width:240px;">
-                                    <input type="text" name="q" class="form-control" placeholder="Buscar alumno o cédula"
-                                           value="<?php echo htmlspecialchars($busqueda); ?>">
-                                                                        <button type="submit" class="btn btn-default"><i class="fas fa-search"></i></button>
-                                
-                                </div>
+                                <noscript><button type="submit" class="btn btn-sm btn-primary">Ver</button></noscript>
                             </form>
                         </div>
                     </div>
@@ -182,6 +182,10 @@ CSS;
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    /* Elegir la sede ya busca. */
+    var sede = document.getElementById('inscSede');
+    sede.addEventListener('change', function () { document.getElementById('filtroSede').submit(); });
+
     new DataTable('#tablaPendientes', {
         "pageLength": 25,
         "order": [[6, "desc"]],   // los que llevan más tiempo esperando, primero
@@ -195,7 +199,8 @@ document.addEventListener('DOMContentLoaded', function () {
             "lengthMenu":     "Mostrar _MENU_ alumnos",
             "loadingRecords": "Cargando...",
             "processing":     "Procesando...",
-            "search":         "Buscar:",
+            "search":         "",
+            "searchPlaceholder": "Filtrar por nombre, cédula o sede…",
             "zeroRecords":    "No se encontraron registros coincidentes",
             "paginate": {
                 "first":    "Primero",

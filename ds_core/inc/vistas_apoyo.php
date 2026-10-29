@@ -51,7 +51,7 @@ return [
         'reporteContactosEmergenciaSede' => ['representanteList'],
 
         /* Pagos y recibos */
-        'pagosNew'            => ['pagosList', 'alumnoList'],
+        'pagosNew'            => ['pagosList', 'alumnoList', 'cobranzaPension', 'cobranzaUniforme'],   /* «Detalle» de las cobranzas */
         'pagosUpdate'         => ['pagosList'],
         'pagosPendiente'      => ['pagosList', 'cobranzaPension', 'balanceResultados'],   /* el Hub avisa de los pendientes */
         'pagospendienteUpdate'=> ['pagosList'],

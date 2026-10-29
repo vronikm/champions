@@ -166,7 +166,8 @@
 						' . $this->tdMora($mora, implode(' + ', $detalleMora)) . '
 						<td class="ds-tabla-acciones ds-ficha__acciones"><div class="ds-ficha__botones">
 							' . ($puedeNotificar ? $this->botonNotificar($c, (int)$rows['alumno_id'], $mora) : '') . '
-							<a href="' . APP_URL . 'cobranzaDetallePension/' . (int)$rows['repre_id'] . '/" class="btn btn-sm btn-secondary"><i class="fas fa-list me-1" aria-hidden="true"></i>Detalle</a>
+							<a href="' . APP_URL . 'pagosNew/' . (int)$rows['alumno_id'] . '/" target="_blank" rel="noopener" class="btn btn-sm btn-secondary"'
+								. ' title="Pagos de ' . $this->html($c['alumno']) . ' (se abre en una pestaña nueva)"><i class="fas fa-list me-1" aria-hidden="true"></i>Detalle</a>
 						</div></td>
 					</tr>';
 			}
@@ -545,7 +546,8 @@
 						' . $this->tdMora($mora, $detalleMora) . '
 						<td class="ds-tabla-acciones ds-ficha__acciones"><div class="ds-ficha__botones">
 							' . ($puedeNotificar ? $this->botonNotificar($c, (int)$rows['alumno_id'], $mora) : '') . '
-							<a href="' . APP_URL . 'cobranzaDetalleUniforme/' . (int)$rows['repre_id'] . '/" class="btn btn-sm btn-secondary"><i class="fas fa-list me-1" aria-hidden="true"></i>Detalle</a>
+							<a href="' . APP_URL . 'pagosNew/' . (int)$rows['alumno_id'] . '/" target="_blank" rel="noopener" class="btn btn-sm btn-secondary"'
+								. ' title="Pagos de ' . $this->html($c['alumno']) . ' (se abre en una pestaña nueva)"><i class="fas fa-list me-1" aria-hidden="true"></i>Detalle</a>
 						</div></td>
 					</tr>';
 			}

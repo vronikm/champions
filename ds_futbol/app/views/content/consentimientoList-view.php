@@ -108,33 +108,6 @@
 	/* «Otorgado» y su origen, juntos y sin descolgarse al envolver. */
 	.ds-consent__estado { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
 	#tablaConsentimientos .ds-ficha__botones .btn { white-space: nowrap; }
-	/* Texto oscuro sobre el verde de WhatsApp: con blanco no llega a 4,5. */
-	.btn-whatsapp { background: #25D366; border-color: #25D366; color: #212529; font-weight: 600; }
-	.btn-whatsapp:hover, .btn-whatsapp:focus { background: #1ebe5c; border-color: #1ebe5c; color: #212529; }
-	/* Modal «Enviar autorización» */
-	.ds-aut-destino {
-		display: flex; align-items: center; gap: 12px; padding: 10px 12px;
-		border: 1px solid var(--bs-border-color); border-radius: var(--ds-radius-sm, 10px);
-		background: var(--bs-tertiary-bg);
-	}
-	.ds-aut-avatar {
-		width: 40px; height: 40px; flex: none; display: grid; place-items: center;
-		border-radius: 50%; background: var(--bs-primary); color: var(--bs-white);
-	}
-	.ds-aut-canales { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
-	.ds-aut-canal {
-		display: flex; align-items: center; gap: .6rem; text-align: left;
-		min-height: 3.5rem; padding: .55rem .75rem; font-weight: 600;
-		border: 2px solid var(--bs-border-color); background: var(--bs-body-bg); color: var(--bs-body-color);
-	}
-	.ds-aut-canal small { display: block; font-weight: 400; font-size: .78rem; color: var(--bs-secondary-color);
-		overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
-	.ds-aut-canal > span { min-width: 0; }
-	.ds-aut-canal__icono { font-size: 1.35rem; flex: none; }
-	.ds-aut-canal .fa-whatsapp { color: #1a9e4b; }
-	.btn-check:checked + .ds-aut-canal { border-color: var(--bs-primary); background: var(--bs-primary-bg-subtle); color: var(--bs-emphasis-color); }
-	.btn-check:focus-visible + .ds-aut-canal { outline: 3px solid var(--bs-primary); outline-offset: 2px; }
-	.btn-check:disabled + .ds-aut-canal { opacity: .55; }
 	#autCuerpo { font-size: .92rem; line-height: 1.45; }
 	.ds-aut-enlace {
 		padding: .65rem .8rem; border-radius: var(--ds-radius-sm, 10px);
@@ -143,9 +116,7 @@
 	.ds-aut-enlace__texto { white-space: pre-wrap; font-size: .85rem; color: var(--bs-secondary-color); }
 	/* El enlace firmado es largo: una línea recortada; completo en «Ver lo que recibe». */
 	.ds-aut-enlace__url { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .8rem; margin: .1rem 0; }
-	.btn-whatsapp:disabled { background: #25D366; border-color: #25D366; color: #212529; opacity: .5; }
 	@media (max-width: 575.98px) {
-		#modalAutorizacion .modal-footer > .btn { flex: 1 1 auto; min-height: 2.75rem; }
 		.ds-consent__resumen { gap: .5rem; }
 		.ds-consent__cifra { padding: .6rem .7rem; }
 		.ds-consent__cifra strong { font-size: 1.25rem; }
@@ -470,7 +441,7 @@
      a quién, por dónde, el mensaje que se puede corregir y lo que no se toca
      (el enlace personal). El enlace se prepara al abrir y sólo cuenta como
      enviado cuando de verdad sale. -->
-<div class="modal fade" id="modalAutorizacion" tabindex="-1" aria-labelledby="autTitulo" aria-hidden="true">
+<div class="modal fade ds-aut-modal" id="modalAutorizacion" tabindex="-1" aria-labelledby="autTitulo" aria-hidden="true">
 	<div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down">
 		<div class="modal-content">
 			<div class="modal-header">

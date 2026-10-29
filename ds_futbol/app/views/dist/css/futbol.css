@@ -1206,3 +1206,93 @@
     .ds-atrasada .modal-footer .btn { flex: 1; min-height: 2.75rem; }
     .ds-atrasada .form-select { min-height: 2.75rem; }
 }
+
+/* =========================================================================
+   MODAL «ENVIAR POR WHATSAPP O CORREO» (.ds-aut-modal): «Enviar
+   autorización» de consentimientoList y «Notificar» de cobranzaPension.
+   A quién, por dónde, y el mensaje que se puede corregir.
+   ========================================================================= */
+/* Texto oscuro sobre el verde de WhatsApp: con blanco no llega a 4,5. */
+.btn-whatsapp { background: #25D366; border-color: #25D366; color: #212529; font-weight: 600; }
+.btn-whatsapp:hover, .btn-whatsapp:focus { background: #1ebe5c; border-color: #1ebe5c; color: #212529; }
+/* Destino y canales (WhatsApp o correo) */
+.ds-aut-destino {
+    display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+    border: 1px solid var(--bs-border-color); border-radius: var(--ds-radius-sm, 10px);
+    background: var(--bs-tertiary-bg);
+}
+.ds-aut-avatar {
+    width: 40px; height: 40px; flex: none; display: grid; place-items: center;
+    border-radius: 50%; background: var(--bs-primary); color: var(--bs-white);
+}
+.ds-aut-canales { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+.ds-aut-canal {
+    display: flex; align-items: center; gap: .6rem; text-align: left;
+    min-height: 3.5rem; padding: .55rem .75rem; font-weight: 600;
+    border: 2px solid var(--bs-border-color); background: var(--bs-body-bg); color: var(--bs-body-color);
+}
+.ds-aut-canal small { display: block; font-weight: 400; font-size: .78rem; color: var(--bs-secondary-color);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.ds-aut-canal > span { min-width: 0; }
+.ds-aut-canal__icono { font-size: 1.35rem; flex: none; }
+.ds-aut-canal .fa-whatsapp { color: #1a9e4b; }
+.btn-check:checked + .ds-aut-canal { border-color: var(--bs-primary); background: var(--bs-primary-bg-subtle); color: var(--bs-emphasis-color); }
+.btn-check:focus-visible + .ds-aut-canal { outline: 3px solid var(--bs-primary); outline-offset: 2px; }
+.btn-check:disabled + .ds-aut-canal { opacity: .55; }
+.btn-whatsapp:disabled { background: #25D366; border-color: #25D366; color: #212529; opacity: .5; }
+@media (max-width: 575.98px) {
+    .ds-aut-modal .modal-footer > .btn { flex: 1 1 auto; min-height: 2.75rem; }
+}
+
+/* =========================================================================
+   COBRANZA DE PENSIONES Y DE UNIFORMES (cobranzaPension, cobranzaUniforme).
+   Fichas de .ds-crud; la tabla lleva .ds-cobranza__tabla y la tarjeta
+   .ds-cobranza__lista. El modal «Notificar» es .ds-aut-modal (arriba).
+   ========================================================================= */
+/* Representante: cédula, celular y correo. */
+.ds-cobranza__contacto { display: flex; flex-wrap: wrap; gap: .1rem .75rem; margin-top: .15rem; }
+.ds-cobranza__contacto > span { white-space: nowrap; }
+.ds-cobranza__contacto .ds-cobranza__correo { white-space: normal; overflow-wrap: anywhere; }
+.ds-cobranza__alumno { font-weight: 500; color: var(--bs-emphasis-color); }
+/* Alumno: cédula, edad y sede, cada una con su ícono y sin separadores
+   que queden colgando al envolver. */
+.ds-cobranza__meta {
+    display: flex; flex-wrap: wrap; gap: .05rem .7rem; margin-top: .1rem;
+    font-size: .825rem; color: var(--bs-secondary-color);
+}
+.ds-cobranza__meta > span { white-space: nowrap; }
+.ds-cobranza__meta .fas, .ds-cobranza__contacto .fas { opacity: .75; }
+/* El estado, en su propia línea bajo cédula, edad y sede. */
+.ds-cobranza__estado-linea { display: block; margin-top: .3rem; }
+.ds-cobranza__estado {
+    display: inline-flex; align-items: center; gap: .3rem;
+    font-size: .72rem; font-weight: 600; padding: .25em .55em; border-radius: 1rem;
+}
+.ds-cobranza__estado > .fa-circle { font-size: .4rem; }
+/* Uniformes: lo que se debe, una compra por línea. */
+.ds-cobranza__conceptos { display: flex; flex-direction: column; }
+#notCuerpo { font-size: .92rem; line-height: 1.45; }
+.ds-cobranza__tabla .ds-ficha__botones .btn { white-space: nowrap; }
+.ds-cobranza__tabla .ds-pagos__asis { white-space: nowrap; }
+/* El importe y, debajo, de qué se compone: «19 pensiones + saldo $75.00». */
+.ds-cobranza__tabla td.ds-cobranza__mora { text-align: right; }
+.ds-cobranza__tabla td.ds-cobranza__mora .small { margin-top: .2rem; }
+@media (min-width: 992px) {
+    /* Un dato de contacto por línea y nombres sin partirse palabra a palabra. */
+    .ds-cobranza__tabla td.ds-ficha__principal { min-width: 12rem; }
+    .ds-cobranza__tabla td[data-etiqueta="Alumno"] { min-width: 10rem; }
+    /* «Último pago de pensión» en dos líneas: en una pedía 186 px. */
+    table.dataTable.ds-cobranza__tabla > thead > tr > th { white-space: normal; vertical-align: bottom; }
+    /* Si aun así no cabe (portátil pequeño con el menú abierto), la tabla
+       se desplaza dentro de la tarjeta y no desborda la página. */
+    .ds-cobranza__lista .dt-layout-table > .dt-layout-cell { overflow-x: auto; }
+    .ds-cobranza__contacto { flex-direction: column; }
+    /* Notificar sobre Detalle: con siete u ocho columnas no caben lado a lado. */
+    .ds-cobranza__tabla .ds-ficha__botones { flex-direction: column; align-items: stretch; gap: .35rem; }
+}
+@media (max-width: 991.98px) {
+    .ds-cobranza__tabla td.ds-ficha__estado .badge { font-size: .95rem; }
+    /* En la ficha, las compras pendientes seguidas en la misma línea. */
+    .ds-cobranza__conceptos { display: inline; }
+    .ds-cobranza__conceptos > span + span::before { content: " · "; }
+}

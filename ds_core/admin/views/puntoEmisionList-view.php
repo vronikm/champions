@@ -11,17 +11,21 @@
 | Dar a cada módulo su propio punto elimina la colisión por construcción.
 | Esta pantalla es donde se hace esa asignación.
 |
-| Sólo el superadministrador, igual que la configuración del SRI: de aquí
+| Por permiso de rol, igual que la configuración del SRI: de aquí
 | depende con qué numeración se emiten documentos con validez tributaria.
 */
 
 use admin\controllers\coreController;
 
-if (!es_superadministrador()) {
+/* Por permisos de rol (Core › Permisos), como el resto de Core: «ver» para
+   entrar; sin «editar», sólo lectura. Antes exigía ser superadministrador
+   aunque el rol tuviera el permiso. */
+if (!usuario_tiene_permiso('puntoEmisionList')) {
     http_response_code(403);
     require_once __DIR__ . "/accesoDenegado-view.php";
     exit();
 }
+$puedeEditarConfig = puede_editar('puntoEmisionList');
 
 $insCore = new coreController();
 
@@ -41,7 +45,8 @@ require_once __DIR__ . "/inc/layout-top.php";
 <div class="aviso-superadmin mb-3">
     <i class="fas fa-shield-alt fa-lg mt-1"></i>
     <div>
-        <strong>Sólo el superadministrador.</strong><br>
+        <strong>Numeración tributaria.</strong>
+        <?php if (!$puedeEditarConfig): ?><span class="badge text-bg-secondary ms-1">Sólo lectura: su rol no puede editarla</span><?php endif; ?><br>
         Un punto de emisión pertenece a un solo módulo. Es lo que impide que dos
         módulos generen el mismo número de comprobante, que el SRI rechaza y que
         no se puede corregir una vez entregado al cliente.
@@ -266,4 +271,14 @@ require_once __DIR__ . "/inc/layout-top.php";
 })();
 </script>
 
+<?php if (!$puedeEditarConfig): ?>
+<script>
+/* Sólo lectura: sin permiso de editar, nada que enviar. */
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('form.FormularioAjax, form[method="POST"], form[method="post"]').forEach(function (f) {
+        f.querySelectorAll('input, select, textarea, button').forEach(function (c) { if (c.type !== 'hidden') { c.disabled = true; } });
+    });
+});
+</script>
+<?php endif; ?>
 <?php require_once __DIR__ . "/inc/layout-bottom.php"; ?>

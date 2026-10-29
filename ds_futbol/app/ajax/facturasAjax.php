@@ -5,8 +5,15 @@
 	require_once "../views/inc/session_start.php";
 	require_once "../../autoload.php";
 
-	/* Guardia: sesion + origen + permiso de rol */
+	/* Guardia: sesion + origen + permiso de rol. La configuración del SRI es
+	   de la pantalla Core › Facturación electrónica: su permiso es el de ESA
+	   pantalla (Core › Permisos), no el de emitir facturas. */
 	$GUARD_VISTA = "facturasList";
+	if (in_array($_POST['modulo_facturas'] ?? '', ['GUARDAR_CONFIG_SRI', 'SUBIR_CERTIFICADO_SRI', 'PROBAR_CERTIFICADO_SRI', 'PROBAR_CONEXION_SRI',
+	        'CAMBIAR_ESTADO_SERVICIO_SRI', 'GUARDAR_AMBIENTES_SRI', 'PROBAR_AMBIENTE_SRI'], true)
+	    || ($_GET['modulo_facturas'] ?? '') === 'INFO_CERTIFICADO_SRI') {
+		$GUARD_VISTA_CORE = "facturacionConfigSri";
+	}
 	require_once "../views/inc/ajax_guard.php";
 
 	use app\controllers\facturasController;
@@ -68,7 +75,7 @@
 		   en un solo sitio, aqui, junto al resto del motor del SRI. */
 		if($modulo=="INFO_CERTIFICADO_SRI"){
 			header('Content-Type: application/json; charset=utf-8');
-			if(!es_superadministrador()){
+			if(!usuario_tiene_permiso('facturacionConfigSri', 'core')){
 				http_response_code(403);
 				echo json_encode(['estado'=>'NO_AUTORIZADO']);
 				exit();

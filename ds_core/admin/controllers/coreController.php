@@ -1987,8 +1987,8 @@ class coreController
       ======================================================================
       Perfiles de la escuela y la conexión con Meta (página de Facebook y
       cuenta profesional de Instagram) para publicar las felicitaciones de
-      cumpleaños desde Fútbol. Sólo el superadministrador: el token publica
-      en nombre de la escuela. Las funciones están en ds_core/inc/redes.php.
+      cumpleaños desde Fútbol. Permiso de editar en Core › Redes sociales: el token publica
+      en nombre de la escuela (concederlo con cuidado). Las funciones están en ds_core/inc/redes.php.
       ====================================================================*/
 
     /** Las últimas publicaciones en redes (rastro: qué, dónde, quién, resultado). */
@@ -2017,8 +2017,9 @@ class coreController
 
     public function guardarRedes(): string
     {
-        if (!es_superadministrador()) {
-            return $this->alerta('simple', 'Acceso restringido', 'Solo el superadministrador configura las redes sociales.', 'error');
+        /* El permiso de editar sobre Core › Redes sociales (Core › Permisos). */
+        if (!puede_editar('redesSociales')) {
+            return $this->alerta('simple', 'Acceso restringido', 'Su rol no puede configurar las redes sociales.', 'error');
         }
         $actual = redes_config();
         $perfiles = [
@@ -2084,8 +2085,9 @@ class coreController
     /** Prueba el token: nombre de la página e Instagram vinculado (y lo guarda). */
     public function probarRedes(): string
     {
-        if (!es_superadministrador()) {
-            return $this->alerta('simple', 'Acceso restringido', 'Solo el superadministrador configura las redes sociales.', 'error');
+        /* El permiso de editar sobre Core › Redes sociales (Core › Permisos). */
+        if (!puede_editar('redesSociales')) {
+            return $this->alerta('simple', 'Acceso restringido', 'Su rol no puede configurar las redes sociales.', 'error');
         }
         $cfg = redes_config();
         if ($cfg['fb_pagina_id'] === '' || !$cfg['token_guardado']) {
@@ -2335,18 +2337,19 @@ class coreController
     /**
      * Da de alta o modifica un punto de emisión.
      *
-     * Sólo el superadministrador. No es una restricción de comodidad: de
-     * aquí depende con qué numeración se emiten documentos con validez
-     * tributaria.
+     * Por permiso sobre Core › Puntos de emisión (crear un punto nuevo,
+     * editar uno existente). No es una restricción de comodidad: de aquí
+     * depende con qué numeración se emiten documentos con validez
+     * tributaria; conviene darlo sólo a quien corresponda.
      */
     public function guardarPuntoEmision(): string
     {
-        if (!es_superadministrador()) {
+        $id      = (int)($_POST['punto_id'] ?? 0);
+        if (!($id > 0 ? puede_editar('puntoEmisionList') : puede_crear('puntoEmisionList'))) {
             return $this->alerta('simple', 'Acceso denegado',
-                'Sólo el superadministrador puede configurar puntos de emisión.', 'error');
+                'Su rol no puede configurar puntos de emisión.', 'error');
         }
 
-        $id      = (int)($_POST['punto_id'] ?? 0);
         $modulo  = strtolower(trim((string)($_POST['punto_modulo'] ?? '')));
         $estab   = trim((string)($_POST['punto_establecimiento'] ?? ''));
         $codigo  = trim((string)($_POST['punto_codigo'] ?? ''));
@@ -3252,11 +3255,12 @@ class coreController
         return $versiones;
     }
 
-    /** Guarda una versión nueva del texto de un tipo (sólo superadministrador). */
+    /** Guarda una versión nueva del texto de un tipo (permiso de editar «Textos de autorizaciones»). */
     public function guardarTextoConsentimiento(): string
     {
-        if (!es_superadministrador()) {
-            return $this->alerta('simple', 'Acceso restringido', 'Solo el superadministrador cambia los textos de las autorizaciones.', 'error');
+        /* El permiso de editar sobre «Textos de autorizaciones» (Core › Permisos). */
+        if (!puede_editar('consentimientoTextos')) {
+            return $this->alerta('simple', 'Acceso restringido', 'Su rol no puede cambiar los textos de las autorizaciones.', 'error');
         }
         $tipo = (string)($_POST['tipo'] ?? '');
         if (!isset(CONSENT_EDITABLES[$tipo])) {

@@ -4,8 +4,13 @@
 |
 | Los dos textos que acepta el representante —tratamiento de datos y uso de
 | imagen— en el formulario de inscripción (Fútbol › Generar enlaces) y en el
-| enlace de autorización (Fútbol › Consentimientos LOPDP). Sólo el
-| superadministrador: es un texto legal.
+| enlace de autorización (Fútbol › Consentimientos LOPDP), y el formulario
+| en papel.
+|
+| PERMISOS (Core › Permisos, «Textos de autorizaciones»), como Organización:
+| «ver» para entrar; «editar» para guardar versiones. Sin «editar», la
+| pantalla es de sólo lectura. Antes exigía ser superadministrador e
+| ignoraba el permiso: se podía otorgar a un rol y aun así no entraba.
 |
 | Guardar crea una versión nueva; ninguna se reescribe. La lógica está en
 | ds_core/inc/consentimientos.php; esto sólo la presenta.
@@ -13,11 +18,12 @@
 
 use admin\controllers\coreController;
 
-if (!es_superadministrador()) {
+if (!usuario_tiene_permiso('consentimientoTextos')) {
     http_response_code(403);
     require_once __DIR__ . "/accesoDenegado-view.php";
     exit();
 }
+$puedeEditar = puede_editar('consentimientoTextos');
 
 $insCore   = new coreController();
 $vigentes  = consent_vigentes_crudos();
@@ -48,7 +54,8 @@ require_once __DIR__ . "/inc/layout-top.php";
 <div class="aviso-superadmin mb-3">
     <i class="fas fa-shield-alt fa-lg mt-1"></i>
     <div>
-        <strong>Sólo el superadministrador.</strong><br>
+        <strong>Textos legales.</strong>
+        <?php echo $puedeEditar ? '' : '<span class="badge text-bg-secondary ms-1">Sólo lectura: su rol no puede editarlos</span>'; ?><br>
         Son los textos que acepta el representante en el <strong>formulario de inscripción</strong>
         (<a href="<?php echo DS_FUTBOL_URL; ?>inscripcionEnlace/">Fútbol › Generar enlaces</a>) y en el
         <strong>enlace de autorización</strong> (<a href="<?php echo DS_FUTBOL_URL; ?>consentimientoList/">Fútbol › Consentimientos LOPDP</a>),
@@ -136,7 +143,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                     </div>
                     <div class="card-footer d-flex flex-wrap align-items-center gap-2">
                         <span class="small text-body-secondary me-auto" data-t="estado">Sin cambios</span>
-                        <button type="submit" class="btn btn-primary" data-t="guardar" disabled>
+                        <button type="submit" class="btn btn-primary" data-t="guardar" disabled <?php echo $puedeEditar ? '' : 'hidden'; ?>>
                             <i class="fas fa-floppy-disk me-1" aria-hidden="true"></i>Guardar como versión <?php echo $siguiente; ?>
                         </button>
                     </div>
@@ -189,7 +196,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                                         </span>
                                     <?php endif; ?>
                                     <?php if ($i > 0): ?>
-                                        <button type="button" class="btn btn-sm btn-outline-primary ms-auto" data-cargar="<?php echo $tipo; ?>"
+                                        <button type="button" class="btn btn-sm btn-outline-primary ms-auto" data-cargar="<?php echo $tipo; ?>" <?php echo $puedeEditar ? '' : 'hidden'; ?>
                                                 data-version="<?php echo $h($ver['version'] ? 'la versión ' . (int)$ver['version'] : 'el texto original'); ?>"
                                                 data-contenido="<?php echo $h(json_encode(['titulo' => $ver['titulo'], 'texto' => $ver['texto'], 'casilla' => $ver['casilla']], JSON_UNESCAPED_UNICODE)); ?>">
                                             <i class="fas fa-arrow-up-from-bracket me-1" aria-hidden="true"></i>Cargar en el editor
@@ -214,6 +221,11 @@ require_once __DIR__ . "/inc/layout-top.php";
 
 <script>
 (function () {
+    /* Sin permiso de editar: los campos y la barra de formato, de sólo lectura. */
+    if (!<?php echo $puedeEditar ? 'true' : 'false'; ?>) {
+        document.querySelectorAll('.ds-textos__form input:not([type=hidden]), .ds-textos__form textarea').forEach(function (c) { c.readOnly = true; });
+        document.querySelectorAll('.ds-textos__barra button').forEach(function (b) { b.disabled = true; });
+    }
     var ESCUELA = <?php echo json_encode($escuela, JSON_UNESCAPED_UNICODE); ?>;
     /* En la vista previa del papel, una sede de muestra. */
     var MARCAS = { '{ESCUELA}': ESCUELA, '{SEDE}': <?php echo json_encode((string)$muestra['sede_nombre'], JSON_UNESCAPED_UNICODE); ?>,

@@ -87,6 +87,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_valido()) {
     ]);
 }
 
+/*----------  3'. Operación de una pantalla de Core  ----------*/
+/* Algunas pantallas de Core (Carnets, Facturación electrónica) guardan por
+   un endpoint de este módulo. Para esas operaciones el endpoint declara
+   $GUARD_VISTA_CORE y lo que cuenta es el permiso del rol sobre ESA
+   pantalla, en el módulo core (Core › Permisos), no el de una pantalla de
+   aquí. Sesión, origen y CSRF (arriba) se exigen igual. Sin operación en
+   POST (una lectura por GET, como la muestra del carnet) basta con «ver». */
+if (isset($GUARD_VISTA_CORE) && $GUARD_VISTA_CORE !== '') {
+    $GUARD_OPERACION = operacion_de_peticion();
+    $GUARD_ACCION = $GUARD_OPERACION === '' ? 'ver' : accion_de_operacion($GUARD_OPERACION);
+    if (!usuario_tiene_modulo('core') || !puede($GUARD_ACCION, $GUARD_VISTA_CORE, 'core')) {
+        guard_rechazar(403, [
+            'tipo'   => 'simple',
+            'icono'  => 'error',
+            'titulo' => 'Acceso denegado',
+            'texto'  => 'Su rol no tiene permiso para esta configuración (Core › Permisos).',
+        ]);
+    }
+    return;   /* Las etapas 3 a 5 son las de una pantalla de este módulo. */
+}
+
 /*----------  3. Acceso al modulo  ----------*/
 if (!usuario_tiene_modulo(DS_MODULO)) {
     guard_rechazar(403, [

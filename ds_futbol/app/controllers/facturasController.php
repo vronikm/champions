@@ -754,15 +754,17 @@
 		/**
 		 * Quién puede tocar la configuración del SRI.
 		 *
-		 * Sólo el superadministrador: aquí se define el RUC emisor, el
-		 * ambiente y el certificado de firma, es decir, en nombre de quién
-		 * se emiten comprobantes con validez tributaria. Emitir facturas es
-		 * otra cosa y sí se concede por permisos de rol sobre facturasList.
+		 * El permiso de editar sobre Core › Facturación electrónica (Core ›
+		 * Permisos): aquí se define el RUC emisor, el ambiente y el
+		 * certificado de firma, en nombre de quién se emiten comprobantes con
+		 * validez tributaria, así que conviene darlo sólo a quien corresponda.
+		 * Emitir facturas es otra cosa y se concede sobre facturasList.
 		 *
 		 * La pantalla vive en el módulo Core; esto guarda la puerta de atrás.
+		 * El módulo va explícito: desde aquí, «core» no es el módulo actual.
 		 */
 		private function autorizadoConfigSri(){
-			return es_superadministrador();
+			return puede('editar', 'facturacionConfigSri', 'core');
 		}
 
 		/*======================================================================
@@ -802,7 +804,7 @@
 		/** Baja o levanta el servicio (Core › Facturación electrónica). */
 		public function cambiarEstadoServicioFacturacion(){
 			if(!$this->autorizadoConfigSri()){
-				return $this->respuestaJson('simple', 'Acceso restringido', 'Solo el superadministrador puede cambiar el estado del servicio.', 'error');
+				return $this->respuestaJson('simple', 'Acceso restringido', 'Su rol no puede cambiar el estado del servicio.', 'error');
 			}
 			$activo  = (string)($_POST['servicio_activo'] ?? '1') === '1';
 			$mensaje = $this->textoConfigSri($_POST['mantenimiento_mensaje'] ?? '', 300);
@@ -1466,7 +1468,7 @@
 		 */
 		public function guardarAmbientesSri(){
 			if(!$this->autorizadoConfigSri()){
-				return $this->respuestaJson('simple', 'Acceso restringido', 'Solo el superadministrador puede modificar los ambientes del SRI.', 'error');
+				return $this->respuestaJson('simple', 'Acceso restringido', 'Su rol no puede modificar los ambientes del SRI.', 'error');
 			}
 
 			$rangos = [
@@ -1532,7 +1534,7 @@
 		 */
 		public function probarAmbienteSri(){
 			if(!$this->autorizadoConfigSri()){
-				return $this->respuestaJson('simple', 'Acceso restringido', 'Solo el superadministrador puede probar los ambientes del SRI.', 'error');
+				return $this->respuestaJson('simple', 'Acceso restringido', 'Su rol no puede probar los ambientes del SRI.', 'error');
 			}
 			$clave = (string)($_POST['ambiente'] ?? '');
 			if(!in_array($clave, ['1', '2'], true)){

@@ -84,6 +84,7 @@
 
       # Control de acceso, nivel 1: el rol debe tener concedido el modulo #
       if(!usuario_tiene_modulo(DS_MODULO)){
+          http_response_code(403);
           require_once "app/views/content/accesoDenegado-view.php";
           exit();
       }
@@ -91,10 +92,11 @@
       # Control de acceso, nivel 2: permiso de lectura sobre la vista #
       # Impide que un usuario autenticado abra por URL una pantalla que su
       # rol no tiene habilitada. Las vistas que no son item de menu
-      # (formularios, PDF, perfiles) no se restringen aqui: heredan el
-      # alcance del listado desde el que se abren.
+      # (formularios, PDF, perfiles) heredan el permiso de las pantallas
+      # desde las que se abren: ds_core/inc/vistas_apoyo.php.
       # Ver usuario_tiene_permiso() en ds_core/inc/seguridad.php
       if(!usuario_tiene_permiso($url[0])){
+          http_response_code(403);
           require_once "app/views/content/accesoDenegado-view.php";
           exit();
       }

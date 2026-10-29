@@ -642,14 +642,29 @@ if (!function_exists('usuario_autenticado')) {
     }
 
     /**
+     * Pantallas de origen de una vista de apoyo (ds_core/inc/vistas_apoyo.php).
+     * [] si la vista no está declarada como de apoyo.
+     */
+    function vista_de_apoyo_origen(string $modulo, string $vista): array
+    {
+        static $mapa = null;
+        if ($mapa === null) {
+            $mapa = require __DIR__ . '/vistas_apoyo.php';
+        }
+        return $mapa[$modulo][$vista] ?? [];
+    }
+
+    /**
      * Indica si el rol de la sesion puede abrir una vista.
      *
-     * Regla deliberada: una vista que NO esta registrada en seguridad_menu
-     * no se restringe. Son vistas de apoyo (formularios de alta, PDF,
-     * perfiles, recibos) que no tienen entrada de menu propia y cuyo
-     * control efectivo esta en la vista de listado desde la que se abren.
+     * Una vista registrada en seguridad_menu exige «ver» sobre ella. Una
+     * vista de apoyo (formularios de alta, PDF, perfiles, recibos), sin
+     * entrada de menu propia, hereda el permiso de las pantallas desde las
+     * que se abre (ds_core/inc/vistas_apoyo.php): se abre si el rol puede
+     * ver alguna. Una vista que no figura en ninguno de los dos sitios no se
+     * restringe, salvo con DS_PERMISOS_ESTRICTOS.
      */
-    function usuario_tiene_permiso(string $vista, string $modulo = ''): bool
+    function usuario_tiene_permiso(string $vista, string $modulo = '', int $profundidad = 0): bool
     {
         if ($vista === '' || es_superadministrador()) {
             return true;
@@ -662,7 +677,21 @@ if (!function_exists('usuario_autenticado')) {
         }
 
         if (!in_array($vista, $permisos['registradas'], true)) {
-            return !permisos_estrictos();
+            $modulo  = $modulo !== '' ? $modulo : modulo_actual();
+            $origen  = vista_de_apoyo_origen($modulo, $vista);
+            if ($origen === []) {
+                return !permisos_estrictos();
+            }
+            if ($profundidad > 3) {
+                return false;   /* una cadena mal declarada no abre nada */
+            }
+            foreach ($origen as $o) {
+                [$m, $v] = str_contains($o, ':') ? explode(':', $o, 2) : [$modulo, $o];
+                if (usuario_tiene_modulo($m) && usuario_tiene_permiso($v, $m, $profundidad + 1)) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         return !empty($permisos['permitidas'][$vista]['ver']);

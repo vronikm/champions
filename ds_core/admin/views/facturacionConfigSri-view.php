@@ -15,11 +15,15 @@
 
 use admin\controllers\coreController;
 
-if (!es_superadministrador()) {
+/* Por permisos de rol (Core › Permisos), como el resto de Core: «ver» para
+   entrar; sin «editar», sólo lectura. Antes exigía ser superadministrador
+   aunque el rol tuviera el permiso. */
+if (!usuario_tiene_permiso('facturacionConfigSri')) {
     http_response_code(403);
     require_once __DIR__ . "/accesoDenegado-view.php";
     exit();
 }
+$puedeEditarConfig = puede_editar('facturacionConfigSri');
 
 $insCore = new coreController();
 
@@ -43,7 +47,8 @@ require_once __DIR__ . "/inc/layout-top.php";
 <div class="aviso-superadmin mb-3">
     <i class="fas fa-shield-alt fa-lg mt-1"></i>
     <div>
-        <strong>Sólo el superadministrador.</strong><br>
+        <strong>Configuración tributaria.</strong>
+        <?php if (!$puedeEditarConfig): ?><span class="badge text-bg-secondary ms-1">Sólo lectura: su rol no puede editarla</span><?php endif; ?><br>
         Aquí se define en nombre de quién se emiten comprobantes con validez tributaria.
         Para que alguien pueda <em>emitir</em> facturas basta con darle permiso sobre
         «Facturas emitidas» en <a href="<?php echo APP_URL; ?>permisoRol/">Permisos</a>.
@@ -642,4 +647,14 @@ $hayConfig      = !empty($cfg['id']);
 })();
 </script>
 
+<?php if (!$puedeEditarConfig): ?>
+<script>
+/* Sólo lectura: sin permiso de editar, nada que enviar. */
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('form.FormularioAjax, form[method="POST"], form[method="post"]').forEach(function (f) {
+        f.querySelectorAll('input, select, textarea, button').forEach(function (c) { if (c.type !== 'hidden') { c.disabled = true; } });
+    });
+});
+</script>
+<?php endif; ?>
 <?php require_once __DIR__ . "/inc/layout-bottom.php"; ?>

@@ -3,7 +3,7 @@
 | Configuración de carnets: color de cada mes y política de reimpresión.
 |
 | Vive en Core por el mismo criterio que la facturación: es configuración
-| del sistema, no operación diaria. Sólo el superadministrador entra.
+| del sistema, no operación diaria. Se entra por permiso de rol (Core › Permisos).
 |
 | El color del mes es una decisión con efectos irreversibles: en cuanto se
 | emite el primer carnet de un mes, ese mes queda bloqueado, porque
@@ -15,11 +15,15 @@
 
 use admin\controllers\coreController;
 
-if (!es_superadministrador()) {
+/* Por permisos de rol (Core › Permisos), como el resto de Core: «ver» para
+   entrar; sin «editar», sólo lectura. Antes exigía ser superadministrador
+   aunque el rol tuviera el permiso. */
+if (!usuario_tiene_permiso('carnetConfig')) {
     http_response_code(403);
     require_once __DIR__ . "/accesoDenegado-view.php";
     exit();
 }
+$puedeEditarConfig = puede_editar('carnetConfig');
 
 $insCore = new coreController();
 
@@ -76,7 +80,8 @@ require_once __DIR__ . "/inc/layout-top.php";
 <div class="aviso-superadmin mb-3">
     <i class="fas fa-shield-alt fa-lg mt-1"></i>
     <div>
-        <strong>Sólo el superadministrador.</strong><br>
+        <strong>Configuración de los carnets.</strong>
+        <?php if (!$puedeEditarConfig): ?><span class="badge text-bg-secondary ms-1">Sólo lectura: su rol no puede editarla</span><?php endif; ?><br>
         Un mes queda bloqueado en cuanto se emite su primer carnet: cambiarle el color
         dejaría en circulación carnets que ya no coinciden con el sistema.
         Imprimir carnets es otra cosa y se concede por rol sobre
@@ -811,4 +816,14 @@ foreach ($catalogo as $c) { if ($c['editable']) { $editables++; } }
 })();
 </script>
 
+<?php if (!$puedeEditarConfig): ?>
+<script>
+/* Sólo lectura: sin permiso de editar, nada que enviar. */
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('form.FormularioAjax, form[method="POST"], form[method="post"]').forEach(function (f) {
+        f.querySelectorAll('input, select, textarea, button').forEach(function (c) { if (c.type !== 'hidden') { c.disabled = true; } });
+    });
+});
+</script>
+<?php endif; ?>
 <?php require_once __DIR__ . "/inc/layout-bottom.php"; ?>

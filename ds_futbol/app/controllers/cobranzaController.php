@@ -269,7 +269,7 @@
 														and pago_estado = 'P'
 															group by pago_alumnoid, transaccion_pagoid, transaccion_estado						
 													) FECHATRX on FECHATRX.pago_alumnoid = A.alumno_id
-													WHERE P.SALDO > 0
+													WHERE P.SALDO > 0 AND A.alumno_estado <> 'E'   -- sin eliminados
 												) as VALORESMORA			
 											group by alumno_repreid, repre_identificacion, REPRE, sede_nombre, repre_celular, ALUMNO";
 				
@@ -349,7 +349,7 @@
 									) BASE
 								) PEN ON PEN.pago_alumnoid = A.alumno_id
                                  inner join general_sede on alumno_sedeid = sede_id
-								WHERE PEN.TOTAL > 0 OR P.SALDO > 0
+								WHERE A.alumno_estado <> 'E' AND (PEN.TOTAL > 0 OR P.SALDO > 0)   -- sin eliminados
 								ORDER BY PEN.PENSIONES DESC";
 			
 			$datos = $this->ejecutarConsulta($consulta_datos, [':repre' => (int)$repre_id]);
@@ -416,7 +416,7 @@
 									GROUP BY pago_alumnoid
 								) P ON P.pago_alumnoid = A.alumno_id
                                  inner join general_sede on alumno_sedeid = sede_id
-								WHERE P.SALDO > 0";
+								WHERE P.SALDO > 0 AND A.alumno_estado <> 'E'";   /* sin eliminados */
 			
 			$datos = $this->ejecutarConsulta($consulta_datos, [':repre' => (int)$repre_id]);
 			$datos = $datos->fetchAll();

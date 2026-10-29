@@ -164,6 +164,12 @@ class insightsController
     | insights_v_asistencia_dia y facturas_electronicas tampoco llevan sede:
     | la heredan del alumno. Mismo motivo para la subconsulta.
     */
+    /*
+    | La cartera (lo que se debe) no cuenta a los alumnos eliminados (E):
+    | 2026-10-29, como el resto de reportes de Fútbol.
+    */
+    private const SIN_ELIMINADOS = " AND pago_alumnoid NOT IN (SELECT alumno_id FROM sujeto_alumno WHERE alumno_estado = 'E')";
+
     protected function sedeAlumno(string $columna): string
     {
         $this->ambitoSedes();
@@ -395,7 +401,7 @@ class insightsController
     {
         $r = [
             'basketball' => (float) $this->escalar(
-                "SELECT IFNULL(SUM(pago_saldo),0) FROM alumno_pago WHERE pago_estado='P'"
+                "SELECT IFNULL(SUM(pago_saldo),0) FROM alumno_pago WHERE pago_estado='P'" . self::SIN_ELIMINADOS
                 . $this->sede('pago_sedeid')),
             'arena' => (float) $this->escalar(
                 "SELECT IFNULL(SUM(reserva_saldo),0) FROM dsa_reserva WHERE reserva_estado<>'X'"
@@ -636,7 +642,7 @@ class insightsController
         }
 
         $vencidas = (int) $this->escalar(
-            "SELECT COUNT(*) FROM alumno_pago WHERE pago_estado = 'P' AND pago_saldo > 0"
+            "SELECT COUNT(*) FROM alumno_pago WHERE pago_estado = 'P' AND pago_saldo > 0" . self::SIN_ELIMINADOS
             . $this->sede('pago_sedeid'));
         if ($this->superaUmbral('pagos_pendientes', $vencidas)) {
             $avisos[] = ['tono' => 'warning', 'icono' => 'fa-file-invoice-dollar',
@@ -1950,7 +1956,7 @@ class insightsController
                FROM general_sede s
                LEFT JOIN (SELECT pago_sedeid sede, SUM(pago_saldo) v, COUNT(*) n
                             FROM alumno_pago
-                           WHERE pago_estado = 'P' AND pago_saldo > 0
+                           WHERE pago_estado = 'P' AND pago_saldo > 0" . self::SIN_ELIMINADOS . "
                            GROUP BY pago_sedeid) bk ON bk.sede = s.sede_id
                LEFT JOIN (SELECT reserva_sedeid sede, SUM(reserva_saldo) v, COUNT(*) n
                             FROM dsa_reserva
@@ -1999,7 +2005,7 @@ class insightsController
         foreach ($this->filas(
             "SELECT " . $tramo('pago_fecha') . " tramo, SUM(pago_saldo) v, COUNT(*) n
                FROM alumno_pago
-              WHERE pago_estado = 'P' AND pago_saldo > 0"
+              WHERE pago_estado = 'P' AND pago_saldo > 0" . self::SIN_ELIMINADOS
             . $this->sede('pago_sedeid') . "
               GROUP BY tramo") as $f) {
             $r['basketball'][$f['tramo']] = ['v' => (float) $f['v'], 'n' => (int) $f['n']];
@@ -2084,7 +2090,7 @@ class insightsController
                FROM alumno_pago p
                JOIN sujeto_alumno a ON a.alumno_id = p.pago_alumnoid
               WHERE p.pago_estado = 'P' AND p.pago_saldo > 0
-                AND a.alumno_estado <> 'A'"
+                AND a.alumno_estado NOT IN ('A', 'E')"
             . $this->sede('p.pago_sedeid'));
 
         return ['valor' => (float) ($r[0]['v'] ?? 0), 'alumnos' => (int) ($r[0]['alumnos'] ?? 0)];

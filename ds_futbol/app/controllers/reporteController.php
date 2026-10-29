@@ -257,8 +257,8 @@
 										pago_alumnoid
 									) BASE
 								) PEN ON PEN.pago_alumnoid = A.alumno_id
-								WHERE A.alumno_estado <> 'E'
-									AND PEN.TOTAL > 0 OR P.SALDO > 0
+								WHERE A.alumno_estado <> 'E'   /* eliminados fuera; el OR va entre paréntesis */
+									AND (PEN.TOTAL > 0 OR P.SALDO > 0)
 								ORDER BY PEN.PENSIONES DESC";
 			
 			$datos = $this->ejecutarConsulta($consulta_datos, [':p1' => (int)$sedeid, ':p2' => (int)$sedeid]);
@@ -364,6 +364,7 @@
 								LEFT JOIN general_tabla_catalogo on pago_talla = catalogo_valor
 								INNER JOIN general_sede on alumno_sedeid = sede_id
 								WHERE pago_estado <> 'E'
+									AND alumno_estado <> 'E'
 									AND alumno_sedeid = :p1
 									AND pago_rubroid = :p2";								
 
@@ -396,6 +397,7 @@
 								INNER JOIN general_sede on alumno_sedeid = sede_id
 								LEFT JOIN general_tabla_catalogo on pago_talla = catalogo_valor
 								WHERE pago_estado <> 'E'
+									AND alumno_estado <> 'E'
 									AND pago_rubroid = :p1";
 
 			$datos = $this->ejecutarConsulta($consulta_datos, [':p1' => $rubro]);

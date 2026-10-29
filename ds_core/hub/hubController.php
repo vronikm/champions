@@ -98,7 +98,7 @@ class hubController
              'etiqueta' => 'Alumnos'],
             ['valor' => $this->escalar("SELECT COUNT(1) FROM asistencia_horario WHERE horario_estado='A' AND " . sql_sedes_de_la_sesion('horario_sedeid')),
              'etiqueta' => 'Horarios'],
-            ['valor' => $this->escalar("SELECT COUNT(1) FROM alumno_pago WHERE pago_saldo > 0 AND pago_alumnoid IN (SELECT alumno_id FROM sujeto_alumno WHERE " . sql_sedes_de_la_sesion('alumno_sedeid') . ")"),
+            ['valor' => $this->escalar("SELECT COUNT(1) FROM alumno_pago WHERE pago_saldo > 0 AND pago_alumnoid IN (SELECT alumno_id FROM sujeto_alumno WHERE alumno_estado <> 'E' AND " . sql_sedes_de_la_sesion('alumno_sedeid') . ")"),
              'etiqueta' => 'Por cobrar'],
         ];
     }
@@ -230,7 +230,7 @@ class hubController
         return [
             ['valor' => '$' . number_format($ingresosMes, 0, ',', '.'), 'etiqueta' => 'Ingresos del mes'],
             ['valor' => $this->escalar("SELECT COUNT(1) FROM sujeto_alumno WHERE alumno_estado='A' AND " . sql_sedes_de_la_sesion('alumno_sedeid') . ""), 'etiqueta' => 'Alumnos activos'],
-            ['valor' => $this->escalar("SELECT COUNT(1) FROM alumno_representante R WHERE EXISTS (SELECT 1 FROM sujeto_alumno WHERE alumno_repreid = R.repre_id AND " . sql_sedes_de_la_sesion('alumno_sedeid') . ")"), 'etiqueta' => 'Representantes'],
+            ['valor' => $this->escalar("SELECT COUNT(1) FROM alumno_representante R WHERE EXISTS (SELECT 1 FROM sujeto_alumno WHERE alumno_repreid = R.repre_id AND alumno_estado <> 'E' AND " . sql_sedes_de_la_sesion('alumno_sedeid') . ")"), 'etiqueta' => 'Representantes'],
             ['valor' => $this->escalar("SELECT COUNT(1) FROM general_sede WHERE " . sql_sedes_de_la_sesion('sede_id')), 'etiqueta' => 'Sedes'],
         ];
     }
@@ -301,7 +301,7 @@ class hubController
             }
         }
 
-        $pendientes = (int)$this->escalar("SELECT COUNT(1) FROM alumno_pago WHERE pago_saldo > 0 AND pago_alumnoid IN (SELECT alumno_id FROM sujeto_alumno WHERE " . sql_sedes_de_la_sesion('alumno_sedeid') . ")");
+        $pendientes = (int)$this->escalar("SELECT COUNT(1) FROM alumno_pago WHERE pago_saldo > 0 AND pago_alumnoid IN (SELECT alumno_id FROM sujeto_alumno WHERE alumno_estado <> 'E' AND " . sql_sedes_de_la_sesion('alumno_sedeid') . ")");
         if ($pendientes > 0) {
             $avisos[] = [
                 'titulo' => $pendientes . ' ' . ($pendientes === 1 ? 'pago pendiente' : 'pagos pendientes'),

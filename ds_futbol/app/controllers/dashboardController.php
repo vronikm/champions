@@ -95,7 +95,7 @@
 																	) BASE
 																) PEN ON PEN.pago_alumnoid = A.alumno_id
 																WHERE A.alumno_estado <> 'E'
-																	AND PEN.TOTAL > 0 OR P.SALDO > 0 
+																	AND (PEN.TOTAL > 0 OR P.SALDO > 0) 
 															) AS subconsulta;", [':sede1' => (int)$sedeid, ':sede2' => (int)$sedeid]);
 			return $pagosPendientes;
 		}
@@ -128,9 +128,9 @@
 		 * Como AND liga mas fuerte que OR, eso se lee «(no eliminado Y debe
 		 * pensiones) O (tiene saldo)», y un alumno ELIMINADO con saldo entra
 		 * igual. Aqui va con parentesis explicitos para que el estado se
-		 * aplique siempre. La consulta vieja se deja como esta: cambiarla
-		 * moveria las cifras por sede, y eso es una decision de la escuela y
-		 * no un arreglo de rotulo.
+		 * aplique siempre. La consulta por sede tenía el mismo fallo; el
+		 * 2026-10-29 la escuela decidió excluir a los eliminados también ahí
+		 * (y en reportePendientes), con el mismo paréntesis.
 		 */
 		public function alumnosConMora(){
 			return $this->ejecutarConsulta(
@@ -299,7 +299,12 @@
 			return $datos;		
 		}
 		public function obtenerRepresentantes(){
-			$representantes=$this->ejecutarConsulta("SELECT count(*) totalRepresentantes FROM alumno_representante WHERE repre_estado='A'");
+			/* Sin los que sólo representan alumnos eliminados (E); los recién
+			   registrados, aún sin alumnos, sí cuentan. */
+			$representantes=$this->ejecutarConsulta("SELECT count(*) totalRepresentantes FROM alumno_representante r
+				WHERE repre_estado='A'
+				  AND NOT (EXISTS (SELECT 1 FROM sujeto_alumno a WHERE a.alumno_repreid = r.repre_id)
+				       AND NOT EXISTS (SELECT 1 FROM sujeto_alumno a WHERE a.alumno_repreid = r.repre_id AND a.alumno_estado <> 'E'))");
 		    return $representantes;
 		}
 

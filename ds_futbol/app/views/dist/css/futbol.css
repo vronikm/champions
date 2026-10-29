@@ -826,7 +826,7 @@
 .ds-repre__lopdp-enlace { color: inherit; font-weight: 600; align-self: flex-start; }
 /* Las de cada alumno, debajo de su nombre. */
 .ds-repre__alumno-aut { display: flex; flex-wrap: wrap; gap: .1rem .75rem; margin-top: .15rem; }
-.ds-repre__alumno-datos .ds-repre__alumno-aut .ds-repres__aut { font-size: .78rem; color: var(--bs-body-color); flex-wrap: nowrap; white-space: nowrap; }
+.ds-repre__alumno-datos .ds-repre__alumno-aut .ds-repres__aut { font-size: .78rem; color: var(--bs-body-color); flex-wrap: wrap; }   /* «Formulario en línea» no cabe en una línea a 390 px */
 /* «.ds-repre__alumno-datos span» agranda cualquier span: aquí no. */
 .ds-repre__alumno-datos .ds-repre__alumno-aut span.badge { font-size: .66rem; color: inherit; }
 .ds-repre__alumno-datos .ds-repre__alumno-aut .badge.text-bg-primary,
@@ -903,8 +903,8 @@
 
 /* =========================================================================
    LISTADO DE REPRESENTANTES (representanteList). Fichas de .ds-crud; aquí,
-   la celda de protección de datos: el botón del formulario (antes un icono
-   suelto de 12 px) y el estado firmado / pendiente.
+   la celda de protección de datos: sólo informa si está autorizada y por
+   qué medio (los botones del formulario están en Consentimientos LOPDP).
    ========================================================================= */
 /* Las autorizaciones LOPDP de sus alumnos: datos e imagen, con su origen. */
 .ds-repres__auts { display: flex; flex-direction: column; gap: .25rem; margin-bottom: .45rem; }
@@ -916,13 +916,21 @@
 .ds-repres__aut--falta > .fas { color: var(--bs-warning); }
 .ds-repres__aut--falta .ds-repres__aut-estado { color: var(--bs-warning-text-emphasis); font-weight: 600; }
 .ds-repres__leyenda .badge { font-size: .72rem; }
-.ds-repres__datos { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
-.ds-repres__datos .btn { white-space: nowrap; }
+/* El resumen del listado: estado, qué cubre y por qué medio. */
+.ds-repres__info { display: flex; align-items: flex-start; gap: .5rem; font-size: .875rem; line-height: 1.35; }
+.ds-repres__info > .fas { font-size: 1rem; margin-top: .1rem; flex: none; }
+.ds-repres__info strong { display: block; color: var(--bs-emphasis-color); }
+.ds-repres__info-detalle { display: block; font-size: .8rem; color: var(--bs-secondary-color); }
+.ds-repres__info-por { display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .35rem; margin-top: .2rem; font-size: .8rem; color: var(--bs-secondary-color); }
+.ds-repres__info-medio { display: inline-flex; align-items: center; gap: .25rem; font-weight: 600; color: var(--bs-emphasis-color); white-space: nowrap; }
+.ds-repres__info--si > .fas { color: var(--bs-success); }
+.ds-repres__info--falta > .fas { color: var(--bs-warning); }
+.ds-repres__info--falta strong { color: var(--bs-warning-text-emphasis); }
+.ds-repres__info--no > .fas, .ds-repres__info--nada > .fas { color: var(--bs-secondary-color); }
 #filtroRepre .btn { white-space: nowrap; }
 @media (max-width: 991.98px) {
-    /* En la ficha, la etiqueta arriba y los dos botones debajo, de dedo. */
+    /* En la ficha, la etiqueta arriba y el resumen debajo. */
     .ds-crud__tabla td.ds-ficha__dato[data-etiqueta="Protección de datos"]::before { display: block; margin-bottom: .3rem; }
-    .ds-repres__datos .btn { min-height: 2.75rem; flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: center; }
 }
 /* «Mostrar N»: la palabra y el selector, separados (DataTables los pega). */
 .ds-crud__lista .dt-length { display: flex; align-items: center; gap: .5rem; }

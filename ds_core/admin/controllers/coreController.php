@@ -590,11 +590,17 @@ class coreController
         return !$suyas || array_intersect($suyas, $mias);
     }
 
-    /** Sedes que la sesión puede asignar: [sede_id => nombre]. */
-    public function sedesAsignables(): array
+    /**
+     * Sedes que la sesión puede asignar: [sede_id => nombre]. Las activas y,
+     * al editar, las que el usuario ya tiene aunque estén inactivas (no se le
+     * quitan sin que nadie lo pida).
+     */
+    public function sedesAsignables(int $usuarioId = 0): array
     {
+        $yaTiene = $usuarioId > 0 ? $this->sedesAsignadas($usuarioId) : [];
         $filas = $this->filas("SELECT sede_id, sede_nombre FROM general_sede WHERE "
-                              . sql_sedes_de_la_sesion('sede_id') . " ORDER BY sede_nombre");
+                              . sql_sedes_de_la_sesion('sede_id') . " AND (" . sql_sede_activa('sede_id')
+                              . ($yaTiene ? ' OR sede_id IN (' . implode(',', $yaTiene) . ')' : '') . ") ORDER BY sede_nombre");
         return array_column($filas, 'sede_nombre', 'sede_id');
     }
 
@@ -613,7 +619,9 @@ class coreController
     {
         $mias  = sedes_de_la_sesion();
         $todas = ($_POST['sedes_modo'] ?? '') === 'todas' || $rolid === self_rol_superadmin();
-        $existentes = array_map('intval', array_column($this->filas("SELECT sede_id FROM general_sede"), 'sede_id'));
+        /* Una sede inactiva no se asigna de nuevo; la que ya tenía, se conserva. */
+        $existentes = array_map('intval', array_column($this->filas("SELECT sede_id FROM general_sede WHERE " . sql_sede_activa('sede_id')), 'sede_id'));
+        $existentes = array_merge($existentes, $id > 0 ? $this->sedesAsignadas($id) : []);
         $pedidas = array_values(array_intersect(array_unique(array_map('intval', (array)($_POST['sedes'] ?? []))), $existentes));
 
         if ($todas && $mias !== null) {
@@ -1444,6 +1452,38 @@ class coreController
                 "{$nombre} quedó registrada y ya está disponible para los módulos.",
                 'success', APP_URL . 'sedeList/')
             : $this->alerta('simple', 'Error', 'No fue posible crear la sede.', 'error');
+    }
+
+    /**
+     * Activa o inactiva una sede (migración 078). Inactiva, deja de
+     * ofrecerse para lo nuevo y su enlace de inscripción en línea no recibe
+     * inscripciones; lo suyo se sigue viendo (sql_sede_activa). Permiso:
+     * editar sobre Sedes. No se inactiva la última activa.
+     */
+    public function estadoSede(): string
+    {
+        if (!puede_editar('sedeList')) {
+            return $this->alerta('simple', 'Acceso denegado', 'Su rol no puede activar ni inactivar sedes.', 'error');
+        }
+        $id     = (int)($_POST['sede_id'] ?? 0);
+        $estado = ($_POST['sede_estado'] ?? '') === 'I' ? 'I' : 'A';
+        $sede   = $this->sede($id);
+        if ($sede === null) {
+            return $this->alerta('simple', 'Error', 'La sede no existe.', 'error');
+        }
+        if (!array_key_exists('sede_estado', $sede)) {
+            return $this->alerta('simple', 'Falta la migración', 'Aplique la migración 078 (sede_estado) en la base de datos.', 'error');
+        }
+        if ($estado === 'I' && (int)$this->escalar("SELECT COUNT(1) FROM general_sede WHERE sede_estado = 'A' AND sede_id <> :id", [':id' => $id]) === 0) {
+            return $this->alerta('simple', 'Es la única activa', 'Debe quedar al menos una sede activa.', 'warning');
+        }
+
+        $this->escribir("UPDATE general_sede SET sede_estado = :e WHERE sede_id = :id", [':e' => $estado, ':id' => $id]);
+
+        return $estado === 'I'
+            ? $this->alerta('recargar', 'Sede inactivada',
+                "{$sede['sede_nombre']} ya no se ofrece para registros nuevos y su enlace de inscripción en línea no recibe inscripciones. Lo que ya tiene se sigue viendo.", 'success')
+            : $this->alerta('recargar', 'Sede activada', "{$sede['sede_nombre']} vuelve a estar disponible en todo el sistema.", 'success');
     }
 
     public function eliminarSede(): string

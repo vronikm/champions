@@ -569,10 +569,12 @@
 			return $datos;
 		}
 
-		public function listarOptionSedebusqueda($sedeid){
+		/* $soloActivas: en un formulario de alta (lugares), las activas y la ya
+		   elegida; en una búsqueda, todas. */
+		public function listarOptionSedebusqueda($sedeid, bool $soloActivas = false){
 			$option="";
 
-			$consulta_datos="SELECT sede_id, sede_nombre FROM general_sede";	
+			$consulta_datos="SELECT sede_id, sede_nombre FROM general_sede" . ($soloActivas ? " WHERE " . sql_sede_activa('sede_id', (int)$sedeid) : "");	
 					
 			$datos = $this->ejecutarConsulta($consulta_datos);
 			$datos = $datos->fetchAll();

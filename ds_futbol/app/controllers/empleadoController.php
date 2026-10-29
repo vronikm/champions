@@ -264,7 +264,8 @@
         public function listarOptionSede($sedeid){
 			$option="";
 
-			$consulta_datos="SELECT sede_id, sede_nombre FROM general_sede";	
+			/* Las activas y la que ya tiene el empleado, aunque esté inactiva. */
+			$consulta_datos="SELECT sede_id, sede_nombre FROM general_sede WHERE " . sql_sede_activa('sede_id', (int)$sedeid);	
 					
 			$datos = $this->ejecutarConsulta($consulta_datos);
 			$datos = $datos->fetchAll();

@@ -391,6 +391,33 @@ if (!function_exists('usuario_autenticado')) {
         return $columna . ' IN (' . implode(',', array_map('intval', $permitidas)) . ')';
     }
 
+    /**
+     * Condición SQL: la sede (su id en $columna) está activa
+     * (general_sede.sede_estado, migración 078). Sirve para lo NUEVO: los
+     * desplegables de alta no ofrecen una sede inactiva. $actual es la que ya
+     * tiene el registro que se edita: se sigue ofreciendo, para que guardar
+     * no la cambie sin que nadie lo pida. Las búsquedas y los reportes no la
+     * usan: lo de una sede inactiva se sigue viendo. Sin la migración, '1 = 1'.
+     */
+    function sql_sede_activa(string $columna, int $actual = 0): string
+    {
+        static $hay = null;
+        if ($hay === null) {
+            try {
+                $con = seguridad_conexion();
+                $hay = $con !== null && (int)$con->query(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'general_sede' AND COLUMN_NAME = 'sede_estado'"
+                )->fetchColumn() === 1;
+            } catch (\Throwable $e) {
+                $hay = false;
+            }
+        }
+        if (!$hay) { return '1 = 1'; }
+        return "($columna IN (SELECT sede_id FROM general_sede WHERE sede_estado = 'A')"
+             . ($actual > 0 ? " OR $columna = " . $actual : '') . ')';
+    }
+
     /*----------  Anti-CSRF por validacion de origen  ----------*/
 
     /**

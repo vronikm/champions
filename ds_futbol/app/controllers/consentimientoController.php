@@ -19,6 +19,9 @@
 		/* ENLACE: lo respondió el representante en ds_form/autorizacion.php,
 		   desde el enlace que se le envió desde esta pantalla (migración 074). */
 		const ORIGENES = ['FORMULARIO', 'ADMIN', 'ENLACE'];
+		/* No se guarda: es el formulario en papel firmado, que valida lo que
+		   falta (aplicarFormularioFirmado). */
+		const ORIGEN_PAPEL = 'PAPEL';
 
 		/* El enlace de autorización vale una semana y una sola respuesta. */
 		const VIGENCIA_ENLACE = 7 * 86400;
@@ -41,15 +44,16 @@
 			$consulta = "SELECT a.alumno_id,
 								a.alumno_identificacion,
 								a.alumno_estado,
-								CONCAT_WS(' ', a.alumno_primernombre, a.alumno_apellidopaterno, a.alumno_apellidomaterno) AS alumno,
+								a.alumno_primernombre, a.alumno_segundonombre, a.alumno_apellidopaterno, a.alumno_apellidomaterno,
 								CONCAT_WS(' ', a.alumno_primernombre, a.alumno_apellidopaterno) AS alumno_corto,
 								a.alumno_repreid,
-								CONCAT_WS(' ', r.repre_primernombre, r.repre_apellidopaterno) AS representante,
+								r.repre_primernombre, r.repre_segundonombre, r.repre_apellidopaterno, r.repre_apellidomaterno,
 								r.repre_identificacion,
 								r.repre_celular,
 								r.repre_correo,
 								s.sede_nombre,
 								r.repre_firmado,
+								" . $this->columnasFirma('r') . ",
 								cd.consent_otorgado AS datos_otorgado,
 								cd.consent_origen   AS datos_origen,
 								cd.consent_fecha    AS datos_fecha,
@@ -83,7 +87,91 @@
 
 			$consulta .= " ORDER BY a.alumno_apellidopaterno, a.alumno_primernombre";
 
-			return $this->ejecutarConsulta($consulta, $parametros)->fetchAll(PDO::FETCH_ASSOC);
+			$filas = $this->ejecutarConsulta($consulta, $parametros)->fetchAll(PDO::FETCH_ASSOC);
+			foreach ($filas as &$f) {
+				/* Los dos nombres y los dos apellidos, sin huecos si falta alguno. */
+				$f['alumno'] = self::nombreCompleto($f['alumno_primernombre'], $f['alumno_segundonombre'], $f['alumno_apellidopaterno'], $f['alumno_apellidomaterno']);
+				$f['representante'] = self::nombreCompleto($f['repre_primernombre'], $f['repre_segundonombre'], $f['repre_apellidopaterno'], $f['repre_apellidomaterno']);
+				self::aplicarFormularioFirmado($f);
+			}
+			unset($f);
+			return $filas;
+		}
+
+		/**
+		 * El formulario de protección de datos en papel (representanteFLPD)
+		 * lleva las dos autorizaciones: tratamiento de datos y uso de imagen.
+		 * Firmado (alumno_representante.repre_firmado), es una autorización
+		 * más, con origen PAPEL, la fecha y el usuario que lo marcó (migración
+		 * 077), y vale como la última respuesta:
+		 *
+		 *   - sin respuesta registrada, la valida;
+		 *   - con una respuesta ANTERIOR a la firma, la reemplaza;
+		 *   - una respuesta POSTERIOR (un «no autorizo», una revocatoria)
+		 *     manda sobre el papel.
+		 *
+		 * Los marcados antes de la 077 no tienen fecha: sólo valen para lo
+		 * que no tiene respuesta.
+		 */
+		private static function aplicarFormularioFirmado(array &$f): void {
+			if (($f['repre_firmado'] ?? 'N') !== 'S') { return; }
+			foreach (['datos', 'imagen'] as $t) {
+				if (self::papelVigente($f[$t . '_otorgado'] === null ? null : $f[$t . '_fecha'], $f['repre_firmado_fecha'] ?? null, $f[$t . '_otorgado'] === null)) {
+					$f[$t . '_otorgado'] = 'S';
+					$f[$t . '_origen']   = self::ORIGEN_PAPEL;
+					$f[$t . '_fecha']    = $f['repre_firmado_fecha'] ?? null;
+					$f[$t . '_usuario']  = $f['repre_firmado_usuario'] ?? null;
+				}
+			}
+		}
+
+		/** ¿El formulario firmado manda sobre la última respuesta registrada de un tipo? */
+		public static function papelVigente($fechaRespuesta, $fechaPapel, bool $sinRespuesta): bool {
+			if ($sinRespuesta) { return true; }
+			return $fechaPapel !== null && $fechaRespuesta !== null && strtotime($fechaRespuesta) < strtotime($fechaPapel);
+		}
+
+		/**
+		 * Las columnas de quién y cuándo se firmó (migración 077). Sin la
+		 * migración, NULL: la pantalla sigue funcionando, sin la fecha.
+		 */
+		public function columnasFirma(string $alias): string {
+			return $this->hayColumnasFirma()
+				? "$alias.repre_firmado_fecha, $alias.repre_firmado_usuario"
+				: 'NULL AS repre_firmado_fecha, NULL AS repre_firmado_usuario';
+		}
+
+		private function hayColumnasFirma(): bool {
+			static $hay = null;
+			return $hay ??= (int)$this->ejecutarConsulta(
+				"SELECT COUNT(*) FROM information_schema.COLUMNS
+				  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'alumno_representante' AND COLUMN_NAME = 'repre_firmado_usuario'"
+			)->fetchColumn() === 1;
+		}
+
+		/**
+		 * Guarda el formulario en papel firmado (S) o no (N), con quién y
+		 * cuándo (migración 077; sin ella, sólo el estado). Lo usan esta
+		 * pantalla y el botón «Firmado / Sin firmar» de Representantes.
+		 */
+		public function guardarFirma(int $repreId, string $firmado): bool {
+			$firmado = $firmado === 'S' ? 'S' : 'N';
+			if (!$this->hayColumnasFirma()) {
+				return (bool)$this->ejecutarConsulta("UPDATE alumno_representante SET repre_firmado = :f WHERE repre_id = :r", [':f' => $firmado, ':r' => $repreId]);
+			}
+			return (bool)$this->ejecutarConsulta(
+				"UPDATE alumno_representante
+				    SET repre_firmado = :f,
+				        repre_firmado_fecha   = IF(:f2 = 'S', NOW(), NULL),
+				        repre_firmado_usuario = IF(:f3 = 'S', :u, NULL)
+				  WHERE repre_id = :r",
+				[':f' => $firmado, ':f2' => $firmado, ':f3' => $firmado, ':u' => mb_substr((string)($_SESSION['usuario'] ?? ''), 0, 50), ':r' => $repreId]
+			);
+		}
+
+		private static function nombreCompleto(...$partes) {
+			$partes = array_map(static fn($p) => trim(html_entity_decode((string)$p, ENT_QUOTES | ENT_HTML5, 'UTF-8')), $partes);
+			return implode(' ', array_filter($partes, static fn($p) => $p !== ''));
 		}
 
 		/** Las sedes que la sesión puede elegir en la búsqueda (id => nombre). */
@@ -125,6 +213,7 @@
 					'celular'       => $f['repre_celular'],
 					'correo'        => filter_var(trim((string)$f['repre_correo']), FILTER_VALIDATE_EMAIL) ? trim((string)$f['repre_correo']) : '',
 					'whatsapp'      => self::celularWhatsApp($f['repre_celular']),
+					'firmado'       => $f['repre_firmado'] === 'S',
 					'alumnos'       => [],
 					'pendiente'     => false,
 					'activos'       => 0,
@@ -132,7 +221,9 @@
 				];
 				$repres[$id]['pendiente'] = $repres[$id]['pendiente'] || self::alumnoPendiente($f);
 				$repres[$id]['alumnos'][] = [
-					'nombre' => $f['alumno_corto'],
+					'nombre'         => $f['alumno_corto'],
+					'completo'       => $f['alumno'],
+					'identificacion' => $f['alumno_identificacion'],
 					'sede'   => $f['sede_nombre'],
 					'estado' => $f['alumno_estado'],
 					'datos'  => $f['datos_otorgado'],
@@ -323,6 +414,32 @@
 			}
 
 			return $this->alerta('Correo enviado', 'Se envió el enlace a ' . $correo . '. Vence el ' . date('d/m/Y', $enlace['expira']) . '.', 'success');
+		}
+
+		/**
+		 * El formulario en papel, firmado o no. Op «actualizar_formulario»
+		 * (permiso editar). Es el mismo dato que «Firmado / Sin firmar» de
+		 * Representantes; firmado, valida las autorizaciones que faltan
+		 * (aplicarFormularioFirmado).
+		 */
+		public function actualizarFormularioControlador() {
+			$repreId = intval($_POST['repre_id'] ?? 0);
+			$firmado = ($_POST['firmado'] ?? '') === 'S' ? 'S' : 'N';
+
+			/* Con algún alumno (activo o inactivo) en las sedes de la sesión. */
+			$enAlcance = $this->ejecutarConsulta(
+				"SELECT 1 FROM sujeto_alumno WHERE alumno_repreid = :r AND alumno_estado IN ('A','I') AND " . sql_sedes_de_la_sesion('alumno_sedeid') . " LIMIT 1",
+				[':r' => $repreId]
+			)->fetchColumn();
+			if (!$enAlcance) {
+				return $this->alerta('No encontrado', 'El representante no existe o no tiene alumnos en sus sedes.', 'error');
+			}
+
+			$this->guardarFirma($repreId, $firmado);
+
+			return $firmado === 'S'
+				? $this->alerta('Formulario firmado', 'Quedó registrado el formulario firmado: valida las autorizaciones de datos e imagen de sus alumnos.', 'success')
+				: $this->alerta('Formulario sin firmar', 'Las autorizaciones vuelven a depender del enlace o de lo registrado en el sistema.', 'success');
 		}
 
 		/**
@@ -528,6 +645,41 @@
 		}
 
 		/**
+		 * El historial con el formulario en papel firmado de su representante,
+		 * como una autorización más de cada tipo (como las del enlace): quién
+		 * lo marcó y cuándo (migración 077). Si una respuesta posterior lo
+		 * reemplaza, se dice. Más reciente primero; sin fecha, al final.
+		 */
+		private function conFormularioFirmado(int $alumnoid, array $historial): array {
+			$papel = $this->ejecutarConsulta(
+				"SELECT r.repre_firmado, " . $this->columnasFirma('r') . "
+				   FROM sujeto_alumno a INNER JOIN alumno_representante r ON r.repre_id = a.alumno_repreid
+				  WHERE a.alumno_id = :id",
+				[':id' => $alumnoid]
+			)->fetch(PDO::FETCH_ASSOC);
+			if (!$papel || $papel['repre_firmado'] !== 'S') { return $historial; }
+
+			foreach (self::TIPOS as $tipo) {
+				$ultima  = current(array_filter($historial, static fn($h) => $h['consent_tipo'] === $tipo && $h['consent_origen'] !== self::ORIGEN_PAPEL)) ?: null;
+				$vigente = self::papelVigente($ultima['consent_fecha'] ?? null, $papel['repre_firmado_fecha'], $ultima === null);
+				$historial[] = [
+					'consent_tipo'        => $tipo,
+					'consent_otorgado'    => 'S',
+					'consent_origen'      => self::ORIGEN_PAPEL,
+					'consent_usuario'     => $papel['repre_firmado_usuario'],
+					'consent_fecha'       => $papel['repre_firmado_fecha'],
+					'consent_ip'          => null,
+					'consent_textohash'   => null,
+					'consent_observacion' => 'Formulario de protección de datos firmado por el representante'
+					                       . ($vigente ? '' : ' (no vigente: lo reemplaza una respuesta posterior)')
+					                       . ($papel['repre_firmado_fecha'] === null ? '. Marcado antes de registrar la fecha.' : ''),
+				];
+			}
+			usort($historial, static fn($a, $b) => [$b['consent_fecha'] !== null, (string)$b['consent_fecha']] <=> [$a['consent_fecha'] !== null, (string)$a['consent_fecha']]);
+			return $historial;
+		}
+
+		/**
 		 * Historial de un alumno en HTML, para el modal de la vista.
 		 */
 		public function historialHTMLControlador() {
@@ -539,42 +691,49 @@
 				return '<p class="text-muted mb-0">No tiene acceso a la información de este alumno.</p>';
 			}
 
-			$historial = $this->historialAlumno($alumnoid);
+			$historial = $this->conFormularioFirmado($alumnoid, $this->historialAlumno($alumnoid));
 
 			if (count($historial) === 0) {
 				return '<p class="text-muted mb-0">Este alumno no tiene consentimientos registrados.</p>';
 			}
 
-			$html = '<div class="table-responsive"><table class="table table-sm table-bordered mb-0">'
-				  . '<thead class="thead-light"><tr>'
-				  . '<th>Tipo</th><th>Acción</th><th>Origen</th><th>Registrado por</th>'
-				  . '<th>Fecha</th><th>IP</th><th>Versión del texto</th><th>Observación</th>'
+			/* Tabla en escritorio y una ficha por entrada en el teléfono
+			   (.ds-crud__tabla, futbol.css): antes eran 8 columnas apretadas. */
+			$e = static fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
+			$html = '<table class="table table-sm align-middle ds-crud__tabla ds-hist mb-0">'
+				  . '<thead><tr>'
+				  . '<th>Autorización</th><th>Fecha</th><th>Origen</th><th>Registrado por</th>'
+				  . '<th>IP</th><th>Versión del texto</th><th>Observación</th>'
 				  . '</tr></thead><tbody>';
 
 			foreach ($historial as $h) {
-				$badgeTipo  = ($h['consent_tipo'] === 'DATOS') ? 'text-bg-danger' : 'text-bg-success';
-				$accion     = ($h['consent_otorgado'] === 'S')
-							? '<span class="badge text-bg-success">Otorgado</span>'
-							: '<span class="badge text-bg-secondary">Revocado</span>';
-				$origen     = match ($h['consent_origen']) {
+				$tipo   = ($h['consent_tipo'] === 'DATOS')
+						? '<span class="badge text-bg-danger">DATOS</span> <span class="small">Tratamiento de datos</span>'
+						: '<span class="badge text-bg-success">IMAGEN</span> <span class="small">Uso de imagen</span>';
+				$accion = ($h['consent_otorgado'] === 'S')
+						? '<span class="badge text-bg-success"><i class="fas fa-check me-1" aria-hidden="true"></i>Otorgado</span>'
+						: '<span class="badge text-bg-secondary">Revocado</span>';
+				$origen = match ($h['consent_origen']) {
 								'FORMULARIO' => '<span class="badge text-bg-info">Formulario de inscripción</span>',
 								'ENLACE'     => '<span class="badge text-bg-primary">Enlace de autorización</span>',
+								self::ORIGEN_PAPEL => '<span class="badge bg-success-subtle text-success-emphasis border border-success-subtle"><i class="fas fa-file-signature me-1" aria-hidden="true"></i>Formulario en papel firmado</span>',
 								default      => '<span class="badge text-bg-warning">Registrado por administrador</span>',
 							};
+				$fecha  = $h['consent_fecha'] ? date('d/m/Y H:i', strtotime($h['consent_fecha'])) : '—';
 
 				$html .= '<tr>'
-					  . '<td><span class="badge ' . $badgeTipo . '">' . htmlspecialchars($h['consent_tipo']) . '</span></td>'
-					  . '<td>' . $accion . '</td>'
-					  . '<td>' . $origen . '</td>'
-					  . '<td>' . htmlspecialchars($h['consent_usuario'] ?? '—') . '</td>'
-					  . '<td>' . htmlspecialchars($h['consent_fecha']) . '</td>'
-					  . '<td>' . htmlspecialchars($h['consent_ip'] ?? '—') . '</td>'
-					  . '<td><code style="font-size:.75rem">' . htmlspecialchars(substr($h['consent_textohash'] ?? '—', 0, 12)) . '</code></td>'
-					  . '<td>' . htmlspecialchars($h['consent_observacion'] ?? '') . '</td>'
+					  . '<td class="ds-ficha__principal"><div class="d-flex flex-wrap align-items-center gap-1">' . $tipo . ' ' . $accion . '</div></td>'
+					  . '<td class="ds-ficha__estado text-nowrap small">' . $e($fecha) . '</td>'
+					  . '<td class="ds-ficha__dato" data-etiqueta="Origen">' . $origen . '</td>'
+					  . '<td class="ds-ficha__dato" data-etiqueta="Registrado por">' . $e($h['consent_usuario'] ?: '—') . '</td>'
+					  /* Sin dato, en la ficha del teléfono no ocupa lugar (ds-hist__vacio, en la vista). */
+					  . '<td class="ds-ficha__dato' . ($h['consent_ip'] ? '' : ' ds-hist__vacio') . '" data-etiqueta="IP">' . $e($h['consent_ip'] ?: '—') . '</td>'
+					  . '<td class="ds-ficha__dato' . ($h['consent_textohash'] ? '' : ' ds-hist__vacio') . '" data-etiqueta="Versión del texto">' . ($h['consent_textohash'] ? '<code class="small">' . $e(substr($h['consent_textohash'], 0, 12)) . '</code>' : '—') . '</td>'
+					  . '<td class="ds-ficha__dato" data-etiqueta="Observación">' . $e($h['consent_observacion'] ?? '') . '</td>'
 					  . '</tr>';
 			}
 
-			return $html . '</tbody></table></div>';
+			return $html . '</tbody></table>';
 		}
 
 		private function alerta($titulo, $texto, $icono) {

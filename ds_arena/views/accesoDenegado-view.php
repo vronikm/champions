@@ -1,5 +1,6 @@
 <?php
 /* Pantalla mostrada cuando el rol no tiene acceso a Arena o a una vista. */
+if (!headers_sent() && http_response_code() === 200) { http_response_code(403); }   /* 403, salvo que quien la incluye ya haya puesto otro (el 404 de Insights) */
 ?>
 <!DOCTYPE html>
 <html lang="es">

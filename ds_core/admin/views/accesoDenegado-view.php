@@ -1,6 +1,7 @@
 <?php
 /* Pantalla mostrada cuando el rol no tiene acceso al módulo Core o a una
    de sus vistas. Autónoma: no depende del layout ni del menú lateral. */
+if (!headers_sent() && http_response_code() === 200) { http_response_code(403); }   /* 403, salvo que quien la incluye ya haya puesto otro (el 404 de Insights) */
 ?>
 <!DOCTYPE html>
 <html lang="es">

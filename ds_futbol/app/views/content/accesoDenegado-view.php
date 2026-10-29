@@ -4,6 +4,7 @@
 | que su rol no tiene permiso. La renderiza index.php; no forma parte de la
 | lista blanca de viewsModel, por lo que no es navegable directamente.
 */
+if (!headers_sent() && http_response_code() === 200) { http_response_code(403); }   /* 403, salvo que quien la incluye ya haya puesto otro (el 404 de Insights) */
 ?>
 <?php
 	/* La cabecera es comun a todas las vistas: ds_futbol/app/views/inc/cabecera.php */

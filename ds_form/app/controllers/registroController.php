@@ -431,6 +431,20 @@ class registroController extends mainModel
     }
 
     /**
+     * ¿La sede del enlace recibe inscripciones? Una sede inactiva (Core ›
+     * Sedes, migración 078) no. Sin la migración, como antes: sí.
+     */
+    public function sedeRecibeInscripciones(int $sedeId): bool
+    {
+        try {
+            $estado = $this->ejecutarConsulta("SELECT sede_estado FROM general_sede WHERE sede_id = :id", [':id' => $sedeId])->fetchColumn();
+        } catch (\Throwable $e) {
+            return true;
+        }
+        return $estado !== 'I';
+    }
+
+    /**
      * Nombre de la sede fijada por el token.
      */
     public function nombreSede(int $sedeId): string

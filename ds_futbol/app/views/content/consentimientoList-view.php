@@ -20,6 +20,7 @@
 	$filtrada   = $sedeId !== 0 && count($sedes) > 1 || $estado !== 'A' || $autorizacion !== 'T';
 
 	$puedeEnviar = puede('crear', 'consentimientoList');
+	$puedeFirmar = puede('editar', 'consentimientoList');
 	$h = static fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 	$fecha = static fn($v) => $v ? date('d/m/Y', strtotime($v)) : '';
 
@@ -41,12 +42,14 @@
 				: '<span class="badge text-bg-dark" title="Revocado el '.htmlspecialchars($fecha).'">Revocado</span>';
 		}
 		$fuente = match ($origen) {
-			'FORMULARIO' => '<span class="badge text-bg-info" title="Aceptado en línea el '.htmlspecialchars($fecha).'">Formulario</span>',
+			/* El formulario en papel firmado valida lo que no tiene registro (consentimientoController::aplicarFormularioFirmado). */
+			'PAPEL'      => '<span class="badge bg-success-subtle text-success-emphasis border border-success-subtle" title="El representante firmó el formulario de protección de datos en papel"><i class="fas fa-file-signature me-1" aria-hidden="true"></i>Formulario firmado</span>',
+			'FORMULARIO' => '<span class="badge text-bg-info" title="Aceptado en línea el '.htmlspecialchars($fecha).'">Formulario en línea</span>',
 			'ENLACE'     => '<span class="badge text-bg-primary" title="Respondido por enlace el '.htmlspecialchars($fecha).'">Enlace</span>',
 			default      => '<span class="badge text-bg-warning" title="Registrado por '.htmlspecialchars($usuario ?? '').' el '.htmlspecialchars($fecha).'">Administrador</span>',
 		};
 
-		return '<span class="badge text-bg-success">Otorgado</span> '.$fuente;
+		return '<span class="ds-consent__estado"><span class="badge text-bg-success"><i class="fas fa-check me-1" aria-hidden="true"></i>Otorgado</span> '.$fuente.'</span>';
 	}
 
 	/* Chip corto del estado de un alumno en la lista de pendientes. */
@@ -59,19 +62,18 @@
 		return '<span class="badge '.$clase.'" title="'.$etiqueta.': '.$texto.'"><i class="fas '.$icono.' me-1" aria-hidden="true"></i>'.$etiqueta.'</span>';
 	}
 
-	/* El último enlace de un representante, en palabras. */
+	/* El último enlace de un representante, en palabras, bajo el botón de enviar. */
 	function ultimoEnvio($e) {
 		if (!$e) {
-			return '<span class="badge text-bg-light border">Sin enviar</span>';
+			return '<i class="fas fa-circle-info me-1" aria-hidden="true"></i>Aún no se le envía el enlace';
 		}
 		$canal = ['WHATSAPP' => 'WhatsApp', 'CORREO' => 'correo', 'COPIA' => 'enlace copiado'][$e['enlace_canal']] ?? $e['enlace_canal'];
 		$cuando = date('d/m/Y', strtotime($e['enlace_fecha']));
+		$quien  = ' title="Enviado por ' . htmlspecialchars($e['enlace_usuario']) . '"';
 		if ($e['enlace_usado'] === null && strtotime($e['enlace_expira']) < time()) {
-			return '<span class="badge text-bg-warning" title="Enviado por '.htmlspecialchars($e['enlace_usuario']).'">Venció</span>'
-				 . '<div class="ds-ficha__meta">'.$cuando.' · '.$canal.'</div>';
+			return '<span class="text-warning-emphasis"' . $quien . '><i class="fas fa-triangle-exclamation me-1" aria-hidden="true"></i>El enlace venció</span> · ' . $cuando . ' · ' . $canal;
 		}
-		return '<span class="badge text-bg-info" title="Enviado por '.htmlspecialchars($e['enlace_usuario']).'">Enviado</span>'
-			 . '<div class="ds-ficha__meta">'.$cuando.' · '.$canal.'</div>';
+		return '<span' . $quien . '><i class="fas fa-paper-plane me-1" aria-hidden="true"></i>Enviado ' . $cuando . ' · ' . $canal . '</span>';
 	}
 ?>
 <?php
@@ -88,9 +90,24 @@
 	}
 	.ds-consent__cifra strong { display: block; font-size: 1.5rem; line-height: 1.2; }
 	.ds-consent__cifra span { font-size: .825rem; color: var(--bs-secondary-color); }
-	.ds-consent__hijos { list-style: none; margin: 0; padding: 0; display: grid; gap: .3rem; }
-	.ds-consent__hijos li { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
-	.ds-consent__hijos .ds-consent__hijo { font-weight: 500; margin-right: .15rem; }
+	/* Alumnos y sus autorizaciones, en dos columnas con el mismo orden: cada
+	   renglón con la misma altura para que en escritorio queden a la par. */
+	.ds-consent__hijos, .ds-consent__auts { list-style: none; margin: 0; padding: 0; display: grid; gap: .4rem; }
+	.ds-consent__hijos li, .ds-consent__auts li { min-height: 2.6rem; }
+	.ds-consent__hijo { font-weight: 500; color: var(--bs-emphasis-color); line-height: 1.3; }
+	.ds-consent__auts li { display: flex; align-items: center; gap: .3rem; white-space: nowrap; }
+	.ds-consent__quien { font-size: .8rem; color: var(--bs-secondary-color); width: 5.5rem; flex: none; overflow: hidden; text-overflow: ellipsis; }
+	.ds-consent__envio { font-size: .8rem; color: var(--bs-secondary-color); margin-top: .35rem; text-align: right; }
+	.ds-consent__completa { font-size: .85rem; font-weight: 600; color: var(--bs-success-text-emphasis); white-space: nowrap; }
+	/* Formulario en papel: su estado y las dos acciones (imprimir, marcar firmado). */
+	.ds-consent__form { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+	.ds-consent__form-acciones { display: flex; flex-wrap: wrap; gap: .35rem; }
+	.ds-consent__form .btn { white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; }
+	/* Representante en «por alumno»: dato de contexto, no el título de la fila. */
+	.ds-consent__persona-nombre { font-weight: 500; color: var(--bs-emphasis-color); line-height: 1.3; }
+	/* «Otorgado» y su origen, juntos y sin descolgarse al envolver. */
+	.ds-consent__estado { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
+	#tablaConsentimientos .ds-ficha__botones .btn { white-space: nowrap; }
 	/* Texto oscuro sobre el verde de WhatsApp: con blanco no llega a 4,5. */
 	.btn-whatsapp { background: #25D366; border-color: #25D366; color: #212529; font-weight: 600; }
 	.btn-whatsapp:hover, .btn-whatsapp:focus { background: #1ebe5c; border-color: #1ebe5c; color: #212529; }
@@ -134,6 +151,18 @@
 		.ds-consent__cifra strong { font-size: 1.25rem; }
 		.ds-consent__cifra span { font-size: .75rem; }
 		.ds-consent__masivo { width: 100%; }
+		/* En la ficha del teléfono, botones de dedo (44 px) y a lo ancho. */
+		.ds-consent__form-acciones { flex: 1 1 100%; }
+		.ds-consent__form .btn { flex: 1 1 0; min-height: 2.75rem; }
+	}
+	@media (max-width: 991.98px) {
+		/* En la ficha cada lista va bajo su etiqueta: sin alto fijo. */
+		.ds-consent__hijos li, .ds-consent__auts li { min-height: 0; }
+		.ds-consent__envio { text-align: left; }
+	}
+	@media (max-width: 991.98px) {
+		/* Historial en fichas (.ds-crud__tabla): lo que no tiene dato no ocupa lugar. */
+		.ds-hist td.ds-hist__vacio { display: none !important; }
 	}
 </style>
 <?php
@@ -249,61 +278,112 @@
 							<p class="small text-body-secondary">
 								Representantes con al menos un alumno <?php echo ['A' => 'activo', 'I' => 'inactivo', 'T' => 'activo o inactivo'][$estado]; ?>
 								<?php echo $sedeId ? 'en ' . $h($sedes[$sedeId]) : (count($sedes) > 1 ? 'en sus sedes' : ''); ?>.
-								A quien le falta la autorización de <strong>tratamiento de datos</strong> o la respuesta sobre el <strong>uso de imagen</strong>
-								se le envía un enlace que muestra sólo las dos autorizaciones; es personal, vence en 7 días y sirve una sola vez.
+								Para la autorización de <strong>tratamiento de datos</strong> y de <strong>uso de imagen</strong>, elija una de dos vías;
+								cualquiera de las dos la valida:
 							</p>
+							<ul class="small text-body-secondary ps-3">
+								<li><i class="fas fa-file-signature me-1" aria-hidden="true"></i><strong>Formulario en papel</strong>: imprímalo, que lo firme y márquelo como firmado.</li>
+								<li><i class="fas fa-paper-plane me-1" aria-hidden="true"></i><strong>Enlace</strong>: se le envía uno personal que muestra sólo las dos autorizaciones; vence en 7 días y sirve una sola vez.</li>
+							</ul>
 							<table id="tablaPendientes" class="table table-hover align-middle ds-crud__tabla" style="width:100%">
 								<thead>
 									<tr>
 										<th>Representante</th>
 										<th>Alumnos</th>
-										<th>Estado</th>
+										<th>Autorización</th>
+										<th>Formulario</th>
 										<th class="text-end"><span class="visually-hidden">Acciones</span></th>
 									</tr>
 								</thead>
 								<tbody>
-								<?php foreach ($repres as $p): ?>
+								<?php foreach ($repres as $p): $varios = count($p['alumnos']) > 1; ?>
 									<tr data-repre="<?php echo (int)$p['repre_id']; ?>">
-										<td class="ds-ficha__principal" data-search="<?php echo $h($p['representante'] . ' ' . $p['identificacion'] . ' ' . implode(' ', array_unique(array_column($p['alumnos'], 'sede')))); ?>">
+										<td class="ds-ficha__principal" data-search="<?php echo $h($p['representante'] . ' ' . $p['identificacion'] . ' ' . $p['celular']); ?>">
 											<div class="ds-ficha__nombre"><?php echo $h($p['representante']); ?></div>
 											<div class="ds-ficha__meta">
-												<?php echo $h($p['identificacion']); ?>
-												<?php if ($p['celular'] !== ''): ?> · <?php echo $h($p['celular']); ?><?php endif; ?>
+												<i class="fas fa-id-card" aria-hidden="true"></i> <?php echo $h($p['identificacion']); ?>
+												<?php if (trim((string)$p['celular']) !== ''): ?> · <i class="fas fa-phone" aria-hidden="true"></i> <?php echo $h($p['celular']); ?><?php endif; ?>
 											</div>
 										</td>
-										<td class="ds-ficha__dato">
+										<?php /* Cada alumno: los dos nombres y los dos apellidos, cédula y sede. */ ?>
+										<td class="ds-ficha__dato" data-etiqueta="Alumnos" data-search="<?php echo $h(implode(' ', array_map(static fn($a) => $a['completo'] . ' ' . $a['identificacion'] . ' ' . $a['sede'], $p['alumnos']))); ?>">
 											<ul class="ds-consent__hijos">
 												<?php foreach ($p['alumnos'] as $a): ?>
-													<li><span class="ds-consent__hijo"><?php echo $h($a['nombre']); ?></span>
-														<?php if ($a['estado'] !== 'A'): ?><span class="badge text-bg-light border">Inactivo</span><?php endif; ?>
-														<?php if ($sedeId === 0 && count($sedes) > 1): ?><span class="ds-ficha__meta"><?php echo $h($a['sede']); ?></span><?php endif; ?>
-														<?php echo chipConsent('Datos', $a['datos']); ?>
-														<?php echo chipConsent('Imagen', $a['imagen']); ?></li>
+													<li>
+														<div class="ds-consent__hijo"><?php echo $h($a['completo']); ?>
+															<?php if ($a['estado'] !== 'A'): ?><span class="badge bg-secondary-subtle text-secondary-emphasis border ms-1">Inactivo</span><?php endif; ?></div>
+														<div class="ds-ficha__meta">
+															<i class="fas fa-id-card" aria-hidden="true"></i> <?php echo $h($a['identificacion']); ?>
+															· <i class="fas fa-location-dot" aria-hidden="true"></i> <?php echo $h($a['sede']); ?>
+														</div>
+													</li>
 												<?php endforeach; ?>
 											</ul>
 										</td>
-										<td class="ds-ficha__estado" data-p="envio">
-											<?php echo $p['pendiente'] ? ultimoEnvio($p['ultimo']) : '<span class="badge text-bg-success"><i class="fas fa-check me-1" aria-hidden="true"></i>Completa</span>'; ?>
+										<?php /* Datos e imagen de cada alumno, en el mismo orden (con su nombre si son varios). */ ?>
+										<td class="ds-ficha__dato" data-etiqueta="Autorización">
+											<ul class="ds-consent__auts">
+												<?php foreach ($p['alumnos'] as $a): ?>
+													<li>
+														<?php if ($varios): ?><span class="ds-consent__quien"><?php echo $h(strtok($a['completo'], ' ')); ?></span><?php endif; ?>
+														<?php echo chipConsent('Datos', $a['datos']); ?>
+														<?php echo chipConsent('Imagen', $a['imagen']); ?>
+													</li>
+												<?php endforeach; ?>
+											</ul>
+											<?php if (!$p['pendiente'] && $p['firmado']): ?>
+												<div class="ds-ficha__meta mt-1"><i class="fas fa-file-signature me-1" aria-hidden="true"></i>Validada con el formulario firmado</div>
+											<?php endif; ?>
+										</td>
+										<td class="ds-ficha__dato" data-etiqueta="Formulario">
+											<?php /* El formulario en papel: verlo para imprimir y, firmado, marcarlo. */ ?>
+											<div class="ds-consent__form">
+												<span class="badge <?php echo $p['firmado'] ? 'text-bg-success' : 'bg-secondary-subtle text-secondary-emphasis border'; ?>" data-p="firmado">
+													<i class="fas <?php echo $p['firmado'] ? 'fa-circle-check' : 'fa-hourglass-half'; ?> me-1" aria-hidden="true"></i><?php echo $p['firmado'] ? 'Firmado' : 'Sin firmar'; ?>
+												</span>
+												<div class="ds-consent__form-acciones">
+												<a href="<?php echo APP_URL . 'representanteFLPD/' . (int)$p['repre_id'] . '/'; ?>" target="_blank" rel="noopener"
+												   class="btn btn-sm btn-light border" title="Ver e imprimir el formulario de protección de datos de <?php echo $h($p['representante']); ?>">
+													<i class="fas fa-print me-1" aria-hidden="true"></i>Imprimir
+												</a>
+												<?php if ($puedeFirmar): ?>
+													<button type="button" class="btn btn-sm <?php echo $p['firmado'] ? 'btn-light border' : 'btn-success'; ?>"
+															data-formulario="<?php echo $p['firmado'] ? 'N' : 'S'; ?>" data-nombre="<?php echo $h($p['representante']); ?>">
+														<?php if ($p['firmado']): ?>
+															<i class="fas fa-rotate-left me-1" aria-hidden="true"></i>Quitar firma
+														<?php else: ?>
+															<i class="fas fa-file-signature me-1" aria-hidden="true"></i>Marcar firmado
+														<?php endif; ?>
+													</button>
+												<?php endif; ?>
+												</div>
+											</div>
 										</td>
 										<td class="ds-ficha__acciones">
-											<?php if ($puedeEnviar && $p['pendiente']): ?>
-											<div class="ds-ficha__botones">
-												<?php if ($p['activos'] > 0): ?>
-													<?php /* Un solo botón: el canal se elige en el modal, viendo el mensaje. */ ?>
-													<button type="button" class="btn btn-sm btn-primary ds-ficha__primario" data-autorizacion
-															data-nombre="<?php echo $h($p['representante']); ?>"
-															data-con-correo="<?php echo $p['correo'] !== '' ? '1' : '0'; ?>">
-														<i class="fas fa-paper-plane me-1" aria-hidden="true"></i><?php echo $p['ultimo'] ? 'Reenviar autorización' : 'Enviar autorización'; ?>
-													</button>
-												<?php else: ?>
-													<?php /* El enlace pide la autorización por los alumnos activos: sin ninguno, no hay qué enviar. */ ?>
-													<span class="d-inline-block w-100" tabindex="0" title="Sin alumnos activos: el enlace pide la autorización sólo por alumnos activos">
-														<button type="button" class="btn btn-sm btn-outline-secondary ds-ficha__primario w-100" disabled>
-															<i class="fas fa-ban me-1" aria-hidden="true"></i>Sin alumnos activos
+											<?php if ($p['pendiente']): ?>
+												<?php if ($puedeEnviar): ?>
+												<div class="ds-ficha__botones">
+													<?php if ($p['activos'] > 0): ?>
+														<?php /* Un solo botón: el canal se elige en el modal, viendo el mensaje. */ ?>
+														<button type="button" class="btn btn-sm btn-primary ds-ficha__primario" data-autorizacion
+																data-nombre="<?php echo $h($p['representante']); ?>"
+																data-con-correo="<?php echo $p['correo'] !== '' ? '1' : '0'; ?>">
+															<i class="fas fa-paper-plane me-1" aria-hidden="true"></i><?php echo $p['ultimo'] ? 'Reenviar autorización' : 'Enviar autorización'; ?>
 														</button>
-													</span>
+													<?php else: ?>
+														<?php /* El enlace pide la autorización por los alumnos activos: sin ninguno, no hay qué enviar. */ ?>
+														<span class="d-inline-block w-100" tabindex="0" title="Sin alumnos activos: el enlace pide la autorización sólo por alumnos activos">
+															<button type="button" class="btn btn-sm btn-outline-secondary ds-ficha__primario w-100" disabled>
+																<i class="fas fa-ban me-1" aria-hidden="true"></i>Sin alumnos activos
+															</button>
+														</span>
+													<?php endif; ?>
+												</div>
 												<?php endif; ?>
-											</div>
+												<?php /* El último enlace, bajo el botón que lo envía. */ ?>
+												<div class="ds-consent__envio" data-p="envio"><?php echo ultimoEnvio($p['ultimo']); ?></div>
+											<?php else: ?>
+												<span class="ds-consent__completa"><i class="fas fa-circle-check me-1" aria-hidden="true"></i>Autorización completa</span>
 											<?php endif; ?>
 										</td>
 									</tr>
@@ -323,9 +403,10 @@
 					<div class="card-body">
 						<p class="small text-body-secondary">
 							Cada autorización indica de dónde proviene:
-							<span class="badge text-bg-info">Formulario</span> la aceptó al inscribirse en línea,
-							<span class="badge text-bg-primary">Enlace</span> la respondió desde el enlace enviado, y
-							<span class="badge text-bg-warning">Administrador</span> se registró desde el sistema (por ejemplo, con el formulario firmado en papel).
+							<span class="badge bg-success-subtle text-success-emphasis border border-success-subtle"><i class="fas fa-file-signature me-1" aria-hidden="true"></i>Formulario firmado</span> el representante firmó el formulario en papel,
+							<span class="badge text-bg-primary">Enlace</span> la respondió desde el enlace enviado,
+							<span class="badge text-bg-info">Formulario en línea</span> la aceptó al inscribirse en línea, y
+							<span class="badge text-bg-warning">Administrador</span> se registró desde el sistema.
 						</p>
 						<table id="tablaConsentimientos" class="table table-hover align-middle ds-crud__tabla" style="width:100%">
 							<thead>
@@ -340,12 +421,20 @@
 							<tbody>
 							<?php foreach ($filas as $f): ?>
 								<tr>
-									<td class="ds-ficha__principal" data-search="<?php echo $h($f['alumno'] . ' ' . $f['alumno_identificacion'] . ' ' . $f['sede_nombre']); ?>">
+									<td class="ds-ficha__principal" data-search="<?php echo $h($f['alumno'] . ' ' . $f['alumno_identificacion'] . ' ' . $f['sede_nombre'] . ' ' . $f['representante'] . ' ' . $f['repre_identificacion'] . ' ' . $f['repre_celular']); ?>">
 										<div class="ds-ficha__nombre"><?php echo $h($f['alumno']); ?></div>
-										<div class="ds-ficha__meta"><?php echo $h($f['alumno_identificacion']); ?> · <?php echo $h($f['sede_nombre']); ?>
-											<?php if ($f['alumno_estado'] !== 'A'): ?><span class="badge text-bg-light border ms-1">Inactivo</span><?php endif; ?></div>
+										<div class="ds-ficha__meta">
+											<i class="fas fa-id-card" aria-hidden="true"></i> <?php echo $h($f['alumno_identificacion']); ?>
+											· <i class="fas fa-location-dot" aria-hidden="true"></i> <?php echo $h($f['sede_nombre']); ?>
+											<?php if ($f['alumno_estado'] !== 'A'): ?><span class="badge bg-secondary-subtle text-secondary-emphasis border ms-1">Inactivo</span><?php endif; ?></div>
 									</td>
-									<td class="ds-ficha__dato" data-etiqueta="Representante"><?php echo $h($f['representante']); ?></td>
+									<td class="ds-ficha__dato ds-consent__persona" data-etiqueta="Representante">
+										<div class="ds-consent__persona-nombre"><?php echo $h($f['representante']); ?></div>
+										<div class="ds-ficha__meta">
+											<i class="fas fa-id-card" aria-hidden="true"></i> <?php echo $h($f['repre_identificacion']); ?>
+											<?php if (trim((string)$f['repre_celular']) !== ''): ?>· <i class="fas fa-phone" aria-hidden="true"></i> <?php echo $h($f['repre_celular']); ?><?php endif; ?>
+										</div>
+									</td>
 									<td class="ds-ficha__dato" data-etiqueta="Datos"><?php echo badgeConsent($f['datos_otorgado'], $f['datos_origen'], $f['datos_fecha'], $f['datos_usuario']); ?></td>
 									<td class="ds-ficha__dato" data-etiqueta="Imagen"><?php echo badgeConsent($f['imagen_otorgado'], $f['imagen_origen'], $f['imagen_fecha'], $f['imagen_usuario']); ?></td>
 									<td class="ds-ficha__acciones">
@@ -575,9 +664,24 @@ document.addEventListener('DOMContentLoaded', function () {
 	if (document.getElementById('tablaPendientes')) {
 		tablaPend = new DataTable('#tablaPendientes', {
 			autoWidth: false, pageLength: 10, order: [[0, 'asc']], searchDelay: 250, layout: layout,
-			columnDefs: [{ targets: 3, orderable: false, searchable: false }],
+			columnDefs: [{ targets: [1, 2, 3, 4], orderable: false }, { targets: [2, 3, 4], searchable: false }],
 			language: idioma('representantes')
 		});
+		/* Escritorio: cada renglón de «Autorización» a la altura de su alumno, para
+		   que queden a la par aunque el nombre ocupe dos líneas. En la ficha del
+		   teléfono cada lista va bajo su etiqueta y no hace falta. */
+		var alinear = function () {
+			var fichas = window.matchMedia('(max-width: 991.98px)').matches;
+			document.querySelectorAll('#tablaPendientes tbody tr').forEach(function (tr) {
+				var hijos = tr.querySelectorAll('.ds-consent__hijos > li');
+				tr.querySelectorAll('.ds-consent__auts > li').forEach(function (li, i) {
+					li.style.minHeight = !fichas && hijos[i] ? hijos[i].offsetHeight + 'px' : '';
+				});
+			});
+		};
+		tablaPend.on('draw', alinear);
+		alinear();
+		window.addEventListener("resize", alinear);
 	}
 	new DataTable('#tablaConsentimientos', {
 		autoWidth: false, pageLength: 25, order: [[0, 'asc']], searchDelay: 250, layout: layout,
@@ -598,7 +702,7 @@ document.addEventListener('DOMContentLoaded', function () {
 		var celda = fila.querySelector('[data-p="envio"]');
 		var hoy = new Date();
 		var f = ('0' + hoy.getDate()).slice(-2) + '/' + ('0' + (hoy.getMonth() + 1)).slice(-2) + '/' + hoy.getFullYear();
-		celda.innerHTML = '<span class="badge text-bg-info">Enviado</span><div class="ds-ficha__meta">' + f + ' · ' + canal + '</div>';
+		celda.innerHTML = '<span><i class="fas fa-paper-plane me-1" aria-hidden="true"></i>Enviado ' + f + ' · ' + canal + '</span>';
 		var b = fila.querySelector('[data-autorizacion]');
 		if (b) { b.lastChild.textContent = 'Reenviar autorización'; }
 	}
@@ -811,6 +915,31 @@ document.addEventListener('DOMContentLoaded', function () {
 			});
 		});
 	}
+
+	/*----------  Formulario en papel: firmado o no  ----------*/
+
+	document.addEventListener('click', function (e) {
+		var b = e.target.closest('[data-formulario]');
+		if (!b) { return; }
+		var firmar = b.dataset.formulario === 'S';
+		Swal.fire({
+			icon: 'question', showCancelButton: true, cancelButtonText: 'Cancelar',
+			title: firmar ? '¿Formulario firmado?' : '¿Quitar la firma del formulario?',
+			text: firmar
+				? b.dataset.nombre + ' firmó el formulario de protección de datos. Valida las autorizaciones de datos e imagen de sus alumnos que no tengan otra respuesta.'
+				: 'Las autorizaciones de ' + b.dataset.nombre + ' volverán a depender del enlace o de lo registrado en el sistema.',
+			confirmButtonText: firmar ? 'Sí, está firmado' : 'Quitar firma'
+		}).then(function (c) {
+			if (!c.isConfirmed) { return; }
+			b.disabled = true;
+			pedir({ modulo_consentimiento: 'actualizar_formulario', repre_id: b.closest('tr').dataset.repre, firmado: firmar ? 'S' : 'N' }).then(function (r) {
+				/* El estado, las cifras y las autorizaciones por alumno cambian: se recarga. */
+				Swal.fire({ icon: r.icono, title: r.titulo, text: r.texto }).then(function () { if (r.icono === 'success') { location.reload(); } });
+			}).catch(function () {
+				Swal.fire('Error', 'No fue posible comunicarse con el servidor.', 'error');
+			}).finally(function () { b.disabled = false; });
+		});
+	});
 
 	/*----------  Historial y registro manual  ----------*/
 

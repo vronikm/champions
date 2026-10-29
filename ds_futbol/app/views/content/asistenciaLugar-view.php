@@ -95,7 +95,7 @@
 										<div class="mb-3" style='font-size: 13px;'>
 										<label for="lugar_sedeid">Sede</label>
 										<select class="form-select" style='font-size: 13px; height: 30px;' id="lugar_sedeid" name="lugar_sedeid">																									
-											<?php echo $insLugar->listarOptionSedebusqueda($lugar_sedeid); ?>
+											<?php echo $insLugar->listarOptionSedebusqueda($lugar_sedeid, true); ?>
 										</select>	
 										</div>
 									</div>

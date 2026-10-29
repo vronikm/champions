@@ -110,6 +110,7 @@ switch ($_POST['modulo_core']) {
 
     case 'guardarSede':      echo $insCore->guardarSede();        break;
     case 'eliminarSede':     echo $insCore->eliminarSede();       break;
+    case 'estadoSede':       echo $insCore->estadoSede();         break;
 
     case 'guardarValorCatalogo':  echo $insCore->guardarValorCatalogo();  break;
 

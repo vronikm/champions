@@ -55,4 +55,10 @@
 	}
 
 	$insRegistro = new registroController();
+
+	// La sede pudo inactivarse mientras se llenaba el formulario
+	if (!$insRegistro->sedeRecibeInscripciones($sedeId)) {
+		salir("Inscripciones cerradas", "Esta sede no está recibiendo inscripciones en línea. Comuníquese con la escuela.", 410);
+	}
+
 	echo $insRegistro->registrar($sedeId);

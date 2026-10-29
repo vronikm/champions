@@ -45,7 +45,7 @@ return [
         'representanteProfile' => ['representanteList'],
         'representanteUpdate'  => ['representanteList'],
         'representanteVinc'    => ['representanteList'],
-        'representanteFLPD'    => ['representanteList'],
+        'representanteFLPD'    => ['representanteList', 'consentimientoList'],   /* «Imprimir» de Consentimientos */
         'formularioLPPDF'      => ['representanteFLPD'],
         'reporteRepresentantesSede'      => ['representanteList'],
         'reporteContactosEmergenciaSede' => ['representanteList'],

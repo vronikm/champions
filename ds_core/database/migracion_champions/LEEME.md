@@ -14,7 +14,7 @@ MYSQL=/ruta/a/mysql MYSQL_OPTS="-u USUARIO -pCLAVE" \
   ds_core/database/migracion_champions/aplicar_migracion.sh BASE
 ```
 
-Aplica los 78 archivos en el orden correcto y se detiene en el primer error.
+Aplica los 80 archivos en el orden correcto y se detiene en el primer error.
 Antes de empezar comprueba que `BASE` sea una copia de SoccerEasy **sin migrar**:
 si ya tiene `facturas_electronicas`, no aplica nada, porque varias migraciones no
 se pueden repetir.
@@ -97,6 +97,14 @@ en desarrollo y llevar el resultado a producción con un volcado (ver más abajo
     torneo (lo que se cobra a cada alumno que juega con él). Un equipo de
     «todas las sedes» se guarda con `equipo_sedeid = 0`, sin cambio de
     esquema. Repetible.
+18. `077_formulario_firmado.sql`: quién y cuándo marcó como firmado el
+    formulario de protección de datos en papel (`repre_firmado_fecha`,
+    `repre_firmado_usuario`). Firmado, valida las autorizaciones de datos e
+    imagen de sus alumnos y aparece en su historial. Repetible.
+19. `078_sede_estado.sql`: sedes activas o inactivas (`sede_estado`, A por
+    defecto). Una inactiva no se ofrece para registros nuevos y su enlace de
+    inscripción en línea deja de recibir inscripciones; lo suyo se sigue
+    viendo. Repetible.
 
 ```bash
 mysql -u USUARIO -p --default-character-set=utf8mb4 BASE < ARCHIVO.sql

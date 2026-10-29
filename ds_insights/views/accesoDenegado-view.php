@@ -2,6 +2,7 @@
 /* Pantalla mostrada cuando el rol no tiene acceso a Insights o a una vista.
    No dice QUE vista falta ni que permiso: quien no entra no debe aprender
    nada del sistema por el camino. */
+if (!headers_sent() && http_response_code() === 200) { http_response_code(403); }   /* 403, salvo que quien la incluye ya haya puesto otro (el 404 de Insights) */
 ?>
 <!DOCTYPE html>
 <html lang="es">

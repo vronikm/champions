@@ -103,12 +103,11 @@
 					</div>
 					<div class="card-body">
 						<p class="small text-body-secondary ds-repres__leyenda">
-							<strong>Autorizaciones LOPDP</strong> de sus alumnos (datos e imagen) y por dónde se dieron:
-							<span class="badge text-bg-primary">Enlace</span> el que se envía desde
-							<a href="<?php echo APP_URL; ?>consentimientoList/">Consentimientos LOPDP</a>,
-							<span class="badge text-bg-info">Formulario</span> el de inscripción en línea, o
-							<span class="badge text-bg-warning">Administrador</span> registrada en el sistema.
-							<strong>Formulario LPD</strong> es el de papel, que se firma en la sede.
+							<strong>Protección de datos</strong>: si sus alumnos tienen autorizados el tratamiento de datos y el uso de imagen,
+							y por qué medio: <i class="fas fa-file-signature" aria-hidden="true"></i> formulario firmado (en papel),
+							<i class="fas fa-link" aria-hidden="true"></i> enlace, formulario en línea (al inscribirse) o el sistema.
+							El formulario se imprime y se marca como firmado, y el enlace se envía, en
+							<a href="<?php echo APP_URL; ?>consentimientoList/">Consentimientos LOPDP</a>.
 						</p>
 						<?php
 						/*
@@ -203,7 +202,7 @@
 			columnDefs: [
 				{ targets: 0, className: "ds-ficha__principal" },
 				{ targets: 1, className: "ds-ficha__dato text-center", createdCell: function (td) { td.setAttribute('data-etiqueta', 'Alumnos'); } },
-				{ targets: 2, className: "ds-ficha__dato", createdCell: function (td) { td.setAttribute('data-etiqueta', 'Protección de datos'); } },
+				{ targets: 2, className: "ds-ficha__dato", orderable: false, createdCell: function (td) { td.setAttribute('data-etiqueta', 'Protección de datos'); } },
 				{ targets: 3, className: "ds-tabla-acciones ds-ficha__acciones", orderable: false }
 			],
 			layout: {

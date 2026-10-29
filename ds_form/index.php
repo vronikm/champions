@@ -84,6 +84,16 @@
     $expTimestamp = intval($_SESSION['inscripcion_exp']);
 
     $insRegistro   = new registroController();
+
+    /* La sede se inactivó en Core › Sedes: el enlace ya no recibe inscripciones. */
+    if (!$insRegistro->sedeRecibeInscripciones($sedeId)) {
+        unset($_SESSION['inscripcion_sedeid'], $_SESSION['inscripcion_exp'], $_SESSION['inscripcion_valida']);
+        $estado = 'sede_inactiva';
+        http_response_code(410);
+        require_once "./app/views/content/enlaceInvalido-view.php";
+        exit();
+    }
+
     $sedeNombre    = $insRegistro->nombreSede($sedeId);
     $tiposDocumento = $insRegistro->listarCatalogo(1);   // tipo_documento
     $nacionalidades = $insRegistro->listarCatalogo(2);   // nacionalidad

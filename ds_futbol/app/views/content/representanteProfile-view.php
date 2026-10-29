@@ -33,9 +33,9 @@
 	$auts     = $insRepre->autorizacionesFicha((int)$repreid);
 	$resumen  = $auts['resumen'];
 	$completa = $resumen && $resumen['DATOS']['estado'] === 'S' && $resumen['IMAGEN']['estado'] !== null;
-	$NOMBRES_ORIGEN = ['ENLACE' => 'el enlace de autorización', 'FORMULARIO' => 'el formulario de inscripción en línea', 'ADMIN' => 'registro en el sistema'];
+	$NOMBRES_ORIGEN = ['PAPEL' => 'el formulario firmado en papel', 'ENLACE' => 'el enlace de autorización', 'FORMULARIO' => 'el formulario de inscripción en línea', 'ADMIN' => 'registro en el sistema'];
 	$origenes = $resumen ? array_values(array_unique(array_merge($resumen['DATOS']['origenes'], $resumen['IMAGEN']['origenes']))) : [];
-	$enLinea  = array_values(array_intersect(['ENLACE', 'FORMULARIO'], $origenes));
+	$enLinea  = array_values(array_intersect(['PAPEL', 'ENLACE', 'FORMULARIO'], $origenes));
 	$lista    = static fn(array $p) => count($p) > 1 ? implode(', ', array_slice($p, 0, -1)) . ' y ' . end($p) : ($p[0] ?? '');
 
 	$edad = static function ($fecha): string {

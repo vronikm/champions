@@ -6,7 +6,7 @@
     /* Sede: sólo las de la sesión (sedes_de_la_sesion). Una sede ajena en la
        dirección se ignora; «Todas» sólo con más de una; con una, es esa. La
        búsqueda por ?q= se fue: la caja de la tabla filtra al vuelo. */
-    $sedes  = array_column($insInscripcion->listarSedesActivas(), 'sede_nombre', 'sede_id');
+    $sedes  = array_column($insInscripcion->listarSedesActivas(false), 'sede_nombre', 'sede_id');
     $sedeId = (int)($_GET['sede'] ?? 0);
     $sedeId = isset($sedes[$sedeId]) ? $sedeId : 0;
     if (count($sedes) === 1) { $sedeId = (int)array_key_first($sedes); }

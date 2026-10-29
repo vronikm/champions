@@ -78,11 +78,14 @@
 		| AUTORIZACIONES LOPDP (las de Consentimientos LOPDP)
 		|
 		| Lo vigente de cada alumno es su última fila de cada tipo en
-		| alumno_consentimiento; de ahí sale el estado del representante y por
-		| dónde autorizó: el formulario de inscripción en línea (FORMULARIO),
-		| el enlace de autorización (ENLACE) o el sistema (ADMIN). Mismo
-		| criterio de «pendiente» que consentimientoController::alumnoPendiente:
-		| sin datos autorizados, o sin respuesta sobre la imagen.
+		| alumno_consentimiento, o el formulario en papel firmado por su
+		| representante (PAPEL) cuando no hay respuesta o la que hay es anterior
+		| a la firma (consentimientoController::papelVigente). De ahí sale el
+		| estado del representante y por dónde autorizó: el formulario firmado,
+		| el de inscripción en línea (FORMULARIO), el enlace (ENLACE) o el
+		| sistema (ADMIN). Mismo criterio de «pendiente» que
+		| consentimientoController::alumnoPendiente: sin datos autorizados, o
+		| sin respuesta sobre la imagen.
 		*/
 		private static function ultimoConsentimiento(string $tipo, string $campo, string $alumno = 'a.alumno_id'): string
 		{
@@ -97,16 +100,24 @@
 		{
 			$alumnos = "SELECT 1 FROM sujeto_alumno a WHERE a.alumno_repreid = repre_id AND a.alumno_estado <> 'E'
 			              AND " . sql_sedes_de_la_sesion('a.alumno_sedeid');
-			$pendiente = "(COALESCE(" . self::ultimoConsentimiento('DATOS', 'consent_otorgado') . ", 'X') <> 'S'
-			               OR " . self::ultimoConsentimiento('IMAGEN', 'consent_otorgado') . " IS NULL)";
-			$por = static fn(string $origen) => "EXISTS ($alumnos AND ("
-				. self::ultimoConsentimiento('DATOS', "CONCAT(c.consent_otorgado, c.consent_origen)") . " = 'S$origen' OR "
-				. self::ultimoConsentimiento('IMAGEN', "CONCAT(c.consent_otorgado, c.consent_origen)") . " = 'S$origen'))";
+			/* El formulario en papel firmado vale para un tipo si no hay respuesta
+			   o la que hay es anterior a la firma (la misma regla que
+			   consentimientoController::papelVigente). */
+			$fechaFirma = (new consentimientoController())->columnasFirma('rp') === 'NULL AS repre_firmado_fecha, NULL AS repre_firmado_usuario'
+				? 'NULL' : 'repre_firmado_fecha';
+			$papel = static fn(string $tipo) => "(repre_firmado = 'S' AND (" . self::ultimoConsentimiento($tipo, 'consent_otorgado') . " IS NULL
+				OR ($fechaFirma IS NOT NULL AND " . self::ultimoConsentimiento($tipo, 'consent_fecha') . " < $fechaFirma)))";
+			$pendiente = "(NOT (" . $papel('DATOS') . " OR COALESCE(" . self::ultimoConsentimiento('DATOS', 'consent_otorgado') . ", 'X') = 'S')
+			               OR (repre_firmado <> 'S' AND " . self::ultimoConsentimiento('IMAGEN', 'consent_otorgado') . " IS NULL))";
+			$por = static fn(string $origen) => "EXISTS ($alumnos AND ((NOT " . $papel('DATOS') . " AND "
+				. self::ultimoConsentimiento('DATOS', "CONCAT(c.consent_otorgado, c.consent_origen)") . " = 'S$origen') OR (NOT " . $papel('IMAGEN') . " AND "
+				. self::ultimoConsentimiento('IMAGEN', "CONCAT(c.consent_otorgado, c.consent_origen)") . " = 'S$origen')))";
 			return match ($aut) {
 				'P'     => "EXISTS ($alumnos AND $pendiente)",
 				'C'     => "EXISTS ($alumnos) AND NOT EXISTS ($alumnos AND $pendiente)",
 				'E'     => $por('ENLACE'),
-				'F'     => $por('FORMULARIO'),
+				/* Por formulario: el de papel firmado o el de inscripción en línea. */
+				'F'     => "(" . $por('FORMULARIO') . " OR EXISTS ($alumnos AND (" . $papel('DATOS') . " OR " . $papel('IMAGEN') . ")))",
 				default => '1 = 1',
 			};
 		}
@@ -140,11 +151,16 @@
 			];
 		}
 
-		/** Lo vigente de cada tipo para los alumnos que cumplen $condicion (sobre «a»). */
+		/**
+		 * Lo vigente de cada tipo para los alumnos que cumplen $condicion
+		 * (sobre «a»), con el formulario en papel firmado de su representante
+		 * donde manda (origen PAPEL, con la fecha de la firma).
+		 */
 		private function filasAutorizacion(string $condicion): array
 		{
-			return $this->ejecutarConsulta(
+			$filas = $this->ejecutarConsulta(
 				"SELECT a.alumno_repreid AS repre, a.alumno_id AS alumno,
+				        rp.repre_firmado, " . (new consentimientoController())->columnasFirma('rp') . ",
 				        " . self::ultimoConsentimiento('DATOS', 'consent_otorgado') . " AS datos,
 				        " . self::ultimoConsentimiento('DATOS', 'consent_origen') . " AS datos_origen,
 				        " . self::ultimoConsentimiento('DATOS', 'consent_fecha') . " AS datos_fecha,
@@ -152,8 +168,21 @@
 				        " . self::ultimoConsentimiento('IMAGEN', 'consent_origen') . " AS imagen_origen,
 				        " . self::ultimoConsentimiento('IMAGEN', 'consent_fecha') . " AS imagen_fecha
 				   FROM sujeto_alumno a
+				   INNER JOIN alumno_representante rp ON rp.repre_id = a.alumno_repreid
 				  WHERE $condicion"
 			)->fetchAll(\PDO::FETCH_ASSOC);
+			foreach ($filas as &$f) {
+				if ($f['repre_firmado'] !== 'S') { continue; }
+				foreach (['datos', 'imagen'] as $c) {
+					if (consentimientoController::papelVigente($f[$c] === null ? null : $f[$c . '_fecha'], $f['repre_firmado_fecha'], $f[$c] === null)) {
+						$f[$c] = 'S';
+						$f[$c . '_origen'] = 'PAPEL';
+						$f[$c . '_fecha']  = $f['repre_firmado_fecha'];
+					}
+				}
+			}
+			unset($f);
+			return $filas;
 		}
 
 		/** Agrupa las filas de filasAutorizacion() por representante o por alumno. */
@@ -190,7 +219,8 @@
 		/** Una autorización (listado y ficha): estado y por dónde se dio. */
 		public static function chipAutorizacion(string $etiqueta, array $t): string
 		{
-			$ORIGEN = ['ENLACE' => ['Enlace', 'text-bg-primary'], 'FORMULARIO' => ['Formulario', 'text-bg-info'], 'ADMIN' => ['Administrador', 'text-bg-warning']];
+			$ORIGEN = ['PAPEL' => ['Formulario firmado', 'bg-success-subtle text-success-emphasis border border-success-subtle'], 'ENLACE' => ['Enlace', 'text-bg-primary'],
+			            'FORMULARIO' => ['Formulario en línea', 'text-bg-info'], 'ADMIN' => ['Administrador', 'text-bg-warning']];
 			$fecha = $t['fecha'] !== '' ? date('d/m/Y', strtotime($t['fecha'])) : '';
 			[$clase, $icono, $estado, $titulo] = match ($t['estado']) {
 				'S'     => ['ds-repres__aut--si', 'fa-circle-check', 'autorizado', 'Autorizado' . ($fecha ? ' (último: ' . $fecha . ')' : '')],
@@ -207,6 +237,39 @@
 			return '<span class="ds-repres__aut ' . $clase . '" title="' . $etiqueta . ': ' . $titulo . '">'
 			     . '<i class="fas ' . $icono . '" aria-hidden="true"></i> <strong>' . $etiqueta . '</strong> '
 			     . '<span class="ds-repres__aut-estado">' . $estado . '</span>' . $origenes . '</span>';
+		}
+
+		/**
+		 * La protección de datos en el listado, en palabras: si está autorizada
+		 * y por qué medio (formulario firmado, enlace, formulario en línea o el
+		 * sistema). Sólo informa: el formulario se imprime y se marca en
+		 * Consentimientos LOPDP.
+		 */
+		public static function resumenAutorizacion(?array $aut): string
+		{
+			if (!$aut) {
+				return '<div class="ds-repres__info ds-repres__info--nada"><i class="fas fa-minus" aria-hidden="true"></i>'
+				     . '<div><span class="ds-repres__info-detalle">Sin alumnos en sus sedes</span></div></div>';
+			}
+			[$d, $i] = [$aut['DATOS'], $aut['IMAGEN']];
+			$faltan = array_keys(array_filter(['datos' => $d['estado'] === null, 'imagen' => $i['estado'] === null]));
+			[$clase, $icono, $titulo, $detalle] = match (true) {
+				$faltan !== []     => ['falta', 'fa-hourglass-half', 'Pendiente', 'Falta la autorización de ' . implode(' e ', $faltan)],
+				$d['estado'] === 'N' => ['no', 'fa-circle-xmark', 'Datos revocados', 'Revocó el tratamiento de datos'],
+				$i['estado'] === 'N' => ['si', 'fa-circle-check', 'Autorizado', 'Datos sí · imagen no'],
+				default             => ['si', 'fa-circle-check', 'Autorizado', 'Datos e imagen'],
+			};
+			$MEDIO = ['PAPEL' => ['fa-file-signature', 'formulario firmado'], 'ENLACE' => ['fa-link', 'enlace'],
+			           'FORMULARIO' => ['fa-laptop', 'formulario en línea'], 'ADMIN' => ['fa-user-pen', 'el sistema']];
+			$medios = array_values(array_unique(array_merge($d['estado'] === 'S' ? $d['origenes'] : [], $i['estado'] !== null ? $i['origenes'] : [])));
+			$por = '';
+			if ($medios) {
+				$partes = array_map(static fn($m) => '<span class="ds-repres__info-medio"><i class="fas ' . ($MEDIO[$m][0] ?? 'fa-circle') . '" aria-hidden="true"></i>'
+				                                     . ($MEDIO[$m][1] ?? strtolower($m)) . '</span>', $medios);
+				$por = ' <span class="ds-repres__info-por">Por ' . implode(' y ', $partes) . '</span>';
+			}
+			return '<div class="ds-repres__info ds-repres__info--' . $clase . '"><i class="fas ' . $icono . '" aria-hidden="true"></i>'
+			     . '<div><strong>' . $titulo . '</strong> <span class="ds-repres__info-detalle">' . $detalle . '</span>' . $por . '</div></div>';
 		}
 
 		public function representantesServidor(array $peticion): array
@@ -317,7 +380,6 @@
 				$id      = (int)$r['repre_id'];
 				$nombre  = $junta($r['repre_primernombre'], $r['repre_segundonombre'], $r['repre_apellidopaterno'], $r['repre_apellidomaterno']);
 				$inicial = mb_strtoupper(mb_substr(html_entity_decode((string)$r['repre_primernombre']), 0, 1) . mb_substr(html_entity_decode((string)$r['repre_apellidopaterno']), 0, 1));
-				$firmado = $r['repre_firmado'] === 'S';
 
 				/* Los alumnos: el total como insignia, que lleva a la ficha del
 				   representante (ahí está la lista). Azul si alguno está activo,
@@ -331,27 +393,11 @@
 				                  ? ' <span class="small text-body-secondary text-nowrap">' . ($nActivos === 0 ? 'ninguno activo' : $nActivos . ($nActivos === 1 ? ' activo' : ' activos')) . '</span>'
 				                  : '');
 
-				/* Protección de datos, en dos partes:
-				   1. Las autorizaciones LOPDP de sus alumnos (Consentimientos
-				      LOPDP): datos e imagen, y por dónde se dieron — el enlace,
-				      el formulario de inscripción en línea o el sistema.
-				   2. El formulario en papel (Formulario LPD): un BOTÓN (antes un
-				      icono suelto de 12 px) y su estado; quien puede editar lo
-				      cambia con el mismo botón (Firmado / Pendiente). */
-				$aut = $autorizaciones[$id] ?? null;
-				$celdaAut = $aut
-					? '<div class="ds-repres__auts">' . self::chipAutorizacion('Datos', $aut['DATOS']) . self::chipAutorizacion('Imagen', $aut['IMAGEN']) . '</div>'
-					: '<div class="ds-repres__auts"><span class="small text-body-secondary">Sin alumnos en sus sedes</span></div>';
-				$celdaDatos = $celdaAut
-				            . '<div class="ds-repres__datos">'
-				            . '<a href="' . APP_URL . 'representanteFLPD/' . $id . '/" target="_blank" rel="noopener" class="btn btn-sm btn-light border" title="Abrir el formulario de protección de datos en papel">'
-				            . '<i class="fas fa-file-signature me-1" aria-hidden="true"></i>Formulario LPD</a>'
-				            . ($puedeEditar
-				                ? '<button type="button" class="btn btn-sm ' . ($firmado ? 'btn-success' : 'btn-warning') . ' js-repre" data-accion="estadofirmado" data-id="' . $id . '"'
-				                  . ' title="Formulario en papel: ' . ($firmado ? 'firmado. Marcar como pendiente' : 'pendiente. Marcar como firmado') . '">'
-				                  . '<i class="fas ' . ($firmado ? 'fa-circle-check' : 'fa-hourglass-half') . ' me-1" aria-hidden="true"></i>' . ($firmado ? 'Firmado' : 'Sin firmar') . '</button>'
-				                : '<span class="badge ' . ($firmado ? 'text-bg-success' : 'text-bg-warning') . '" title="Formulario en papel">' . ($firmado ? 'Firmado' : 'Sin firmar') . '</span>')
-				            . '</div>';
+				/* Protección de datos: sólo informa si está autorizada y por qué
+				   medio (formulario firmado o enlace, entre otros). Imprimir y
+				   marcar el formulario en papel se hace en Consentimientos LOPDP;
+				   su ficha también lo abre. */
+				$celdaDatos = self::resumenAutorizacion($autorizaciones[$id] ?? null);
 
 				$botones = '<a href="' . APP_URL . 'representanteProfile/' . $id . '/" class="btn btn-primary btn-sm ds-ficha__primario"><i class="fas fa-id-card me-1" aria-hidden="true"></i>Ver ficha</a>';
 				if ($puedeCrear) {
@@ -1384,20 +1430,8 @@
 			}else{
 				$estadoF = 'N';
 			}
-            $firmado_datos_up=[
-				[
-					"campo_nombre"=>"repre_firmado",
-					"campo_marcador"=>":Firmado",
-					"campo_valor"=> $estadoF
-				]
-			];
-			$condicion=[
-				"condicion_campo"=>"repre_id",
-				"condicion_marcador"=>":Repreid",
-				"condicion_valor"=>$repre_id
-			];
-
-			if($this->actualizarDatos("alumno_representante",$firmado_datos_up,$condicion)){
+			/* Con quién y cuándo (migración 077): el historial de consentimientos lo muestra. */
+			if((new consentimientoController())->guardarFirma((int)$repre_id, $estadoF)){
 
 				$alerta=[
 					"tipo"=>"recargar",

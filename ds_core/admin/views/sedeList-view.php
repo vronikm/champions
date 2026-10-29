@@ -3,6 +3,10 @@
 | Sedes del ecosistema.
 | Core las administra; Basketball y Arena sólo las consumen. El tipo de
 | sede decide qué módulos pueden operar sobre ella.
+|
+| Estado (migración 078): una sede inactiva no se ofrece para registros
+| nuevos y su enlace de inscripción en línea no recibe inscripciones; lo que
+| ya tiene se sigue viendo (sql_sede_activa, ds_core/inc/seguridad.php).
 */
 
 use admin\controllers\coreController;
@@ -18,6 +22,7 @@ $tipos = $insCore->valoresPorNombre('sede_tipoingreso');
 $puedeCrear    = puede_crear('sedeList');
 $puedeEditar   = puede_editar('sedeList');
 $puedeEliminar = puede_eliminar('sedeList');
+$activas = count(array_filter($sedes, static fn($s) => ($s['sede_estado'] ?? 'A') === 'A'));
 
 /* Color del distintivo según lo que la sede permite. */
 $claseTipo = ['STF' => 'badge-modulo--basketball',
@@ -29,7 +34,8 @@ require_once __DIR__ . "/inc/layout-top.php";
 
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
-        <h3 class="card-title mb-0"><?php echo count($sedes); ?> sede<?php echo count($sedes) === 1 ? '' : 's'; ?></h3>
+        <h3 class="card-title mb-0"><?php echo count($sedes); ?> sede<?php echo count($sedes) === 1 ? '' : 's'; ?>
+            <?php if ($activas < count($sedes)): ?><small class="text-muted fw-normal ms-1">· <?php echo $activas; ?> activa<?php echo $activas === 1 ? '' : 's'; ?></small><?php endif; ?></h3>
         <?php if ($puedeCrear): ?>
             <a href="<?php echo APP_URL; ?>sedeForm/" class="btn btn-primary btn-sm">
                 <i class="fas fa-plus me-1"></i> Nueva sede
@@ -39,7 +45,7 @@ require_once __DIR__ . "/inc/layout-top.php";
 
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table mb-0">
+            <table class="table mb-0 ds-sedes">
                 <thead>
                     <tr>
                         <th>Sede</th>
@@ -48,31 +54,32 @@ require_once __DIR__ . "/inc/layout-top.php";
                         <th class="text-end">Inscripción</th>
                         <th class="text-end">Pensión</th>
                         <th>Uso</th>
+                        <th>Estado</th>
                         <th class="text-end">Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
                 <?php if (!$sedes): ?>
-                    <tr><td colspan="7" class="text-center text-muted py-4">Todavía no hay sedes registradas.</td></tr>
+                    <tr><td colspan="8" class="text-center text-muted py-4">Todavía no hay sedes registradas.</td></tr>
                 <?php endif; ?>
 
-                <?php foreach ($sedes as $s): ?>
-                    <tr>
+                <?php foreach ($sedes as $s): $activa = ($s['sede_estado'] ?? 'A') === 'A'; ?>
+                    <tr class="<?php echo $activa ? '' : 'ds-sede--inactiva'; ?>" data-sede="<?php echo (int)$s['sede_id']; ?>">
                         <td>
                             <strong><?php echo htmlspecialchars($s['sede_nombre'], ENT_QUOTES, 'UTF-8'); ?></strong>
                             <?php if ($s['sede_direccion']): ?>
                                 <small class="d-block text-muted"><?php echo htmlspecialchars($s['sede_direccion'], ENT_QUOTES, 'UTF-8'); ?></small>
                             <?php endif; ?>
                         </td>
-                        <td><small><?php echo htmlspecialchars((string)$s['escuela_nombre'] ?: '—', ENT_QUOTES, 'UTF-8'); ?></small></td>
-                        <td>
+                        <td data-etiqueta="Organización"><small><?php echo htmlspecialchars((string)$s['escuela_nombre'] ?: '—', ENT_QUOTES, 'UTF-8'); ?></small></td>
+                        <td data-etiqueta="Tipo">
                             <span class="badge-modulo <?php echo $claseTipo[$s['sede_tipoingreso']] ?? ''; ?>">
                                 <?php echo htmlspecialchars((string)$s['tipo_nombre'] ?: $s['sede_tipoingreso'], ENT_QUOTES, 'UTF-8'); ?>
                             </span>
                         </td>
-                        <td class="text-end">$<?php echo number_format((float)$s['sede_inscripcion'], 2); ?></td>
-                        <td class="text-end">$<?php echo number_format((float)$s['sede_pension'], 2); ?></td>
-                        <td>
+                        <td class="text-end" data-etiqueta="Inscripción">$<?php echo number_format((float)$s['sede_inscripcion'], 2); ?></td>
+                        <td class="text-end" data-etiqueta="Pensión">$<?php echo number_format((float)$s['sede_pension'], 2); ?></td>
+                        <td data-etiqueta="Uso">
                             <small class="d-block text-muted">
                                 <?php echo (int)$s['alumnos']; ?> alumnos · <?php echo (int)$s['empleados']; ?> empleados
                             </small>
@@ -82,8 +89,40 @@ require_once __DIR__ . "/inc/layout-top.php";
                                 </small>
                             <?php endif; ?>
                         </td>
+                        <td data-etiqueta="Estado">
+                            <?php if ($activa): ?>
+                                <span class="badge text-bg-success" data-p="estado"><i class="fas fa-circle-check me-1" aria-hidden="true"></i>Activa</span>
+                            <?php else: ?>
+                                <span class="badge bg-secondary-subtle text-secondary-emphasis border" data-p="estado"
+                                      title="No se ofrece para registros nuevos; lo que tiene se sigue viendo"><i class="fas fa-circle-pause me-1" aria-hidden="true"></i>Inactiva</span>
+                            <?php endif; ?>
+                        </td>
                         <td class="ds-tabla-acciones">
                             <?php if ($puedeEditar): ?>
+                                <?php
+                                /* Activar / inactivar. Al inactivar se avisa de lo que deja de
+                                   ofrecerse y de los alumnos activos que siguen en ella. */
+                                $confirmar = $activa
+                                    ? $s['sede_nombre'] . ' dejará de ofrecerse para registros nuevos y su enlace de inscripción en línea no recibirá inscripciones.'
+                                      . ((int)$s['alumnos'] > 0 ? ' Sus ' . (int)$s['alumnos'] . ' alumnos activos se siguen viendo y atendiendo.' : '')
+                                    : $s['sede_nombre'] . ' volverá a estar disponible en todo el sistema.';
+                                ?>
+                                <form class="FormularioAjax d-inline" method="POST"
+                                      action="<?php echo APP_URL; ?>ajax/coreAjax.php"
+                                      data-confirmar="<?php echo htmlspecialchars($confirmar, ENT_QUOTES, 'UTF-8'); ?>">
+                                    <input type="hidden" name="modulo_core" value="estadoSede">
+                                    <input type="hidden" name="sede_id" value="<?php echo (int)$s['sede_id']; ?>">
+                                    <input type="hidden" name="sede_estado" value="<?php echo $activa ? 'I' : 'A'; ?>">
+                                    <?php if ($activa): ?>
+                                        <button type="submit" class="btn btn-sm btn-light border" title="Inactivar la sede">
+                                            <i class="fas fa-circle-pause me-1" aria-hidden="true"></i>Inactivar
+                                        </button>
+                                    <?php else: ?>
+                                        <button type="submit" class="btn btn-sm btn-success" title="Activar la sede">
+                                            <i class="fas fa-circle-play me-1" aria-hidden="true"></i>Activar
+                                        </button>
+                                    <?php endif; ?>
+                                </form>
                                 <a href="<?php echo APP_URL; ?>sedeForm/?id=<?php echo (int)$s['sede_id']; ?>"
                                    class="btn btn-sm btn-outline-secondary" title="Editar"><i class="fas fa-pen"></i></a>
                             <?php endif; ?>
@@ -111,7 +150,30 @@ require_once __DIR__ . "/inc/layout-top.php";
         El <strong>tipo</strong> decide qué módulos operan sobre la sede:
         <em>Formativa</em> sólo para la escuela, <em>Alquiler</em> sólo para Arena,
         <em>Formativa y Alquiler</em> para ambos.
+        Una sede <strong>inactiva</strong> no se ofrece para registros nuevos (alumnos, empleados, horarios, equipos, usuarios)
+        y su enlace de inscripción en línea no recibe inscripciones; lo que ya tiene se sigue viendo y en los reportes.
     </div>
 </div>
+
+<style>
+    /* Sede inactiva: la fila atenuada, salvo su estado y sus acciones. */
+    tr.ds-sede--inactiva > td:not(:nth-last-child(-n+2)) { opacity: .6; }
+    /* Teléfono: una ficha por sede, cada dato con su etiqueta, el estado a
+       la vista y los botones de dedo (antes la tabla se deslizaba y el
+       estado y las acciones quedaban fuera de la pantalla). */
+    @media (max-width: 767.98px) {
+        .ds-sedes thead { display: none; }
+        .ds-sedes, .ds-sedes tbody, .ds-sedes tr, .ds-sedes td { display: block; width: 100%; }
+        .ds-sedes tr { padding: .75rem 1rem; border-bottom: 1px solid rgba(127, 127, 127, .25); }
+        .ds-sedes td { border: 0 !important; padding: .15rem 0 !important; text-align: left !important; }
+        .ds-sedes td[data-etiqueta] { display: flex; flex-wrap: wrap; align-items: center; gap: .1rem .4rem; }
+        .ds-sedes td[data-etiqueta]::before { content: attr(data-etiqueta) ":"; font-size: .8rem; opacity: .7; }
+        .ds-sedes td[data-etiqueta="Uso"] small { display: inline !important; }
+        .ds-sedes td.ds-tabla-acciones { display: flex; gap: .5rem; padding-top: .6rem; }
+        .ds-sedes td.ds-tabla-acciones form:first-child { flex: 1 1 auto; }
+        .ds-sedes td.ds-tabla-acciones .btn { min-height: 2.75rem; min-width: 2.75rem; display: inline-flex; align-items: center; justify-content: center; }
+        .ds-sedes td.ds-tabla-acciones form:first-child .btn { width: 100%; }
+    }
+</style>
 
 <?php require_once __DIR__ . "/inc/layout-bottom.php"; ?>

@@ -47,6 +47,11 @@
 			echo $insConsentimiento->generarCorreoControlador();
 		}
 
+		/* El formulario en papel, firmado o no (permiso editar). */
+		if ($_POST['modulo_consentimiento'] == "actualizar_formulario") {
+			echo $insConsentimiento->actualizarFormularioControlador();
+		}
+
 	} else {
 		session_destroy();
 		header("Location: " . APP_URL . "login/");

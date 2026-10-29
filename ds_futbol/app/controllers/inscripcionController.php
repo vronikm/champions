@@ -55,7 +55,7 @@ class inscripcionController extends mainModel
             return json_encode([
                 'tipo'   => 'simple',
                 'titulo' => 'Sede no permitida',
-                'texto'  => 'La sede seleccionada no existe o no está asignada a su usuario.',
+                'texto'  => 'La sede seleccionada no existe, está inactiva o no está asignada a su usuario.',
                 'icono'  => 'error'
             ]);
         }
@@ -79,14 +79,16 @@ class inscripcionController extends mainModel
      * Lista las sedes que el usuario en sesión puede usar para generar enlaces.
      * Los roles administrativos (1 y 2) ven todas; el resto solo las asignadas.
      */
-    public function listarSedesActivas()
+    /* $soloActivas: el enlace de inscripción sólo para sedes activas
+       (migración 078); las inscripciones pendientes, de todas. */
+    public function listarSedesActivas(bool $soloActivas = true)
     {
         $rolid   = $_SESSION['rol'] ?? null;
         $usuario = $_SESSION['usuario'] ?? '';
 
         /* Las sedes de la sesión: sedes_de_la_sesion() (ds_core/inc/seguridad.php). */
         $consulta = $this->ejecutarConsulta(
-            "SELECT sede_id, sede_nombre FROM general_sede WHERE " . sql_sedes_de_la_sesion('sede_id') . " ORDER BY sede_nombre"
+            "SELECT sede_id, sede_nombre FROM general_sede WHERE " . sql_sedes_de_la_sesion('sede_id') . ($soloActivas ? " AND " . sql_sede_activa('sede_id') : '') . " ORDER BY sede_nombre"
         );
 
         return $consulta->fetchAll(\PDO::FETCH_ASSOC);
@@ -194,7 +196,7 @@ class inscripcionController extends mainModel
         $usuario = $_SESSION['usuario'] ?? '';
 
         $consulta = $this->ejecutarConsulta(
-            "SELECT sede_nombre FROM general_sede WHERE sede_id = :sede AND " . sql_sedes_de_la_sesion('sede_id'),
+            "SELECT sede_nombre FROM general_sede WHERE sede_id = :sede AND " . sql_sedes_de_la_sesion('sede_id') . " AND " . sql_sede_activa('sede_id'),   /* una sede inactiva no recibe inscripciones */
             [":sede" => $sede_id]
         );
 

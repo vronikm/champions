@@ -1,7 +1,7 @@
 <?php
     /**
      * Pantalla mostrada cuando el enlace de inscripción no es utilizable.
-     * Espera la variable $estado con el valor 'expirado' o 'invalido'.
+     * Espera la variable $estado con el valor 'expirado', 'sede_inactiva' o 'invalido'.
      */
     $estado = $estado ?? 'invalido';
 ?>
@@ -47,7 +47,12 @@
             </div>
         </div>
         <div class="card-body cz-expirado">
-            <?php if ($estado === 'expirado'): ?>
+            <?php if ($estado === 'sede_inactiva'): ?>
+                <i class="fas fa-store-slash text-secondary"></i>
+                <h2>Inscripciones cerradas</h2>
+                <p>Esta sede no está recibiendo inscripciones en línea.</p>
+                <p>Por favor, comuníquese con la escuela.</p>
+            <?php elseif ($estado === 'expirado'): ?>
                 <i class="fas fa-clock-rotate-left text-warning"></i>
                 <h2>Enlace expirado</h2>
                 <p>El tiempo para completar la inscripción ha finalizado.</p>

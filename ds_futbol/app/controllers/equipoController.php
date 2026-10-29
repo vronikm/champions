@@ -684,7 +684,7 @@
 			   si no, al editar caería en «Seleccione» sin que nadie lo pidiera. */
 			$datos = $this->ejecutarConsulta(
 				"SELECT sede_id, sede_nombre FROM general_sede
-				  WHERE " . sql_sedes_de_la_sesion('sede_id') . " OR sede_id = :actual
+				  WHERE (" . sql_sedes_de_la_sesion('sede_id') . " AND " . sql_sede_activa('sede_id') . ") OR sede_id = :actual
 				  ORDER BY sede_nombre", [':actual' => (int)$sedeid])->fetchAll();
 			foreach($datos as $rows){
 				$sel = ($sedeid !== null && (int)$sedeid === (int)$rows['sede_id']) ? ' selected' : '';

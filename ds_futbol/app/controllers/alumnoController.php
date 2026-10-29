@@ -767,7 +767,8 @@
 		public function listarSedeAlumno($alumno_sedeid){
 			$option="";
 
-			$consulta_datos="SELECT sede_id, sede_nombre FROM general_sede";	
+			/* Las activas y la que ya tiene el alumno, aunque esté inactiva. */
+			$consulta_datos="SELECT sede_id, sede_nombre FROM general_sede WHERE " . sql_sede_activa('sede_id', (int)$alumno_sedeid);	
 					
 			$datos = $this->ejecutarConsulta($consulta_datos);
 			$datos = $datos->fetchAll();
@@ -1470,8 +1471,9 @@
 		public function listarOptionSede($rolid = null, $usuario = null ){
 			$option="";
 
-			/* Las sedes de la sesión: sedes_de_la_sesion() (ds_core/inc/seguridad.php). */
-			$consulta_datos = "SELECT sede_id, sede_nombre FROM general_sede WHERE " . sql_sedes_de_la_sesion('sede_id') . " ORDER BY sede_nombre";
+			/* Las sedes de la sesión: sedes_de_la_sesion() (ds_core/inc/seguridad.php).
+			   Alta: sólo las activas (sql_sede_activa, migración 078). */
+			$consulta_datos = "SELECT sede_id, sede_nombre FROM general_sede WHERE " . sql_sedes_de_la_sesion('sede_id') . " AND " . sql_sede_activa('sede_id') . " ORDER BY sede_nombre";
 			$parametros = [];				
 					
 			$datos = $this->ejecutarConsulta($consulta_datos, $parametros);
@@ -1485,7 +1487,8 @@
 		public function listarSedebusqueda($sedeid, $rolid = null, $usuario = null){
 			$option="";
 
-			/* Las sedes de la sesión: sedes_de_la_sesion() (ds_core/inc/seguridad.php). */
+			/* Las sedes de la sesión: sedes_de_la_sesion() (ds_core/inc/seguridad.php).
+			   Búsqueda: todas, también las inactivas (lo suyo se sigue viendo). */
 			$consulta_datos = "SELECT sede_id, sede_nombre FROM general_sede WHERE " . sql_sedes_de_la_sesion('sede_id') . " ORDER BY sede_nombre";
 			$parametros = [];						
 					

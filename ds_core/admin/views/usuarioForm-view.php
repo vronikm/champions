@@ -37,7 +37,7 @@ if (!$esAlta && !$insCore->usuarioEnMiAlcance($usuario)) {
 
 /* Sedes: las que puede asignar quien edita, y las del usuario. Las suyas
    que quien edita no administra no se muestran, pero se conservan. */
-$sedesAsignables = $insCore->sedesAsignables();
+$sedesAsignables = $insCore->sedesAsignables($id);   /* activas, y las inactivas que ya tiene */
 $sedesUsuario    = $insCore->sedesDeUsuario($id);
 $puedeDarTodas   = sedes_de_la_sesion() === null;
 $sedesFuera      = count(array_diff($sedesUsuario['ids'], array_map('intval', array_keys($sedesAsignables))));

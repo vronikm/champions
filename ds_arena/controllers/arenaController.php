@@ -2436,12 +2436,10 @@ class arenaController
      */
     public function requiereAtencion(): array
     {
-        /* Reservas cuya fecha pasó y siguen pendientes o confirmadas: nadie
-           las marcó cumplidas ni canceladas. Mientras sigan así falsean la
-           ocupación y el cobro, porque cuentan como vivas. */
-        $sinCerrar = (int)$this->escalar(
-            "SELECT COUNT(1) FROM dsa_reserva
-              WHERE reserva_fecha < CURDATE() AND reserva_estado IN ('P','C')");
+        /* «Reservas pasadas sin cerrar» se quitó el 2026-10-30: pedía marcar
+           una a una como cumplida cada reserva ya jugada, y no hay a quién
+           le sirva ese paso. Una reserva cuya fecha pasó ya está jugada; si
+           se debe algo, lo dice el aviso de saldos. */
 
         /* Reservas de hoy que siguen sin confirmar. */
         $sinConfirmar = (int)$this->escalar(
@@ -2458,7 +2456,6 @@ class arenaController
                                    AND H.horario_estado = 'A')");
 
         return [
-            'sinCerrar'    => $sinCerrar,
             'sinConfirmar' => $sinConfirmar,
             'sinHorario'   => $sinHorario,
         ];

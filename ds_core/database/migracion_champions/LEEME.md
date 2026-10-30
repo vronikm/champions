@@ -14,7 +14,7 @@ MYSQL=/ruta/a/mysql MYSQL_OPTS="-u USUARIO -pCLAVE" \
   ds_core/database/migracion_champions/aplicar_migracion.sh BASE
 ```
 
-Aplica los 80 archivos en el orden correcto y se detiene en el primer error.
+Aplica los 81 archivos en el orden correcto y se detiene en el primer error.
 Antes de empezar comprueba que `BASE` sea una copia de SoccerEasy **sin migrar**:
 si ya tiene `facturas_electronicas`, no aplica nada, porque varias migraciones no
 se pueden repetir.
@@ -105,6 +105,9 @@ en desarrollo y llevar el resultado a producción con un volcado (ver más abajo
     defecto). Una inactiva no se ofrece para registros nuevos y su enlace de
     inscripción en línea deja de recibir inscripciones; lo suyo se sigue
     viendo. Repetible.
+20. `079_arena_menu_dashboard.sql`: la entrada «Panel» del menú de Arena
+    pasa a llamarse «Dashboard», como en Fútbol. La dirección sigue siendo
+    `panel/`. Repetible.
 
 ```bash
 mysql -u USUARIO -p --default-character-set=utf8mb4 BASE < ARCHIVO.sql

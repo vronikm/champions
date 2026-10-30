@@ -36,8 +36,15 @@ use arena\controllers\arenaController;
 
 $insArena = new arenaController();
 
-$tituloVista = 'Panel';
+/* «Dashboard», como en Fútbol (2026-10-30). La dirección sigue siendo
+   panel/: la usan el Hub, los marcadores y el menú. */
+$tituloVista = 'Dashboard';
 $vistaActual = 'panel';
+
+/* Enlaces a Reservas con el filtro de lo que se está contando: sin él la
+   lista abre en el mes en curso y no se ve lo que el aviso señala. */
+$reservas = static fn (array $f) => APP_URL . 'reservaList/?' . http_build_query($f);
+$hoyIso   = date('Y-m-d');
 
 $ocupacion = $insArena->ocupacionHoy();
 $atencion  = $insArena->requiereAtencion();
@@ -71,28 +78,26 @@ require_once __DIR__ . "/inc/layout-top.php";
 
   Sólo se pinta lo que está mal. Una tira que enseña tres ceros enseña a
   no mirarla, y el día que uno deje de ser cero ya nadie lo verá.
+
+  2026-10-30: fuera «reservas pasadas sin cerrar». Pedía marcar una a una
+  como cumplida cada reserva ya jugada; una reserva cuya fecha pasó ya está
+  jugada, y si se debe algo lo dice el aviso de saldos. Cada aviso abre
+  Reservas con el filtro de lo que cuenta.
   ==================================================================*/
 $avisos = [];
 
-if ($atencion['sinCerrar'] > 0) {
-    $avisos[] = ['n' => $atencion['sinCerrar'], 'color' => 'danger',
-                 'icono' => 'fa-calendar-xmark',
-                 'texto' => 'reservas pasadas sin cerrar',
-                 'accion' => 'Marcar cumplidas o cancelar',
-                 'url' => APP_URL . 'reservaList/'];
-}
 if ($atencion['sinConfirmar'] > 0) {
     $avisos[] = ['n' => $atencion['sinConfirmar'], 'color' => 'warning',
                  'icono' => 'fa-clock',
                  'texto' => 'reservas de hoy sin confirmar',
                  'accion' => 'Confirmar',
-                 'url' => APP_URL . 'reservaList/'];
+                 'url' => $reservas(['estado' => 'P', 'desde' => $hoyIso, 'hasta' => $hoyIso])];
 }
 if ($atencion['sinHorario'] > 0) {
     $avisos[] = ['n' => $atencion['sinHorario'], 'color' => 'info',
                  'icono' => 'fa-calendar-day',
                  'texto' => 'instalaciones activas sin horario',
-                 'accion' => 'No se pueden reservar',
+                 'accion' => 'Asignar horario',
                  'url' => APP_URL . 'horarioList/'];
 }
 if ($verDinero && $economia['conSaldo'] > 0) {
@@ -101,34 +106,31 @@ if ($verDinero && $economia['conSaldo'] > 0) {
                  /* saldoTotal, no saldo: el recuento es de TODAS las reservas
                     pendientes, así que el importe tiene que ser el de todas. */
                  'texto' => 'reservas con saldo · $' . number_format($economia['saldoTotal'], 2),
-                 'accion' => 'Ir a reservas',
-                 'url' => APP_URL . 'reservaList/'];
+                 'accion' => 'Cobrar',
+                 /* desde vacío: todas, no sólo las del mes. */
+                 'url' => $reservas(['saldo' => 1, 'desde' => ''])];
 }
 ?>
 
+<div class="ar-dash">
 <?php if ($avisos): ?>
-<div class="card mb-3 border-warning-subtle">
-    <div class="card-header bg-warning-subtle">
+<div class="card mb-3 ar-dash__atencion">
+    <div class="card-header">
         <h3 class="card-title mb-0 fw-bold">
-            <i class="fas fa-triangle-exclamation me-2" aria-hidden="true"></i>REQUIERE ATENCIÓN
+            <i class="fas fa-triangle-exclamation text-danger me-2" aria-hidden="true"></i>REQUIERE ATENCIÓN
         </h3>
     </div>
     <div class="card-body">
-        <div class="row g-3">
+        <div class="row g-2 g-md-3">
             <?php foreach ($avisos as $a): ?>
-            <div class="col-12 col-md-6 col-xl-3">
-                <a href="<?php echo $h($a['url']); ?>"
-                   class="d-flex align-items-center gap-3 text-decoration-none p-3 rounded border h-100">
-                    <i class="fas <?php echo $a['icono']; ?> fa-2x text-<?php echo $a['color']; ?>"
-                       aria-hidden="true"></i>
-                    <span class="min-w-0">
-                        <span class="d-block fw-bold fs-4 lh-1 text-body">
-                            <?php echo number_format($a['n'], 0, ',', '.'); ?>
-                        </span>
-                        <span class="d-block small text-body-secondary"><?php echo $h($a['texto']); ?></span>
-                        <span class="d-block small fw-semibold text-<?php echo $a['color']; ?>">
-                            <?php echo $h($a['accion']); ?>
-                            <i class="fas fa-arrow-right ms-1" aria-hidden="true"></i>
+            <div class="col-12 col-md-6 col-xl-4">
+                <a href="<?php echo $h($a['url']); ?>" class="ar-dash__aviso text-decoration-none rounded border h-100">
+                    <i class="fas <?php echo $a['icono']; ?> ar-dash__aviso-icono text-<?php echo $a['color']; ?>" aria-hidden="true"></i>
+                    <span class="ar-dash__aviso-cuerpo">
+                        <span class="ar-dash__aviso-n text-body"><?php echo number_format($a['n'], 0, ',', '.'); ?></span>
+                        <span class="ar-dash__aviso-texto text-body-secondary"><?php echo $h($a['texto']); ?></span>
+                        <span class="ar-dash__aviso-accion fw-semibold text-<?php echo $a['color']; ?>">
+                            <?php echo $h($a['accion']); ?><i class="fas fa-arrow-right ms-1" aria-hidden="true"></i>
                         </span>
                     </span>
                 </a>
@@ -140,7 +142,7 @@ if ($verDinero && $economia['conSaldo'] > 0) {
 <?php else: ?>
 <div class="alert alert-success d-flex align-items-center gap-2 mb-3" role="status">
     <i class="fas fa-circle-check" aria-hidden="true"></i>
-    <span>Nada pendiente: sin reservas por cerrar ni instalaciones sin horario.</span>
+    <span>Nada pendiente: reservas de hoy confirmadas, instalaciones con horario<?php echo $verDinero ? ' y sin saldos por cobrar' : ''; ?>.</span>
 </div>
 <?php endif; ?>
 
@@ -196,12 +198,12 @@ $metricas = [
      'detalle' => $atencion['sinConfirmar'] > 0
                   ? $atencion['sinConfirmar'] . ' sin confirmar' : 'todas confirmadas',
      'clase' => $atencion['sinConfirmar'] > 0 ? 'text-bg-warning' : 'text-bg-success',
-     'icono' => 'fa-calendar-check', 'url' => APP_URL . 'reservaList/', 'pie' => 'Ver reservas'],
+     'icono' => 'fa-calendar-check', 'url' => $reservas(['desde' => $hoyIso, 'hasta' => $hoyIso]), 'pie' => 'Ver reservas'],
 
     ['valor' => $pulso['semana'], 'etiqueta' => 'Próximos 7 días',
      'detalle' => 'reservas por venir',
      'clase' => 'text-bg-primary', 'icono' => 'fa-calendar-days',
-     'url' => APP_URL . 'reservaList/', 'pie' => 'Ver agenda'],
+     'url' => $reservas(['desde' => date('Y-m-d', strtotime('+1 day')), 'hasta' => date('Y-m-d', strtotime('+7 days'))]), 'pie' => 'Ver agenda'],
 
     ['valor' => count($porInst), 'etiqueta' => 'Instalaciones activas',
      'detalle' => $atencion['sinHorario'] > 0
@@ -228,13 +230,19 @@ if ($verDinero) {
         'detalle' => $economia['conSaldoMes'] . ' reservas del mes con saldo',
         'clase' => $economia['saldo'] > 0 ? 'text-bg-danger' : 'text-bg-secondary',
         'icono' => 'fa-file-invoice-dollar',
-        'url' => APP_URL . 'reservaList/', 'pie' => 'Ver reservas'];
+        'url' => $reservas(['saldo' => 1, 'desde' => date('Y-m-01'), 'hasta' => date('Y-m-t')]), 'pie' => 'Ver reservas'];
 }
 ?>
-<div class="row g-3 mb-1">
-    <?php foreach ($metricas as $m): ?>
+<?php /* mb-0 en la tarjeta: con su margen de AdminLTE más el hueco de la
+         fila, entre una fila y otra quedaba el doble de aire. */ ?>
+<div class="row g-3 mb-3 ar-dash__cifras">
+    <?php foreach ($metricas as $m):
+        /* Sobre amarillo y cian el texto que contrasta es el oscuro; sobre
+           el resto, el claro. Sin la clase el pie salía subrayado en azul. */
+        $enlacePie = in_array($m['clase'], ['text-bg-warning', 'text-bg-info'], true) ? 'link-dark' : 'link-light';
+    ?>
     <div class="col-6 col-lg-4 col-xxl-2">
-        <div class="small-box <?php echo $m['clase']; ?> h-100">
+        <div class="small-box <?php echo $m['clase']; ?> h-100 mb-0">
             <div class="inner">
                 <h3 class="text-truncate"><?php echo $h($m['valor']); ?></h3>
                 <p class="mb-0"><?php echo $h($m['etiqueta']); ?></p>
@@ -242,7 +250,7 @@ if ($verDinero) {
             </div>
             <i class="fas <?php echo $m['icono']; ?> small-box-icon" aria-hidden="true"></i>
             <a href="<?php echo $h($m['url']); ?>"
-               class="small-box-footer link-underline-opacity-0 link-underline-opacity-50-hover">
+               class="small-box-footer <?php echo $enlacePie; ?> link-underline-opacity-0 link-underline-opacity-50-hover">
                 <?php echo $h($m['pie']); ?>
                 <i class="fas fa-arrow-circle-right ms-1" aria-hidden="true"></i>
             </a>
@@ -268,7 +276,7 @@ if ($verDinero) {
         <div class="card h-100">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h3 class="card-title mb-0">Agenda de hoy</h3>
-                <a href="<?php echo APP_URL; ?>reservaList/" class="btn btn-sm btn-outline-secondary">
+                <a href="<?php echo $h($reservas(['desde' => $hoyIso, 'hasta' => $hoyIso])); ?>" class="btn btn-sm btn-outline-secondary">
                     Reservas
                 </a>
             </div>
@@ -381,7 +389,7 @@ if ($verDinero) {
         <div class="card h-100">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h3 class="card-title mb-0">Reservas con saldo pendiente</h3>
-                <a href="<?php echo APP_URL; ?>reservaList/" class="btn btn-sm btn-outline-secondary">
+                <a href="<?php echo $h($reservas(['saldo' => 1, 'desde' => ''])); ?>" class="btn btn-sm btn-outline-secondary">
                     Ver todas
                 </a>
             </div>
@@ -396,7 +404,7 @@ if ($verDinero) {
                             <div class="text-truncate fw-semibold"><?php echo $h($s['cliente_nombre']); ?></div>
                             <div class="small text-body-secondary text-truncate">
                                 <code><?php echo $h($s['reserva_codigo']); ?></code>
-                                · <?php echo $h($s['reserva_fecha']); ?>
+                                · <?php echo $h(date('d/m/Y', strtotime((string)$s['reserva_fecha']))); ?>
                             </div>
                         </div>
                         <div class="text-end flex-shrink-0 font-monospace">
@@ -448,5 +456,39 @@ if ($verDinero) {
         </div>
     </div>
 </div>
+
+</div><!-- /.ar-dash -->
+
+<style>
+/* Dashboard de Arena (2026-10-30). En el escritorio, como estaba; en el
+   teléfono, más compacto: avisos en una línea, cifras de dos en dos y más
+   bajas. Los mismos criterios que el Dashboard de Fútbol. */
+/* Las listas llegan al borde de la tarjeta: sin recortar, la última fila
+   pintaba sus esquinas rectas encima del borde redondeado. */
+.ar-dash .card { overflow: hidden; }
+.ar-dash__atencion { border-left: 4px solid var(--bs-danger); }
+.ar-dash__aviso { display: flex; align-items: center; gap: 1rem; padding: 1rem; }
+.ar-dash__aviso:hover { background: var(--bs-tertiary-bg); }
+.ar-dash__aviso-icono { font-size: 2rem; width: 2.25rem; text-align: center; flex: none; }
+.ar-dash__aviso-cuerpo { display: flex; flex-direction: column; min-width: 0; }
+.ar-dash__aviso-n { font-size: 1.5rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.ar-dash__aviso-texto, .ar-dash__aviso-accion { font-size: .875rem; }
+
+@media (max-width: 575.98px) {
+    .ar-dash .card-body { padding: .75rem; }
+    .ar-dash__aviso { gap: .75rem; padding: .6rem .75rem; }
+    .ar-dash__aviso-icono { font-size: 1.35rem; width: 1.75rem; }
+    .ar-dash__aviso-cuerpo { flex-direction: row; flex-wrap: wrap; align-items: baseline; column-gap: .35rem; flex: 1; }
+    .ar-dash__aviso-n { font-size: 1.2rem; }
+    .ar-dash__aviso-texto { font-size: .82rem; line-height: 1.25; }
+    .ar-dash__aviso-accion { flex-basis: 100%; font-size: .8rem; margin-top: .1rem; }
+
+    .ar-dash__cifras { --bs-gutter-x: .6rem; --bs-gutter-y: .6rem; }
+    .ar-dash__cifras .small-box > .inner { padding: .5rem .5rem .4rem; }
+    .ar-dash__cifras .small-box h3 { font-size: 1.5rem; margin-bottom: .15rem; }
+    .ar-dash__cifras .small-box p { font-size: .78rem; line-height: 1.2; }
+    .ar-dash__cifras .small-box > .small-box-footer { font-size: .8rem; padding: .3rem 0; }
+}
+</style>
 
 <?php require_once __DIR__ . "/inc/layout-bottom.php"; ?>

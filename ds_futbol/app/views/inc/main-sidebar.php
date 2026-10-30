@@ -3,7 +3,10 @@
   use app\controllers\menuController;
   $insGenerar = new menuController();	
 
-    $nombre= ($_SESSION['sede'] != "") ? $_SESSION['sede'] : APP_NAME;
+    /* La marca lleva el nombre de la escuela (Core › Escuela), no el de la
+       sede de la sesión ni el del módulo («DigiSports - Fútbol»). */
+    $nombre = function_exists('ds_nombre_organizacion') ? ds_nombre_organizacion() : '';
+    $nombre = htmlspecialchars($nombre !== '' ? $nombre : APP_NAME, ENT_QUOTES, 'UTF-8');
     $session_rolid= $_SESSION['rol'];
     $usuario_login=$_SESSION['usuario'];
 

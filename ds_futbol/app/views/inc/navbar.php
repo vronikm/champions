@@ -5,25 +5,8 @@
         <li class="nav-item">
         <a class="nav-link" data-lte-toggle="sidebar" href="#" role="button"><i class="fas fa-bars"></i></a>
         </li>
-        <?php /* Accesos rápidos: sólo se ofrecen si el rol puede usarlos. */ ?>
-        <?php if(puede_crear('alumnoList')): ?>
-            <li class="nav-item d-none d-sm-inline-block">
-                <a href="<?php echo APP_URL."alumnoNew/";?>" class="nav-link">Nuevo alumno</a>
-            </li>
-        <?php endif; ?>
-
-        <?php if(usuario_tiene_permiso('alumnoList')): ?>
-            <li class="nav-item d-none d-sm-inline-block">
-                <a href="<?php echo APP_URL."alumnoList/";?>" class="nav-link">Buscar alumno</a>
-            </li>
-        <?php endif; ?>
-
-        <?php if(puede_crear('pagosList')): ?>
-            <li class="nav-item d-none d-sm-inline-block">
-                <a href="<?php echo APP_URL."pagosList/";?>" class="nav-link">Registrar pago</a>
-            </li>
-        <?php endif; ?>
-
+        <?php /* Sin accesos rápidos (Nuevo alumno, Buscar alumno, Registrar
+                 pago) desde el 2026-10-29: los tres están en el menú lateral. */ ?>
     </ul>
 
     <!-- Right navbar links -->

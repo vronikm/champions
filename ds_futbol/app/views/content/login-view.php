@@ -112,7 +112,7 @@ $funciones = [
             <img src="<?php echo $logo; ?>" alt="" class="dsl-marca__logo">
             <p class="dsl-marca__texto">
                 <?php echo DS_HUB_NAME; ?>
-                <span class="dsl-marca__modulo">Fútbol</span>
+                <span class="dsl-marca__modulo">Tecnología que implusa tu deporte</span>
             </p>
         </div>
 

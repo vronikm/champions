@@ -279,3 +279,40 @@ TEXTO,
         $pdf->SetFont('Arial', '', $cuerpo);
     }
 }
+
+if (!function_exists('consent_sql_pendiente')) {
+    /**
+     * Condición SQL: el alumno (alias $a) tiene la autorización LOPDP
+     * pendiente, con la regla de Fútbol › Consentimientos
+     * (consentimientoController::alumnoPendiente, con el formulario en papel
+     * firmado ya aplicado):
+     *
+     *   - sin el tratamiento de datos autorizado, o
+     *   - sin ninguna respuesta sobre el uso de la imagen.
+     *
+     * El papel firmado del representante (alias $r) vale como «sí» de un
+     * tipo sin respuesta, o con una respuesta anterior a la firma. Sin la
+     * migración 077 no hay fecha de firma ($conFechaFirma = false) y sólo
+     * vale para lo que no tiene respuesta.
+     *
+     * Para los avisos del hub, que no carga los controladores de Fútbol
+     * (2026-10-30). El panel de Fútbol cuenta con el controlador; la prueba
+     * qa_dashboard_activos comprueba que los dos dan lo mismo.
+     */
+    function consent_sql_pendiente(string $a, string $r, bool $conFechaFirma = true): string
+    {
+        $ultima = static fn(string $tipo, string $col): string =>
+            "(SELECT c.$col FROM alumno_consentimiento c
+               WHERE c.consent_alumnoid = $a.alumno_id AND c.consent_tipo = '$tipo'
+               ORDER BY c.consent_fecha DESC, c.consent_id DESC LIMIT 1)";
+        $firmado  = "COALESCE($r.repre_firmado, 'N') = 'S'";
+        $datos    = $ultima('DATOS', 'consent_otorgado');
+        $antes    = $conFechaFirma
+            ? " OR ($r.repre_firmado_fecha IS NOT NULL AND " . $ultima('DATOS', 'consent_fecha') . " < $r.repre_firmado_fecha)"
+            : '';
+        $datosSi  = "(COALESCE($datos, '') = 'S' OR ($firmado AND ($datos IS NULL$antes)))";
+        $imagen   = "($firmado OR " . $ultima('IMAGEN', 'consent_id') . " IS NOT NULL)";
+
+        return "(NOT $datosSi OR NOT $imagen)";
+    }
+}

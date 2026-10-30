@@ -5,8 +5,10 @@
 	class dashboardController extends mainModel{
 
 		/*----------  Listar sedes para el dashboard  ----------*/
+		/* Sólo las sedes activas (2026-10-30): una sede cerrada no tiene nada
+		   que vigilar y sus tarjetas en cero sólo alargan el panel. */
 		public function obtenerSedes(){
-			$sedes=$this->ejecutarConsulta("SELECT sede_id, sede_nombre FROM general_sede ORDER BY sede_id ASC");
+			$sedes=$this->ejecutarConsulta("SELECT sede_id, sede_nombre FROM general_sede WHERE sede_estado = 'A' ORDER BY sede_id ASC");
 			return $sedes;
 		}
 
@@ -94,7 +96,7 @@
 																			pago_alumnoid
 																	) BASE
 																) PEN ON PEN.pago_alumnoid = A.alumno_id
-																WHERE A.alumno_estado <> 'E'
+																WHERE A.alumno_estado = 'A'   /* sólo activos (2026-10-30) */
 																	AND (PEN.TOTAL > 0 OR P.SALDO > 0) 
 															) AS subconsulta;", [':sede1' => (int)$sedeid, ':sede2' => (int)$sedeid]);
 			return $pagosPendientes;
@@ -131,6 +133,11 @@
 		 * aplique siempre. La consulta por sede tenía el mismo fallo; el
 		 * 2026-10-29 la escuela decidió excluir a los eliminados también ahí
 		 * (y en reportePendientes), con el mismo paréntesis.
+		 *
+		 * Desde el 2026-10-30 cuenta sólo alumnos ACTIVOS, igual que los
+		 * «Pagos pendientes» de cada sede: lo que el panel pide atender es a
+		 * quien sigue en la escuela. reportePendientes, a donde lleva el
+		 * aviso, cuenta igual.
 		 */
 		public function alumnosConMora(){
 			return $this->ejecutarConsulta(
@@ -157,7 +164,7 @@
 										 GROUP BY pago_alumnoid
 								  ) BASE
 						  ) PEN ON PEN.pago_alumnoid = A.alumno_id
-						 WHERE A.alumno_estado <> 'E'
+						 WHERE A.alumno_estado = 'A'
 						   AND (COALESCE(PEN.PENSIONES, 0) > 0 OR COALESCE(P.SALDO, 0) > 0)
 						 GROUP BY A.alumno_id
 				   ) AS conMora;");
@@ -185,19 +192,32 @@
 		 * ademas ese archivo esta en el servidor lo dice la pantalla de Fotos
 		 * de alumnos, que para eso mira el disco; hacerlo aqui serian
 		 * trescientas comprobaciones de fichero en cada carga del panel.
+		 *
+		 *
+		 * LOS CONSENTIMIENTOS, CON LA REGLA DE SU PANTALLA (2026-10-30)
+		 *
+		 * Antes se contaba en SQL a quien no tenía una fila DATOS otorgada en
+		 * alumno_consentimiento. Eso dejaba fuera el formulario en papel
+		 * firmado (alumno_representante.repre_firmado), que no se guarda como
+		 * fila, y daba por autorizado a quien luego había revocado: el panel
+		 * decía 222 y la pantalla de Consentimientos, 214.
+		 *
+		 * Ahora se cuentan los alumnos activos que esa pantalla muestra como
+		 * pendientes (consentimientoController::alumnoPendiente), con el papel
+		 * firmado ya aplicado. Una sola regla para los dos sitios.
 		 */
-		public function requiereAtencion(){
-			return $this->ejecutarConsulta(
-				"SELECT
-					(SELECT COUNT(*) FROM sujeto_alumno
-					  WHERE alumno_estado = 'A'
-						AND (alumno_imagen IS NULL OR alumno_imagen = '')) AS sinFoto,
-					(SELECT COUNT(*) FROM sujeto_alumno a
-					  WHERE a.alumno_estado = 'A'
-						AND NOT EXISTS (SELECT 1 FROM alumno_consentimiento c
-										 WHERE c.consent_alumnoid = a.alumno_id
-										   AND c.consent_tipo     = 'DATOS'
-										   AND c.consent_otorgado = 'S')) AS sinConsentimiento");
+		public function requiereAtencion(): array {
+			$fila = $this->ejecutarConsulta(
+				"SELECT COUNT(*) AS sinFoto FROM sujeto_alumno
+				  WHERE alumno_estado = 'A'
+					AND (alumno_imagen IS NULL OR alumno_imagen = '')")->fetch();
+
+			$consentimientos = (new consentimientoController())->listarConsentimientos('', 'A');
+
+			return [
+				'sinFoto'           => (int)($fila['sinFoto'] ?? 0),
+				'sinConsentimiento' => count(array_filter($consentimientos, [consentimientoController::class, 'alumnoPendiente'])),
+			];
 		}
 
 		public function ingresosLugarEntr(){

@@ -326,18 +326,27 @@ class hubController
             ];
         }
 
+        /* Con la regla de Fútbol › Consentimientos (consent_sql_pendiente):
+           antes contaba como autorizado a quien tuviera cualquier fila, aun un
+           «no autorizo», y no veía el formulario en papel firmado. */
+        $conFechaFirma = (int)$this->escalar(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'alumno_representante'
+                AND COLUMN_NAME = 'repre_firmado_fecha'"
+        ) === 1;
         $sinConsentimiento = (int)$this->escalar(
             "SELECT COUNT(1) FROM sujeto_alumno a
+               JOIN alumno_representante r ON r.repre_id = a.alumno_repreid
+               JOIN general_sede s ON s.sede_id = a.alumno_sedeid
               WHERE a.alumno_estado='A' AND " . sql_sedes_de_la_sesion('a.alumno_sedeid') . "
-                AND NOT EXISTS (SELECT 1 FROM alumno_consentimiento c
-                                 WHERE c.consent_alumnoid = a.alumno_id)"
+                AND " . consent_sql_pendiente('a', 'r', $conFechaFirma)
         );
         if ($sinConsentimiento > 0) {
             $avisos[] = [
                 'titulo' => $sinConsentimiento . ' alumnos sin consentimiento LOPDP',
                 'meta'   => 'Fútbol · Protección de datos',
                 'estado' => 'danger',
-                'url'    => DS_FUTBOL_URL . 'consentimientoList/',
+                'url'    => DS_FUTBOL_URL . 'consentimientoList/?autorizacion=P',
             ];
         }
 

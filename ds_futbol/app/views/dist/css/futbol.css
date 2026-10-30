@@ -1296,3 +1296,129 @@
     .ds-cobranza__conceptos { display: inline; }
     .ds-cobranza__conceptos > span + span::before { content: " · "; }
 }
+
+/* =========================================================================
+   PANEL GERENCIAL del dashboard: «Requiere atención», consolidado y una
+   tarjeta por sede. En el escritorio, como estaba; en el teléfono, más
+   compacto (2026-10-30): antes ocupaba casi seis pantallas de alto.
+   ========================================================================= */
+.ds-dash__atencion { border-left: 4px solid var(--bs-danger); }
+.ds-dash__atencion .card-header { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .75rem; }
+.ds-dash__atencion .card-header::after { display: none; }
+.ds-dash__ambito {
+    margin-left: auto; font-size: .75rem; font-weight: 600;
+    padding: .2em .65em; border-radius: 1rem;
+    background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis);
+}
+.ds-dash__aviso { display: flex; align-items: center; gap: 1rem; padding: 1rem; }
+.ds-dash__aviso:hover { background: var(--bs-tertiary-bg); }
+.ds-dash__aviso-icono { font-size: 2rem; width: 2.25rem; text-align: center; flex: none; }
+.ds-dash__aviso-cuerpo { display: flex; flex-direction: column; min-width: 0; }
+.ds-dash__aviso-n { font-size: 1.5rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.ds-dash__aviso-texto, .ds-dash__aviso-accion { font-size: .875rem; }
+.ds-dash__resumen .info-box { height: 100%; }
+
+@media (max-width: 575.98px) {
+    .app-content-header h1 { font-size: 1.35rem; }
+    .ds-dash__atencion .card-body,
+    .ds-dash__resumen .card-body,
+    .ds-dash__sede .card-body { padding: .75rem; }
+
+    /* Avisos: una línea cada uno —cifra y rótulo seguidos— y la acción a
+       la derecha, como una lista. */
+    .ds-dash__aviso { gap: .75rem; padding: .6rem .75rem; }
+    .ds-dash__aviso-icono { font-size: 1.35rem; width: 1.75rem; }
+    .ds-dash__aviso-cuerpo { flex-direction: row; flex-wrap: wrap; align-items: baseline; column-gap: .35rem; flex: 1; }
+    .ds-dash__aviso-n { font-size: 1.2rem; }
+    .ds-dash__aviso-texto { font-size: .82rem; line-height: 1.25; }
+    .ds-dash__aviso-accion { flex-basis: 100%; font-size: .8rem; margin-top: .1rem; }
+
+    /* Consolidado: dos por fila, icono más chico y el rótulo en dos líneas. */
+    .ds-dash__resumen .row { --bs-gutter-x: .6rem; }
+    .ds-dash__resumen .info-box { min-height: 0; padding: .5rem; gap: .5rem; margin-bottom: .6rem; }
+    .ds-dash__resumen .info-box-icon { width: 2.5rem; height: 2.5rem; min-width: 2.5rem; font-size: 1.1rem; align-self: center; }
+    .ds-dash__resumen .info-box-content { padding: 0; min-width: 0; }
+    .ds-dash__resumen .info-box-text { white-space: normal; font-size: .8rem; line-height: 1.2; }
+    .ds-dash__resumen .info-box-number { font-size: 1.15rem; margin-top: .1rem; }
+
+    /* Sedes: las cuatro cifras en 2×2, más bajas. */
+    .ds-dash__sede .row { --bs-gutter-x: .6rem; }
+    .ds-dash__sede .small-box { margin-bottom: .6rem; }
+    .ds-dash__sede .small-box > .inner { padding: .5rem .5rem .4rem; }
+    .ds-dash__sede .small-box h3 { font-size: 1.5rem; margin-bottom: .15rem; }
+    .ds-dash__sede .small-box p { font-size: .78rem; line-height: 1.2; margin-bottom: 0; }
+    .ds-dash__sede .small-box > .small-box-footer { font-size: .8rem; padding: .3rem 0; }
+}
+
+/* =========================================================================
+   PAGOS PENDIENTES (reportePendientes), 2026-10-30. En el teléfono cada
+   alumno es una ficha (.ds-crud__tabla). El pie —SUB TOTAL y TOTAL de todo
+   el informe— queda fijo al pie de la pantalla, se vean 10 filas o todas.
+   ========================================================================= */
+/* .app-main lleva overflow:auto (AdminLTE) pero no se desplaza —lo hace la
+   página—, y un sticky se pega al contenedor de desplazamiento más cercano:
+   el pie nunca quedaba fijo en el escritorio. clip recorta igual a lo
+   ancho sin convertirlo en contenedor de desplazamiento. body.layout-fixed:
+   la regla de AdminLTE (.sidebar-expand.layout-fixed .app-main) pesa más. */
+body.layout-fixed .app-main:has(.ds-pend__tabla),
+.app-main:has(.ds-pend__tabla) { overflow-x: clip; overflow-y: visible; }
+.ds-pend__cabecera .btn { white-space: nowrap; }
+.ds-pend__tabla td.ds-pend__total { white-space: nowrap; }
+.ds-pend__tabla > tfoot.ds-pend__pie {
+    position: sticky; bottom: 0; z-index: 3;
+    box-shadow: 0 -2px 6px rgba(var(--bs-body-color-rgb), .08);
+}
+.ds-pend__tabla > tfoot.ds-pend__pie > tr > th {
+    background: var(--bs-tertiary-bg) !important;
+    border-top: 1px solid var(--bs-border-color);
+    white-space: nowrap;
+}
+.ds-pend__tabla > tfoot .ds-pend__totalfila > th { font-size: 1.05rem; }
+.ds-pend__detalle { font-weight: 400; font-size: .85rem; color: var(--bs-secondary-color); margin-left: .35rem; }
+
+@media (max-width: 991.98px) {
+    .ds-pend__cabecera .btn { flex: 1 1 auto; }
+    .ds-pend__cabecera > .me-auto { flex: 1 1 100%; }
+    /* Las cifras de la ficha: rótulo a la izquierda, número a la derecha. */
+    .ds-pend__tabla > tbody > tr > td.ds-ficha__dato { display: flex; justify-content: space-between; gap: .5rem; text-align: right !important; }
+    .ds-pend__tabla > tbody > tr > td.ds-pend__total {
+        margin-top: .25rem; padding-top: .35rem !important;
+        border-top: 1px dashed var(--bs-border-color) !important;
+    }
+
+    /* El pie, una franja compacta fija abajo: SUB TOTAL en dos columnas y,
+       debajo, el TOTAL. */
+    .ds-pend__tabla > tfoot.ds-pend__pie {
+        display: block;
+        margin-top: .5rem;
+        border: 1px solid var(--bs-border-color);
+        border-radius: var(--bs-border-radius-lg);
+        background: var(--bs-tertiary-bg);
+        overflow: hidden;
+    }
+    .ds-pend__tabla > tfoot.ds-pend__pie > tr {
+        display: grid; grid-template-columns: 1fr 1fr; gap: .1rem .9rem;
+        padding: .45rem .75rem;
+    }
+    .ds-pend__tabla > tfoot.ds-pend__pie > tr > th {
+        display: flex; justify-content: space-between; gap: .4rem;
+        padding: 0; border: 0; font-size: .82rem; font-weight: 600;
+        background: transparent !important;
+    }
+    .ds-pend__tabla > tfoot.ds-pend__pie > tr > th[data-etiqueta]::before {
+        content: attr(data-etiqueta); font-weight: 400; color: var(--bs-secondary-color);
+    }
+    .ds-pend__tabla > tfoot .ds-pend__subtotal > th:first-child {
+        grid-column: 1 / -1; font-size: .72rem; letter-spacing: .03em; color: var(--bs-secondary-color);
+    }
+    .ds-pend__tabla > tfoot .ds-pend__vacio { display: none !important; }
+    /* tr.ds-pend__totalfila: con menos peso, la regla general de dos
+       columnas le ganaba y el importe quedaba en medio. */
+    .ds-pend__tabla > tfoot.ds-pend__pie > tr.ds-pend__totalfila {
+        grid-template-columns: 1fr auto; align-items: baseline;
+        border-top: 1px solid var(--bs-border-color);
+    }
+    .ds-pend__tabla > tfoot.ds-pend__pie > tr.ds-pend__totalfila > th { font-size: 1rem; }
+    .ds-pend__tabla > tfoot.ds-pend__pie > tr.ds-pend__totalfila > th:first-child { display: block; white-space: normal; }
+    .ds-pend__tabla > tfoot .ds-pend__detalle { font-size: .75rem; margin-left: .25rem; }
+}

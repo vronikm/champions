@@ -207,34 +207,44 @@
 			return $fecha_maxima;
 		}
 
-		public function valoresPendientes($sedeid){		
-			$tabla="";
-			$NUM_SALDO = 0;
-			$SALDO = 0;
-			$NUM_PENSION = 0;
-			$PENSION = 0;
-			$consulta_datos="SELECT 
-									alumno_id, 
-									alumno_identificacion, 
-									CONCAT_WS(' ', alumno_primernombre, alumno_segundonombre, alumno_apellidopaterno, alumno_apellidomaterno) AS NOMBRES,  
-									IFNULL(P.TOTAL,0) AS NUM_SALDO, 
-									IFNULL(P.SALDO,0) AS SALDO, 
-									IFNULL(PEN.PENSIONES,0) AS NUM_PENSION, 
-									IFNULL(PEN.TOTAL,0) AS PENSION, 
+		/*==============================================================
+		| PAGOS PENDIENTES (reportePendientes y su PDF)
+		|
+		| datosPendientes() es la única consulta; la pantalla
+		| (valoresPendientes) y el PDF (reportePendientesPDF) la usan igual,
+		| así que lo impreso es lo que se ve.
+		|
+		| Sólo alumnos ACTIVOS (2026-10-30; antes, todos menos los
+		| eliminados), como el panel. Por alumno:
+		|   NUM_SALDO    partidas con saldo pendiente (cualquier rubro)
+		|   SALDO        lo que suman esos saldos
+		|   NUM_PENSION  pensiones no pagadas desde la última registrada
+		|   PENSION      lo que valen (con el descuento del alumno, si tiene)
+		|==============================================================*/
+		public function datosPendientes($sedeid): array {
+			$consulta_datos="SELECT
+									alumno_id,
+									alumno_identificacion,
+									A.alumno_estado,
+									CONCAT_WS(' ', alumno_primernombre, alumno_segundonombre, alumno_apellidopaterno, alumno_apellidomaterno) AS NOMBRES,
+									IFNULL(P.TOTAL,0) AS NUM_SALDO,
+									IFNULL(P.SALDO,0) AS SALDO,
+									IFNULL(PEN.PENSIONES,0) AS NUM_PENSION,
+									IFNULL(PEN.TOTAL,0) AS PENSION,
 									PEN.FECHA
 								FROM sujeto_alumno A
 								LEFT JOIN (
-									SELECT 
-									pago_alumnoid, 
-									COUNT(pago_saldo) AS TOTAL, 
+									SELECT
+									pago_alumnoid,
+									COUNT(pago_saldo) AS TOTAL,
 									SUM(pago_saldo) AS SALDO
 									FROM alumno_pago
 										INNER JOIN sujeto_alumno ON alumno_id = pago_alumnoid
-									WHERE pago_estado = 'P' AND pago_saldo > 0 AND (:p1 = 0 OR alumno_sedeid = :p1) 
+									WHERE pago_estado = 'P' AND pago_saldo > 0 AND (:p1 = 0 OR alumno_sedeid = :p1)
 									GROUP BY pago_alumnoid
 								) P ON P.pago_alumnoid = A.alumno_id
 								LEFT JOIN (
-									SELECT 
+									SELECT
 									BASE.FECHA,
 									BASE.pago_alumnoid,
 									CASE WHEN BASE.FECHA > CURDATE() THEN 0 ELSE
@@ -242,94 +252,124 @@
 									CASE WHEN BASE.FECHA > CURDATE() THEN 0 ELSE
 										GREATEST(0, TIMESTAMPDIFF(MONTH, BASE.FECHA, CURDATE()) + (DAY(CURDATE()) < DAY(BASE.FECHA))) * COALESCE(BASE.descuento_valor, BASE.sede_pension) END AS TOTAL
 									FROM (
-									SELECT 
-										MAX(pago_fecha) AS FECHA, 
-										pago_alumnoid, 
-										MAX(descuento_valor) AS descuento_valor, 
-										MAX(sede_pension) AS sede_pension  
-									FROM 
+									SELECT
+										MAX(pago_fecha) AS FECHA,
+										pago_alumnoid,
+										MAX(descuento_valor) AS descuento_valor,
+										MAX(sede_pension) AS sede_pension
+									FROM
 										sujeto_alumno
-										LEFT JOIN alumno_pago ON pago_alumnoid = alumno_id 
+										LEFT JOIN alumno_pago ON pago_alumnoid = alumno_id
 										LEFT JOIN alumno_pago_descuento ON descuento_alumnoid = alumno_id AND descuento_estado = 'S'
 										LEFT JOIN general_sede ON sede_id = alumno_sedeid
-									WHERE pago_rubroid = 'RPE' AND alumno_estado <> 'I' AND (:p2 = 0 OR alumno_sedeid = :p2) 
-									GROUP BY 
+									WHERE pago_rubroid = 'RPE' AND alumno_estado <> 'I' AND (:p2 = 0 OR alumno_sedeid = :p2)
+									GROUP BY
 										pago_alumnoid
 									) BASE
 								) PEN ON PEN.pago_alumnoid = A.alumno_id
-								WHERE A.alumno_estado <> 'E'   /* eliminados fuera; el OR va entre paréntesis */
+								WHERE A.alumno_estado = 'A'   /* sólo activos; el OR va entre paréntesis */
 									AND (PEN.TOTAL > 0 OR P.SALDO > 0)
 								ORDER BY PEN.PENSIONES DESC";
-			
-			$datos = $this->ejecutarConsulta($consulta_datos, [':p1' => (int)$sedeid, ':p2' => (int)$sedeid]);
-			$datos = $datos->fetchAll();
-			foreach($datos as $rows){	
-				$NUM_SALDO += $rows['NUM_SALDO'];
-				$SALDO += $rows['SALDO'];
-				$NUM_PENSION += $rows['NUM_PENSION'];
-				$PENSION += $rows['PENSION'];
 
+			return $this->ejecutarConsulta($consulta_datos, [':p1' => (int)$sedeid, ':p2' => (int)$sedeid])->fetchAll();
+		}
+
+		/** Los totales de unas filas de datosPendientes(). */
+		public static function totalesPendientes(array $filas): array {
+			$t = ['alumnos' => count($filas), 'num_saldo' => 0, 'saldo' => 0.0, 'num_pension' => 0, 'pension' => 0.0];
+			foreach ($filas as $f) {
+				$t['num_saldo']   += (int)$f['NUM_SALDO'];
+				$t['saldo']       += (float)$f['SALDO'];
+				$t['num_pension'] += (int)$f['NUM_PENSION'];
+				$t['pension']     += (float)$f['PENSION'];
+			}
+			$t['partidas'] = $t['num_saldo'] + $t['num_pension'];
+			$t['total']    = $t['saldo'] + $t['pension'];
+			return $t;
+		}
+
+		/** Importe con dos decimales y separador de miles: $1,234.50. */
+		public static function dinero($v): string {
+			return '$' . number_format((float)$v, 2, '.', ',');
+		}
+
+		/*
+		| Las filas de la pantalla. En el escritorio, una tabla; en el
+		| teléfono cada fila es una ficha (.ds-crud__tabla en futbol.css):
+		| el alumno arriba, y cada cifra con su rótulo (data-etiqueta).
+		| data-order lleva el número sin formato para ordenar bien.
+		|
+		| 2026-10-30: importes con formato y columna «Total» por alumno.
+		*/
+		public function valoresPendientes($sedeid){
+			$datos = $this->datosPendientes($sedeid);
+			$this->totalesDePendientes = self::totalesPendientes($datos);
+			$h = static fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
+
+			$tabla = '';
+			foreach($datos as $rows){
+				$total  = (float)$rows['SALDO'] + (float)$rows['PENSION'];
 				$tabla.='
-					<tr data-widget="expandable-table" aria-expanded="false">
-						<td>'.$rows['alumno_identificacion'].'</td>
-						<td>'.$rows['NOMBRES'].'</td>
-						<td>'.$rows['NUM_SALDO'].'</td>
-						<td>'.$rows['SALDO'].'</td>
-						<td>'.$rows['NUM_PENSION'].'</td>
-						<td>'.$rows['PENSION'].'</td>						
-					</tr>';							
+					<tr>
+						<td class="ds-ficha__principal" data-order="'.$h($rows['NOMBRES']).'">
+							<span class="ds-ficha__nombre">'.$h($rows['NOMBRES']).'</span>
+							<span class="ds-ficha__meta d-block"><i class="fas fa-id-card me-1" aria-hidden="true"></i>'.$h($rows['alumno_identificacion']).'</span>
+						</td>
+						<td class="ds-ficha__dato text-end" data-etiqueta="Partidas con saldo" data-order="'.(int)$rows['NUM_SALDO'].'">'.(int)$rows['NUM_SALDO'].'</td>
+						<td class="ds-ficha__dato text-end" data-etiqueta="Saldos" data-order="'.(float)$rows['SALDO'].'">'.self::dinero($rows['SALDO']).'</td>
+						<td class="ds-ficha__dato text-end" data-etiqueta="Pensiones no pagadas" data-order="'.(int)$rows['NUM_PENSION'].'">'.(int)$rows['NUM_PENSION'].'</td>
+						<td class="ds-ficha__dato text-end" data-etiqueta="Valor pensiones" data-order="'.(float)$rows['PENSION'].'">'.self::dinero($rows['PENSION']).'</td>
+						<td class="ds-ficha__dato ds-pend__total text-end" data-etiqueta="Total" data-order="'.$total.'"><strong>'.self::dinero($total).'</strong></td>
+					</tr>';
 			}
 
 			/*
 			| LOS TOTALES NO VAN EN EL CUERPO DE LA TABLA
 			|
-			| Estaban ahi, dentro del <tbody>, y con colspan:
+			| Estaban ahi, dentro del <tbody>, y con colspan. DataTables lee las
+			| celdas por POSICION y no interpreta colspan en el cuerpo: pedia la
+			| columna 5 de una fila que solo tenia tres y reventaba con
+			| «Requested unknown parameter 5 for row 0».
 			|
-			|     <td colspan="2">SUB TOTAL</td>  ... 5 celdas para 6 columnas
-			|     <td colspan="4">TOTAL</td>      ... 3 celdas para 6 columnas
-			|
-			| DataTables lee las celdas por POSICION y no interpreta colspan en
-			| el cuerpo, asi que pedia la columna 5 de una fila que solo tenia
-			| tres y reventaba con «Requested unknown parameter 5 for row 0».
-			|
-			| Se veia sobre todo cuando el informe salia sin datos: entonces la
-			| primera fila del cuerpo era el subtotal, y el error saltaba nada
-			| mas abrir la pantalla.
-			|
-			| Se guardan aparte para que la vista los pinte en <tfoot>, que es
-			| donde va un total: DataTables no lo recorre como fila, el colspan
-			| funciona, y ademas el pie se queda fijo aunque se pagine o se
-			| filtre, que es justo lo que se quiere de un total.
+			| Van en <tfoot>: DataTables no lo recorre como fila, el colspan
+			| funciona, y el pie es de TODO el informe aunque se pagine, se
+			| filtre o se elija ver 10 o 100 filas. La vista lo deja fijo al
+			| pie de la pantalla (futbol.css, PAGOS PENDIENTES).
 			*/
+			$t = $this->totalesDePendientes;
 			$this->pieDePendientes =
-				'<tr>
-					<th colspan="2">SUB TOTAL</th>
-					<th>'.$NUM_SALDO.'</th>
-					<th>'.$SALDO.'</th>
-					<th>'.$NUM_PENSION.'</th>
-					<th>'.$PENSION.'</th>
+				'<tr class="ds-pend__subtotal">
+					<th>SUB TOTAL</th>
+					<th class="text-end" data-etiqueta="Partidas">'.$t['num_saldo'].'</th>
+					<th class="text-end" data-etiqueta="Saldos">'.self::dinero($t['saldo']).'</th>
+					<th class="text-end" data-etiqueta="Pensiones">'.$t['num_pension'].'</th>
+					<th class="text-end" data-etiqueta="Valor">'.self::dinero($t['pension']).'</th>
+					<th class="ds-pend__vacio"></th>
 				</tr>
-				<tr>
-					<th colspan="4">TOTAL</th>
-					<th>'.($NUM_PENSION + $NUM_SALDO).'</th>
-					<th>'.($PENSION + $SALDO).'</th>
+				<tr class="ds-pend__totalfila">
+					<th colspan="5">TOTAL <span class="ds-pend__detalle">'.$t['partidas'].' partidas de '.$t['alumnos'].' alumnos</span></th>
+					<th class="text-end">'.self::dinero($t['total']).'</th>
 				</tr>';
 
 			return $tabla;
 		}
 
 		/**
-		 * El pie con los totales del informe de pendientes.
+		 * El pie y los totales del informe de pendientes.
 		 *
-		 * Lo rellena valoresPendientes() al recorrer las filas, asi que hay
-		 * que llamarla ANTES. Si no se llamo, devuelve cadena vacia y la
+		 * Los rellena valoresPendientes() al recorrer las filas, asi que hay
+		 * que llamarla ANTES. Si no se llamo, el pie es cadena vacia y la
 		 * tabla sale sin pie en lugar de con ceros inventados.
 		 */
 		private $pieDePendientes = '';
+		private $totalesDePendientes = [];
 
 		public function pieValoresPendientes(){
 			return $this->pieDePendientes;
-		}		
+		}
+		public function totalesValoresPendientes(): array {
+			return $this->totalesDePendientes;
+		}
 		public function listarOptionRubro($rubro){
 			$option ='<option value=0> Seleccione el rubro</option>';
 			$consulta_datos="SELECT C.catalogo_valor, C.catalogo_descripcion 

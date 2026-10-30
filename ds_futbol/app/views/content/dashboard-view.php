@@ -138,7 +138,9 @@
 						<div class="col-sm-6">
 						<h1 class="m-0">Dashboard</h1>
 						</div><!-- /.col -->
-						<div class="col-sm-6">
+						<?php /* En el teléfono la miga «Inicio / Panel» no lleva a ningún
+								 sitio nuevo y empuja el panel hacia abajo. */ ?>
+						<div class="col-sm-6 d-none d-sm-block">
 						<ol class="breadcrumb float-sm-end">
 							<li class="breadcrumb-item"><a href="<?php echo APP_URL; ?>dashboard/">Inicio</a></li>
 							<li class="breadcrumb-item active" aria-current="page">Panel</li>
@@ -184,7 +186,7 @@
 					| ser ruido, y el que este vacia es en si misma la buena noticia.
 					*/
 					if ($verGerencial):
-						$at = $insDashboard->requiereAtencion()->fetch();
+						$at = $insDashboard->requiereAtencion();
 
 						$avisos = [];
 						if (($alumnosConMora ?? 0) > 0) {
@@ -195,7 +197,7 @@
 						if ((int)($at['sinConsentimiento'] ?? 0) > 0) {
 							$avisos[] = ['n' => (int)$at['sinConsentimiento'], 'texto' => 'sin consentimiento LOPDP',
 										 'accion' => 'Registrar', 'icono' => 'fa-file-signature',
-										 'color' => 'warning', 'url' => APP_URL . 'consentimientoList/'];
+										 'color' => 'warning', 'url' => APP_URL . 'consentimientoList/?autorizacion=P'];
 						}
 						if ((int)($at['sinFoto'] ?? 0) > 0) {
 							$avisos[] = ['n' => (int)$at['sinFoto'], 'texto' => 'sin fotografía',
@@ -204,29 +206,35 @@
 						}
 					?>
 						<?php if ($avisos): ?>
-							<div class="card card-default mb-4" style="border-left:4px solid var(--bs-danger);">
+							<?php /* Las tres cifras cuentan sólo alumnos ACTIVOS (2026-10-30):
+									 la mora, el consentimiento y la foto de quien ya no viene
+									 no son tarea de hoy. */ ?>
+							<div class="card card-default mb-4 ds-dash__atencion">
 								<div class="card-header">
 									<h3 class="card-title">
 										<i class="fas fa-triangle-exclamation text-danger me-1"></i>
 										REQUIERE ATENCIÓN
 									</h3>
+									<span class="ds-dash__ambito">
+										<i class="fas fa-user-check me-1" aria-hidden="true"></i>Alumnos activos
+									</span>
 								</div>
 								<div class="card-body">
-									<div class="row g-3">
+									<div class="row g-2 g-md-3">
 									<?php foreach ($avisos as $a): ?>
 										<div class="col-12 col-md-4">
 											<a href="<?php echo $a['url']; ?>"
-											   class="d-flex align-items-center gap-3 text-decoration-none p-3 rounded border h-100">
-												<i class="fas <?php echo $a['icono']; ?> fa-2x text-<?php echo $a['color']; ?>"
+											   class="ds-dash__aviso text-decoration-none rounded border h-100">
+												<i class="fas <?php echo $a['icono']; ?> ds-dash__aviso-icono text-<?php echo $a['color']; ?>"
 												   aria-hidden="true"></i>
-												<span>
-													<span class="d-block fw-bold fs-4 lh-1 text-body">
+												<span class="ds-dash__aviso-cuerpo">
+													<span class="ds-dash__aviso-n text-body">
 														<?php echo number_format($a['n'], 0, ',', '.'); ?>
 													</span>
-													<span class="d-block small text-body-secondary">
+													<span class="ds-dash__aviso-texto text-body-secondary">
 														alumnos <?php echo $a['texto']; ?>
 													</span>
-													<span class="d-block small fw-semibold text-<?php echo $a['color']; ?>">
+													<span class="ds-dash__aviso-accion fw-semibold text-<?php echo $a['color']; ?>">
 														<?php echo $a['accion']; ?>
 														<i class="fas fa-arrow-right ms-1" aria-hidden="true"></i>
 													</span>
@@ -274,7 +282,7 @@
 								 "url"   => APP_URL . "reportePendientes/"],
 							];
 						?>
-						<div class="card card-default mb-4">
+						<div class="card card-default mb-4 ds-dash__resumen">
 							<div class="card-header">
 								<h3 class="card-title">CONSOLIDADO</h3>
 								<div class="card-tools">
@@ -285,10 +293,12 @@
 							<div class="card-body">
 								<div class="row">
 									<?php foreach($consolidado as $c): ?>
-										<div class="col-12 col-sm-6 col-lg-3">
+										<?php /* Dos por fila también en el teléfono: una por fila eran
+												 cuatro cajas casi vacías y media pantalla. */ ?>
+										<div class="col-6 col-lg-3">
 											<?php /* text-reset conserva el color del texto: sin el, envolver
 													la caja en un enlace se lo lleva todo al azul de Bootstrap. */ ?>
-											<a href="<?php echo $c["url"]; ?>" class="text-decoration-none text-reset">
+											<a href="<?php echo $c["url"]; ?>" class="d-block h-100 text-decoration-none text-reset">
 												<div class="info-box">
 													<span class="info-box-icon <?php echo $c["clase"]; ?> shadow-sm">
 														<i class="fas <?php echo $c["icono"]; ?>" aria-hidden="true"></i>
@@ -306,7 +316,7 @@
 						</div>
 					<?php endif; ?>
 					<?php foreach($filasSede as $sede): ?>
-						<div class="card card-default mb-4">
+						<div class="card card-default mb-4 ds-dash__sede">
 							<div class="card-header">
 								<h3 class="card-title"><?php echo strtoupper(htmlspecialchars($sede["nombre"])); ?></h3>
 								<div class="card-tools">

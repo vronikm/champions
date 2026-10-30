@@ -1608,6 +1608,35 @@
 			return json_encode($alerta);
 		}
 
+		/*==============================================================
+		| Sin recaudar, sin recibo (2026-10-29)
+		|
+		| Un pago o abono de valor 0 —justificado sin cobro, o pendiente
+		| registrado sin que se pagara nada— no lleva recibo: no se recaudó
+		| nada. La lista no ofrece el botón y dice «Sin recibo», y las
+		| consultas del recibo (generarRecibo, generarReciboPendiente) no lo
+		| encuentran, así que ver, PDF, envío y enlace público vuelven al
+		| listado como con un pago inexistente.
+		|
+		| El número se sigue asignando al registrar: si luego se edita el
+		| pago con un valor, ya tiene el suyo.
+		|==============================================================*/
+		public static function hayRecibo($valor): bool {
+			return (float)$valor > 0;
+		}
+
+		protected function botonRecibo(string $ruta, $valor): string {
+			return self::hayRecibo($valor)
+				? '<a href="'.APP_URL.$ruta.'" class="btn float-end btn-secondary btn-sm" style="margin-right: 5px;" target="_blank"><i class="fas fa-print me-1"></i>Recibo</a>'
+				: '';
+		}
+
+		protected function numeroRecibo($numero, $valor): string {
+			return self::hayRecibo($valor)
+				? (string)$numero
+				: '<span class="text-body-secondary" title="No se recaudó nada: no lleva recibo">Sin recibo</span>';
+		}
+
 		public function listarPagosPendientes($pagoid){			
 			$tabla="";
 			$consulta_datos="SELECT ROW_NUMBER() OVER (ORDER BY PT.transaccion_id) AS fila_numero, PT.*, P.* 
@@ -1643,7 +1672,7 @@
 					<td>'.$rows['transaccion_periodo'].'</td>
 					<td><a href="'.$imagen.'" data-bs-toggle="lightbox" data-title="Pago" data-gallery="gallery">'.$rows['transaccion_valor'].'</a></td>				
 					<td>'.$rows['transaccion_valorcalculado'].'</td>	
-					<td>'.$rows['transaccion_recibo'].'</td>	
+					<td>'.$this->numeroRecibo($rows['transaccion_recibo'], $rows['transaccion_valor']).'</td>	
 					<td>
 						'.$this->siPuede('eliminar','pagosList','<form class="FormularioAjax" action="'.APP_URL.'app/ajax/pagosAjax.php" method="POST" autocomplete="off" >
 							<input type="hidden" name="modulo_pagos" value="eliminarpendiente">
@@ -1653,7 +1682,7 @@
 						</form>').'							
 
 						'.$this->siPuede('editar','pagosList','<a href="'.APP_URL.'pagospendienteUpdate/'.$rows['transaccion_id'].'/" class="btn float-end btn-success btn-sm" style="margin-right: 5px;" title="Editar" aria-label="Editar"><i class="fas fa-pen"></i></a>').'
-						<a href="'.APP_URL.'pagospendienteRecibo/'.$rows['transaccion_id'].'/" class="btn float-end btn-secondary btn-sm" style="margin-right: 5px;" target="_blank"><i class="fas fa-print me-1"></i>Recibo</a>
+						'.$this->botonRecibo('pagospendienteRecibo/'.$rows['transaccion_id'].'/', $rows['transaccion_valor']).'
 					</td>
 				</tr>';	
 			}
@@ -1716,7 +1745,7 @@
 							<td>'.$rows['pago_periodo'].'</td>								
 							<td><a href="'.$imagen.'" data-bs-toggle="lightbox" data-title="Pago" data-gallery="gallery">'.$rows['pago_valor'].'</a></td>
 							<td>'.$rows['pago_saldo'].'</td>						
-							<td>'.$rows['pago_recibo'].'</td>								
+							<td>'.$this->numeroRecibo($rows['pago_recibo'], $rows['pago_valor']).'</td>								
 							<td>'.$estado.'</td>
 							<td>
 								'.$this->siPuede('eliminar','pagosList','<form class="FormularioAjax" action="'.APP_URL.'app/ajax/pagosAjax.php" method="POST" autocomplete="off" >
@@ -1727,7 +1756,7 @@
 
 								'.$this->siPuede('editar','pagosList','<a href="'.APP_URL.'pagosUpdate/'.$rows['pago_id'].'/" class="btn float-end btn-success btn-sm '.$eliminarpago.'" style="margin-right: 5px;"  title="Editar" aria-label="Editar"><i class="fas fa-pen"></i></a>').'
 								'.$btnPagar.'
-								<a href="'.APP_URL.'pagosRecibo/'.$rows['pago_id'].'/" class="btn float-end btn-secondary btn-sm" style="margin-right: 5px;" target="_blank"><i class="fas fa-print me-1"></i>Recibo</a>
+								'.$this->botonRecibo('pagosRecibo/'.$rows['pago_id'].'/', $rows['pago_valor']).'
 							</td>
 						</tr>';	
 				}elseif($rubro == 'RPC'){
@@ -1738,7 +1767,7 @@
 							<td>'.$rows['torneo_nombre'].'</td>							
 							<td><a href="'.$imagen.'" data-bs-toggle="lightbox" data-title="Pago" data-gallery="gallery">'.$rows['pago_valor'].'</a></td>
 							<td>'.$rows['pago_saldo'].'</td>						
-							<td>'.$rows['pago_recibo'].'</td>
+							<td>'.$this->numeroRecibo($rows['pago_recibo'], $rows['pago_valor']).'</td>
 							<td>'.$estado.'</td>
 							<td>
 								'.$this->siPuede('eliminar','pagosList','<form class="FormularioAjax" action="'.APP_URL.'app/ajax/pagosAjax.php" method="POST" autocomplete="off" >
@@ -1749,7 +1778,7 @@
 
 								'.$this->siPuede('editar','pagosList','<a href="'.APP_URL.'pagosUpdate/'.$rows['pago_id'].'/" class="btn float-end btn-success btn-sm '.$eliminarpago.'" style="margin-right: 5px;"  title="Editar" aria-label="Editar"><i class="fas fa-pen"></i></a>').'
 								'.$btnPagar.'
-								<a href="'.APP_URL.'pagosRecibo/'.$rows['pago_id'].'/" class="btn float-end btn-secondary btn-sm" style="margin-right: 5px;" target="_blank"><i class="fas fa-print me-1"></i>Recibo</a>
+								'.$this->botonRecibo('pagosRecibo/'.$rows['pago_id'].'/', $rows['pago_valor']).'
 							</td>
 						</tr>';	
 				}elseif($rubro == 'RNU'){
@@ -1761,7 +1790,7 @@
 							<td>'.$rows['pago_talla'].'</td>
 							<td><a href="'.$imagen.'" data-bs-toggle="lightbox" data-title="Pago" data-gallery="gallery">'.$rows['pago_valor'].'</a></td>
 							<td>'.$rows['pago_saldo'].'</td>
-							<td>'.$rows['pago_recibo'].'</td>							
+							<td>'.$this->numeroRecibo($rows['pago_recibo'], $rows['pago_valor']).'</td>							
 							<td>'.$estado.'</td>
 							<td>
 								'.$this->siPuede('eliminar','pagosList','<form class="FormularioAjax" action="'.APP_URL.'app/ajax/pagosAjax.php" method="POST" autocomplete="off" >
@@ -1772,7 +1801,7 @@
 
 								'.$this->siPuede('editar','pagosList','<a href="'.APP_URL.'pagosUpdate/'.$rows['pago_id'].'/" class="btn float-end btn-success btn-sm '.$eliminarpago.'" style="margin-right: 5px;"  title="Editar" aria-label="Editar"><i class="fas fa-pen"></i></a>').'
 								'.$btnPagar.'
-								<a href="'.APP_URL.'pagosRecibo/'.$rows['pago_id'].'/" class="btn float-end btn-secondary btn-sm" style="margin-right: 5px;" target="_blank"><i class="fas fa-print me-1"></i>Recibo</a>
+								'.$this->botonRecibo('pagosRecibo/'.$rows['pago_id'].'/', $rows['pago_valor']).'
 							</td>
 						</tr>';	
 				}else{
@@ -1783,7 +1812,7 @@
 						<td>'.$rows['pago_periodo'].'</td>
 						<td><a href="'.$imagen.'" data-bs-toggle="lightbox" data-title="Pago" data-gallery="gallery">'.$rows['pago_valor'].'</a></td>
 						<td>'.$rows['pago_saldo'].'</td>
-						<td>'.$rows['pago_recibo'].'</td>						
+						<td>'.$this->numeroRecibo($rows['pago_recibo'], $rows['pago_valor']).'</td>						
 						<td>'.$estado.'</td>
 						<td>
 							'.$this->siPuede('eliminar','pagosList','<form class="FormularioAjax" action="'.APP_URL.'app/ajax/pagosAjax.php" method="POST" autocomplete="off" >
@@ -1794,7 +1823,7 @@
 
 							'.$this->siPuede('editar','pagosList','<a href="'.APP_URL.'pagosUpdate/'.$rows['pago_id'].'/" class="btn float-end btn-success btn-sm '.$eliminarpago.'" style="margin-right: 5px;"  title="Editar" aria-label="Editar"><i class="fas fa-pen"></i></a>').'
 							'.$btnPagar.'
-							<a href="'.APP_URL.'pagosRecibo/'.$rows['pago_id'].'/" class="btn float-end btn-secondary btn-sm" style="margin-right: 5px;" target="_blank"><i class="fas fa-print me-1"></i>Recibo</a>
+							'.$this->botonRecibo('pagosRecibo/'.$rows['pago_id'].'/', $rows['pago_valor']).'
 						</td>
 					</tr>';	
 				}
@@ -2040,7 +2069,8 @@
 								WHERE PT.transaccion_estado = 'C'
 								GROUP BY PT.transaccion_pagoid)T ON T.transaccion_pagoid = P.pago_id
 								LEFT JOIN alumno_pago_transaccion PT ON PT.transaccion_id  = T.IDT
-								WHERE P.pago_id = :pago";
+								WHERE P.pago_id = :pago
+								  AND P.pago_valor > 0   /* sin recaudar, sin recibo: ver hayRecibo() */";
 
 			$datos = $this->ejecutarConsulta($consulta_datos, [':pago' => (int)$pagoid]);		
 			return $datos;
@@ -2060,7 +2090,8 @@
  					INNER JOIN general_tabla_catalogo R ON R.catalogo_valor = P.pago_rubroid 
 					INNER JOIN general_tabla_catalogo F ON F.catalogo_valor = PT.transaccion_formapagoid	
 					LEFT JOIN torneo_torneo T ON T.torneo_id = P.pago_campeonatoid			
-				WHERE PT.transaccion_id = :transaccion";	
+				WHERE PT.transaccion_id = :transaccion
+				  AND PT.transaccion_valor > 0   /* sin recaudar, sin recibo: ver hayRecibo() */";	
 
 			$datos = $this->ejecutarConsulta($consulta_datos, [':transaccion' => (int)$transaccion_id]);		
 			return $datos;

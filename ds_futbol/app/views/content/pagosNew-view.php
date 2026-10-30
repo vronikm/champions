@@ -107,7 +107,11 @@
 			$beca = "N";
 		}
 
-		if($beca != "S"){
+		/* Las pensiones no pagadas desde la última se calculan sólo para
+		   alumnos ACTIVOS, como en el listado de pagos: un inactivo no
+		   entrena, y contarle los meses desde que dejó de venir inflaba la
+		   deuda. Lo registrado con saldo (pagosPendintes) se muestra igual. */
+		if($beca != "S" && $datos['alumno_estado'] === 'A'){
 			$pension = $insAlumno->pensionesPendientes($alumno);
 			if($pension != ""){
 				$pendiente = "Pendiente";

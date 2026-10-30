@@ -95,11 +95,18 @@
 						<p class="small text-body-secondary mb-0"><?php echo $h($nombreAlumno); ?></p>
 					</div>
 					<div class="col-sm-5">
-						<ol class="breadcrumb float-sm-end mb-0">
-							<li class="breadcrumb-item"><a href="<?php echo APP_URL; ?>dashboard/">Inicio</a></li>
-							<li class="breadcrumb-item"><a href="<?php echo APP_URL; ?>alumnoList/">Alumnos</a></li>
-							<li class="breadcrumb-item active" aria-current="page">Ficha</li>
-						</ol>
+						<div class="d-flex flex-wrap align-items-center justify-content-between justify-content-sm-end gap-2">
+							<ol class="breadcrumb mb-0">
+								<li class="breadcrumb-item"><a href="<?php echo APP_URL; ?>dashboard/">Inicio</a></li>
+								<li class="breadcrumb-item"><a href="<?php echo APP_URL; ?>alumnoList/">Alumnos</a></li>
+								<li class="breadcrumb-item active" aria-current="page">Ficha</li>
+							</ol>
+							<?php /* Regresar: a la pantalla de la que se llegó (Alumnos,
+							         Representantes, Inscripciones…). Si la ficha se abrió
+							         sola —enlace directo, pestaña nueva— no hay a dónde
+							         volver y el enlace lleva al listado de alumnos. */ ?>
+							<?php echo ds_boton('volver', 'Regresar', ['href' => APP_URL . 'alumnoList/', 'estilo' => 'secondary', 'class' => 'btn-sm ds-perfil__regresar', 'id' => 'btnRegresar']); ?>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -347,5 +354,21 @@
 	<?php /* Esta pantalla no envía formularios, pero la barra superior sí:
 	         «Cambiar contraseña» va por ajax.js y avisa con SweetAlert. */ ?>
 	<script src="<?php echo ds_recurso('ds_futbol/app/views/dist/js/ajax.js'); ?>"></script>
+	<script>
+	/* «Regresar»: si se llegó desde otra pantalla del sistema, se vuelve a
+	   ella (con su búsqueda y su página); si no, el enlace lleva al listado
+	   de alumnos. Ctrl+clic o clic central siguen abriendo el listado. */
+	(function () {
+		var b = document.getElementById('btnRegresar');
+		var desdeAqui = false;
+		try { desdeAqui = !!document.referrer && new URL(document.referrer).origin === location.origin && document.referrer !== location.href; } catch (e) {}
+		if (!b || !desdeAqui || history.length < 2) { return; }
+		b.addEventListener('click', function (e) {
+			if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) { return; }
+			e.preventDefault();
+			history.back();
+		});
+	})();
+	</script>
   </body>
 </html>

@@ -41,7 +41,7 @@
 
 			<div class="app-content-header">
 				<div class="container-fluid">
-					<div class="d-flex flex-wrap align-items-center gap-2 ds-pend__cabecera">
+					<div class="d-flex flex-wrap align-items-center gap-2 ds-reporte__cabecera">
 						<div class="me-auto">
 							<h1 class="m-0">Pagos pendientes</h1>
 							<p class="small text-body-secondary mb-0">
@@ -60,7 +60,7 @@
 			<!-- Main content -->
 			<section class="app-content">
 				<div class="container-fluid">
-					<div class="card ds-crud__lista ds-pend__lista">
+					<div class="card ds-crud__lista ds-reporte__lista">
 						<div class="card-header d-flex flex-wrap align-items-center gap-2">
 							<h3 class="card-title me-auto">
 								<i class="fas fa-file-invoice-dollar me-2" aria-hidden="true"></i>Alumnos con pagos pendientes
@@ -72,7 +72,7 @@
 							</div>
 						</div>
 						<div class="card-body">
-							<table id="tablaPendientes" class="table table-hover align-middle ds-crud__tabla ds-pend__tabla" style="width:100%">
+							<table id="tablaPendientes" class="table table-hover align-middle ds-crud__tabla ds-reporte__tabla" style="width:100%">
 								<thead>
 									<tr>
 										<th>Alumno</th>
@@ -93,7 +93,7 @@
 								   se filtre. futbol.css lo deja fijo al pie de la
 								   pantalla mientras se recorre la lista. */
 								?>
-								<tfoot class="ds-pend__pie">
+								<tfoot class="ds-reporte__pie">
 									<?php echo $pie; ?>
 								</tfoot>
 								<?php endif; ?>

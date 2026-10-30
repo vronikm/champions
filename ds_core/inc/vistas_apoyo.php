@@ -63,6 +63,7 @@ return [
         'pagospendienteReciboPDF' => ['pagospendienteRecibo'],
         'reportePendientes'   => ['pagosList', 'cobranzaPension', 'reportePagos', 'balanceResultados'],
         'reportePendientesPDF'=> ['reportePendientes'],
+        'reportePagosPDF'     => ['reportePagos'],
 
         /* Cobranza */
         'cobranzaDetallePension'   => ['cobranzaPension'],

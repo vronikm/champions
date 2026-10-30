@@ -5,130 +5,93 @@
 	use DateTime;
 
 	class reporteController extends mainModel{	
-		public function listarPagos($fecha_inicio, $fecha_fin, $sede_id){
+		/*==============================================================
+		| PAGOS REALIZADOS (reportePagos y su PDF)
+		|
+		| datosPagos() es la única consulta; la pantalla (listarPagos /
+		| listarPagosConsolidado) y el PDF (reportePagosPDF) la usan igual,
+		| así que lo impreso es lo que se ve.
+		|
+		| Con sede, filtra por la fecha en que se REGISTRÓ el pago (la
+		| tarjeta «Pagos receptados mes» del panel cuenta así); sin sede
+		| —el consolidado—, por la fecha del pago. Así era antes de
+		| 2026-10-30 y así sigue.
+		|==============================================================*/
+		public function datosPagos($fecha_inicio, $fecha_fin, $sede_id = ''): array {
 			/* Rango vacio: la pantalla acaba de abrirse y no se ha pedido
-			   nada todavia. Se devuelve el informe vacio, que es lo que
-			   hacia antes; con parametros ligados MySQL rechaza '' como
+			   nada todavia. Con parametros ligados MySQL rechaza '' como
 			   fecha y tumbaria la pagina. */
 			if (trim((string)$fecha_inicio) === '' || trim((string)$fecha_fin) === '') {
-				return '';
+				return [];
 			}
 
-			$tabla="";
-			$VALOR_PAGADO = 0;
-			$VALOR_PENDIENTE = 0;
+			if ((string)$sede_id !== '' && (int)$sede_id > 0) {
+				$consulta_datos="SELECT sede_nombre SEDE, A.alumno_identificacion IDENTIFICACION,
+									concat(A.alumno_primernombre, ' ', A.alumno_segundonombre, ' ', A.alumno_apellidopaterno, ' ', A.alumno_apellidomaterno) ALUMNO,
+									pago_fecha FECHA_PAGO,
+									pago_fecharegistro FECHA_REG_SISTEMA,
+									pago_periodo PERIODO,
+									R.catalogo_descripcion RUBRO,
+									F.catalogo_descripcion FORMA_PAGO,
+									((P.pago_saldo + P.pago_valor) - (IFNULL(PT.transaccion_valorcalculado, P.pago_saldo)))VALOR_PAGADO,
+									IFNULL(PT.transaccion_valorcalculado, P.pago_saldo) VALOR_PENDIENTE,
+									case IFNULL(PT.transaccion_valorcalculado, P.pago_saldo) when 0 then 'Cancelado' else 'Pendiente' end ESTADO_PAGO
+								from alumno_pago P
+									inner join general_tabla_catalogo R ON R.catalogo_valor = P.pago_rubroid
+									inner join general_tabla_catalogo F ON F.catalogo_valor = P.pago_formapagoid
+									inner join sujeto_alumno A on A.alumno_id = P.pago_alumnoid
+									inner join general_sede S on S.sede_id = alumno_sedeid
+									LEFT JOIN(SELECT COUNT(1) total, PT.transaccion_pagoid, MIN(PT.transaccion_id) IDT
+									FROM alumno_pago_transaccion PT
+									WHERE PT.transaccion_estado = 'C'
+									GROUP BY PT.transaccion_pagoid)T ON T.transaccion_pagoid = P.pago_id
+									LEFT JOIN alumno_pago_transaccion PT ON PT.transaccion_id  = T.IDT
+								where pago_estado <> 'E'
+									and alumno_sedeid = :p1
+									and pago_fecharegistro between :p2 and :p3
+
+								union all
+
+								SELECT sede_nombre SEDE, A.alumno_identificacion IDENTIFICACION,
+									concat(A.alumno_primernombre, ' ', A.alumno_segundonombre, ' ', A.alumno_apellidopaterno, ' ', A.alumno_apellidomaterno) ALUMNO,
+									transaccion_fecha FECHA_PAGO,
+									transaccion_fecharegistro FECHA_REG_SISTEMA,
+									transaccion_periodo PERIODO,
+									R.catalogo_descripcion RUBRO,
+									F.catalogo_descripcion FORMA_PAGO,
+									transaccion_valor VALOR_PAGADO,
+									transaccion_valorcalculado - transaccion_valor VALOR_PENDIENTE,
+									case (transaccion_valorcalculado - transaccion_valor) when 0 then 'Cancelado' else 'Pendiente' end ESTADO_PAGO
+								from alumno_pago P
+									inner join general_tabla_catalogo R ON R.catalogo_valor = P.pago_rubroid
+									inner join sujeto_alumno A on A.alumno_id = P.pago_alumnoid
+									inner join alumno_pago_transaccion T on T.transaccion_pagoid = P.pago_id
+									inner join general_tabla_catalogo F ON F.catalogo_valor = T.transaccion_formapagoid
+									inner join general_sede S on S.sede_id = alumno_sedeid
+								where transaccion_estado <> 'E'
+									and alumno_sedeid = :p4
+									and transaccion_fecharegistro between :p5 and :p6
+								ORDER BY FECHA_PAGO DESC, FECHA_REG_SISTEMA DESC";
+
+				return $this->ejecutarConsulta($consulta_datos, [':p1' => $sede_id, ':p2' => $fecha_inicio, ':p3' => $fecha_fin, ':p4' => $sede_id, ':p5' => $fecha_inicio, ':p6' => $fecha_fin])->fetchAll();
+			}
+
 			$consulta_datos="SELECT sede_nombre SEDE, A.alumno_identificacion IDENTIFICACION,
 								concat(A.alumno_primernombre, ' ', A.alumno_segundonombre, ' ', A.alumno_apellidopaterno, ' ', A.alumno_apellidomaterno) ALUMNO,
-								pago_fecha FECHA_PAGO, 
-								pago_fecharegistro FECHA_REG_SISTEMA, 
-								pago_periodo PERIODO,  
-								R.catalogo_descripcion RUBRO,  
-								F.catalogo_descripcion FORMA_PAGO, 
-								((P.pago_saldo + P.pago_valor) - (IFNULL(PT.transaccion_valorcalculado, P.pago_saldo)))VALOR_PAGADO, 
+								pago_fecha FECHA_PAGO,
+								pago_fecharegistro FECHA_REG_SISTEMA,
+								pago_periodo PERIODO,
+								R.catalogo_descripcion RUBRO,
+								F.catalogo_descripcion FORMA_PAGO,
+								pago_concepto CONCEPTO,
+								((P.pago_saldo + P.pago_valor) - (IFNULL(PT.transaccion_valorcalculado, P.pago_saldo)))VALOR_PAGADO,
 								IFNULL(PT.transaccion_valorcalculado, P.pago_saldo) VALOR_PENDIENTE,
 								case IFNULL(PT.transaccion_valorcalculado, P.pago_saldo) when 0 then 'Cancelado' else 'Pendiente' end ESTADO_PAGO
-							from alumno_pago P
-								inner join general_tabla_catalogo R ON R.catalogo_valor = P.pago_rubroid 
-								inner join general_tabla_catalogo F ON F.catalogo_valor = P.pago_formapagoid
-								inner join sujeto_alumno A on A.alumno_id = P.pago_alumnoid 
-								inner join general_sede S on S.sede_id = alumno_sedeid
-								LEFT JOIN(SELECT COUNT(1) total, PT.transaccion_pagoid, MIN(PT.transaccion_id) IDT
-								FROM alumno_pago_transaccion PT
-								WHERE PT.transaccion_estado = 'C'
-								GROUP BY PT.transaccion_pagoid)T ON T.transaccion_pagoid = P.pago_id
-								LEFT JOIN alumno_pago_transaccion PT ON PT.transaccion_id  = T.IDT
-							where pago_estado <> 'E'
-								and alumno_sedeid = :p1
-								and pago_fecharegistro between :p2 and :p3
-							
-							union all 
-														
-							SELECT sede_nombre SEDE, A.alumno_identificacion IDENTIFICACION,
-								concat(A.alumno_primernombre, ' ', A.alumno_segundonombre, ' ', A.alumno_apellidopaterno, ' ', A.alumno_apellidomaterno) ALUMNO,
-								transaccion_fecha FECHA_PAGO, 
-								transaccion_fecharegistro FECHA_REG_SISTEMA, 
-								transaccion_periodo PERIODO,  
-								R.catalogo_descripcion RUBRO,  
-								F.catalogo_descripcion FORMA_PAGO, 
-								transaccion_valor VALOR_PAGADO, 
-								transaccion_valorcalculado - transaccion_valor VALOR_PENDIENTE,
-								case (transaccion_valorcalculado - transaccion_valor) when 0 then 'Cancelado' else 'Pendiente' end ESTADO_PAGO
 							from alumno_pago P
 								inner join general_tabla_catalogo R ON R.catalogo_valor = P.pago_rubroid
-								inner join sujeto_alumno A on A.alumno_id = P.pago_alumnoid 
-								inner join alumno_pago_transaccion T on T.transaccion_pagoid = P.pago_id 
-								inner join general_tabla_catalogo F ON F.catalogo_valor = T.transaccion_formapagoid 								
-								inner join general_sede S on S.sede_id = alumno_sedeid
-							where transaccion_estado <> 'E'
-								and alumno_sedeid = :p4
-								and transaccion_fecharegistro between :p5 and :p6";
-
-			$datos = $this->ejecutarConsulta($consulta_datos, [':p1' => $sede_id, ':p2' => $fecha_inicio, ':p3' => $fecha_fin, ':p4' => $sede_id, ':p5' => $fecha_inicio, ':p6' => $fecha_fin]);
-			$datos = $datos->fetchAll();
-			foreach($datos as $rows){
-				$VALOR_PAGADO += $rows['VALOR_PAGADO'];
-				$VALOR_PENDIENTE += $rows['VALOR_PENDIENTE'];
-				$tabla.='
-					<tr>
-						<td>'.$rows['SEDE'].'</td>
-						<td>'.$rows['IDENTIFICACION'].'</td>
-						<td>'.$rows['ALUMNO'].'</td>
-						<td>'.$rows['FECHA_PAGO'].'</td>
-						<td>'.$rows['FECHA_REG_SISTEMA'].'</td>
-						<td>'.$rows['PERIODO'].'</td>
-						<td>'.$rows['RUBRO'].'</td>
-						<td>'.$rows['FORMA_PAGO'].'</td>
-						<td style="text-align: right">'.$rows['VALOR_PAGADO'].'</td>
-						<td style="text-align: right">'.$rows['VALOR_PENDIENTE'].'</td>
-						<td>'.$rows['ESTADO_PAGO'].'</td>
-					</tr>';	
-			}
-			$tabla.='
-				<tr data-widget="expandable-table" aria-expanded="false">
-					<td ></td>
-					<td ></td>
-					<td ></td>
-					<td ></td>
-					<td ></td>
-					<td ></td>
-					<td ></td>
-					<td >TOTAL</td>
-					<td style="text-align: right">'.number_format($VALOR_PAGADO, 2, '.',',').'</td>
-					<td style="text-align: right">'.number_format($VALOR_PENDIENTE, 2, '.',',').'</td>
-					<td> </td>				
-				</tr>';	
-
-			return $tabla;			
-		}
-
-		public function listarPagosConsolidado($fecha_inicio, $fecha_fin){
-			/* Rango vacio: la pantalla acaba de abrirse y no se ha pedido
-			   nada todavia. Se devuelve el informe vacio, que es lo que
-			   hacia antes; con parametros ligados MySQL rechaza '' como
-			   fecha y tumbaria la pagina. */
-			if (trim((string)$fecha_inicio) === '' || trim((string)$fecha_fin) === '') {
-				return '';
-			}
-
-			$tabla="";
-			$VALOR_PAGADO = 0;
-			$VALOR_PENDIENTE = 0;
-			$consulta_datos="SELECT sede_nombre SEDE, A.alumno_identificacion IDENTIFICACION,
-								concat(A.alumno_primernombre, ' ', A.alumno_segundonombre, ' ', A.alumno_apellidopaterno, ' ', A.alumno_apellidomaterno) ALUMNO,
-								pago_fecha FECHA_PAGO, 
-								pago_fecharegistro FECHA_REG_SISTEMA, 
-								pago_periodo PERIODO,  
-								R.catalogo_descripcion RUBRO,  
-								F.catalogo_descripcion FORMA_PAGO, 
-								pago_concepto CONCEPTO,
-								((P.pago_saldo + P.pago_valor) - (IFNULL(PT.transaccion_valorcalculado, P.pago_saldo)))VALOR_PAGADO, 
-								IFNULL(PT.transaccion_valorcalculado, P.pago_saldo) VALOR_PENDIENTE,
-								case IFNULL(PT.transaccion_valorcalculado, P.pago_saldo) when 0 then 'Cancelado' else 'Pendiente' end ESTADO_PAGO
-							from alumno_pago P
-								inner join general_tabla_catalogo R ON R.catalogo_valor = P.pago_rubroid 
 								inner join general_tabla_catalogo F ON F.catalogo_valor = P.pago_formapagoid
 								inner join sujeto_alumno A on A.alumno_id = P.pago_alumnoid
-								inner join general_sede S on S.sede_id = alumno_sedeid 
+								inner join general_sede S on S.sede_id = alumno_sedeid
 								LEFT JOIN(SELECT COUNT(1) total, PT.transaccion_pagoid, MIN(PT.transaccion_id) IDT
 								FROM alumno_pago_transaccion PT
 								WHERE PT.transaccion_estado = 'C'
@@ -136,65 +99,131 @@
 								LEFT JOIN alumno_pago_transaccion PT ON PT.transaccion_id  = T.IDT
 							where pago_estado <> 'E'
 								and pago_fecha between :p1 and :p2
-							
-							union all 
-														
+
+							union all
+
 							SELECT sede_nombre SEDE, A.alumno_identificacion IDENTIFICACION,
 								concat(A.alumno_primernombre, ' ', A.alumno_segundonombre, ' ', A.alumno_apellidopaterno, ' ', A.alumno_apellidomaterno) ALUMNO,
-								transaccion_fecha FECHA_PAGO, 
-								transaccion_fecharegistro FECHA_REG_SISTEMA, 
-								transaccion_periodo PERIODO,  
-								R.catalogo_descripcion RUBRO,  
-								F.catalogo_descripcion FORMA_PAGO, 
+								transaccion_fecha FECHA_PAGO,
+								transaccion_fecharegistro FECHA_REG_SISTEMA,
+								transaccion_periodo PERIODO,
+								R.catalogo_descripcion RUBRO,
+								F.catalogo_descripcion FORMA_PAGO,
 								transaccion_concepto CONCEPTO,
-								transaccion_valor VALOR_PAGADO, 
+								transaccion_valor VALOR_PAGADO,
 								transaccion_valorcalculado - transaccion_valor VALOR_PENDIENTE,
 								case (transaccion_valorcalculado - transaccion_valor) when 0 then 'Cancelado' else 'Pendiente' end ESTADO_PAGO
 							from alumno_pago P
-								inner join general_tabla_catalogo R ON R.catalogo_valor = P.pago_rubroid 							
-								inner join sujeto_alumno A on A.alumno_id = P.pago_alumnoid 
-								inner join alumno_pago_transaccion T on T.transaccion_pagoid = P.pago_id								
-								inner join general_tabla_catalogo F ON F.catalogo_valor = T.transaccion_formapagoid 
+								inner join general_tabla_catalogo R ON R.catalogo_valor = P.pago_rubroid
+								inner join sujeto_alumno A on A.alumno_id = P.pago_alumnoid
+								inner join alumno_pago_transaccion T on T.transaccion_pagoid = P.pago_id
+								inner join general_tabla_catalogo F ON F.catalogo_valor = T.transaccion_formapagoid
 								inner join general_sede S on S.sede_id = alumno_sedeid
 							where transaccion_estado <> 'E'
 								and transaccion_fecha between :p3 and :p4
-								ORDER BY FECHA_PAGO DESC";
+								ORDER BY FECHA_PAGO DESC, FECHA_REG_SISTEMA DESC";
 
-			$datos = $this->ejecutarConsulta($consulta_datos, [':p1' => $fecha_inicio, ':p2' => $fecha_fin, ':p3' => $fecha_inicio, ':p4' => $fecha_fin]);
-			$datos = $datos->fetchAll();
+			return $this->ejecutarConsulta($consulta_datos, [':p1' => $fecha_inicio, ':p2' => $fecha_fin, ':p3' => $fecha_inicio, ':p4' => $fecha_fin])->fetchAll();
+		}
+
+		/** Los totales de unas filas de datosPagos(). */
+		public static function totalesPagos(array $filas): array {
+			$t = ['pagos' => count($filas), 'pagado' => 0.0, 'pendiente' => 0.0];
+			foreach ($filas as $f) {
+				$t['pagado']    += (float)$f['VALOR_PAGADO'];
+				$t['pendiente'] += (float)$f['VALOR_PENDIENTE'];
+			}
+			return $t;
+		}
+
+		/** Fecha de la base (aaaa-mm-dd…) como dd/mm/aaaa; vacía si no hay. */
+		public static function fechaCorta($f): string {
+			$f = substr((string)$f, 0, 10);
+			return preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $f, $m) && $f !== '0000-00-00' ? "$m[3]/$m[2]/$m[1]" : '';
+		}
+
+		/*
+		| Las filas de la pantalla. En el escritorio, una tabla; en el
+		| teléfono cada fila es una ficha (.ds-crud__tabla): alumno y estado
+		| arriba, y cada dato con su rótulo (data-etiqueta). data-order lleva
+		| la fecha ISO y el número sin formato para ordenar bien.
+		|
+		| 2026-10-30: el TOTAL deja el cuerpo de la tabla —ahí lo paginaba
+		| DataTables y sólo se veía en la última página— y va al pie
+		| (pieValoresPagos), que la vista deja fijo al pie de la pantalla.
+		*/
+		public function listarPagos($fecha_inicio, $fecha_fin, $sede_id){
+			return $this->filasPagos($this->datosPagos($fecha_inicio, $fecha_fin, $sede_id));
+		}
+
+		public function listarPagosConsolidado($fecha_inicio, $fecha_fin){
+			return $this->filasPagos($this->datosPagos($fecha_inicio, $fecha_fin, ''));
+		}
+
+		private function filasPagos(array $datos): string {
+			$this->totalesDePagos = self::totalesPagos($datos);
+			$h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+
+			$tabla = '';
 			foreach($datos as $rows){
-				$VALOR_PAGADO += $rows['VALOR_PAGADO'];
-				$VALOR_PENDIENTE += $rows['VALOR_PENDIENTE'];
+				$cancelado = $rows['ESTADO_PAGO'] === 'Cancelado';
+				/* Siete columnas y no nueve: la fecha de registro va bajo la de
+				   pago (sólo si es otra) y la forma de pago bajo el rubro. Con
+				   nueve la tabla no cabía de 992 a 1366 px, y el pie fijo no
+				   deja desplazarla a lo ancho. De 992 a 1279 px el periodo
+				   también se oculta (.ds-col-opcional) y pasa bajo la fecha. */
+				$pago     = self::fechaCorta($rows['FECHA_PAGO']);
+				$registro = self::fechaCorta($rows['FECHA_REG_SISTEMA']);
 				$tabla.='
 					<tr>
-						<td>'.$rows['SEDE'].'</td>
-						<td>'.$rows['IDENTIFICACION'].'</td>
-						<td>'.$rows['ALUMNO'].'</td>
-						<td>'.$rows['FECHA_PAGO'].'</td>
-						<td>'.$rows['FECHA_REG_SISTEMA'].'</td>
-						<td>'.$rows['PERIODO'].'</td>
-						<td>'.$rows['RUBRO'].'</td>
-						<td>'.$rows['FORMA_PAGO'].'</td>
-						<td style="text-align: right">'.$rows['VALOR_PAGADO'].'</td>
-						<td style="text-align: right">'.$rows['VALOR_PENDIENTE'].'</td>
-						<td>'.$rows['ESTADO_PAGO'].'</td>
-					</tr>';	
+						<td class="ds-ficha__principal" data-order="'.$h($rows['ALUMNO']).'">
+							<span class="ds-ficha__nombre">'.$h($rows['ALUMNO']).'</span>
+							<span class="ds-ficha__meta d-block"><i class="fas fa-id-card me-1" aria-hidden="true"></i>'.$h($rows['IDENTIFICACION']).' · '.$h($rows['SEDE']).'</span>
+						</td>
+						<td class="ds-ficha__dato" data-etiqueta="Fecha de pago" data-order="'.$h(substr((string)$rows['FECHA_PAGO'], 0, 10)).'">
+							<span class="ds-reporte__valor">'.$pago.($registro !== '' && $registro !== $pago ? '<span class="ds-reporte__sub">registrado '.$registro.'</span>' : '').'<span class="ds-reporte__sub ds-reporte__si-oculta">'.$h($rows['PERIODO']).'</span></span>
+						</td>
+						<td class="ds-ficha__dato ds-reporte__nowrap ds-col-opcional" data-etiqueta="Periodo">'.$h($rows['PERIODO']).'</td>
+						<td class="ds-ficha__dato" data-etiqueta="Rubro">
+							<span class="ds-reporte__valor">'.$h($rows['RUBRO']).'<span class="ds-reporte__sub">'.$h($rows['FORMA_PAGO']).'</span></span>
+						</td>
+						<td class="ds-ficha__dato text-end" data-etiqueta="Pagado" data-order="'.(float)$rows['VALOR_PAGADO'].'"><strong>'.self::dinero($rows['VALOR_PAGADO']).'</strong></td>
+						<td class="ds-ficha__dato text-end" data-etiqueta="Pendiente" data-order="'.(float)$rows['VALOR_PENDIENTE'].'">'.self::dinero($rows['VALOR_PENDIENTE']).'</td>
+						<td class="ds-ficha__estado">
+							<span class="badge rounded-pill '.($cancelado ? 'text-bg-success' : 'text-bg-warning').'">'.($cancelado ? 'Cancelado' : 'Pendiente').'</span>
+						</td>
+					</tr>';
 			}
-			$tabla.='
-				<tr data-widget="expandable-table" aria-expanded="false">
-					<td ></td>
-					<td ></td>
-					<td ></td>
-					<td ></td>
-					<td ></td>
-					<td ></td>
-					<td ></td>
-					<td >TOTAL</td>
-					<td style="text-align: right">'.number_format($VALOR_PAGADO, 2, '.',',').'</td>
-					<td style="text-align: right">'.number_format($VALOR_PENDIENTE, 2, '.',',').'</td>
-					<td> </td>				
-				</tr>';	
-			return $tabla;			
+
+			/* Una celda por columna, sin colspan, para que los importes
+			   queden siempre bajo su columna. */
+			$t = $this->totalesDePagos;
+			$this->pieDePagos =
+				'<tr class="ds-reporte__totalfila ds-reporte__totalfila--varios">
+					<th>TOTAL <span class="ds-reporte__detalle">'.$t['pagos'].($t['pagos'] === 1 ? ' pago' : ' pagos').'</span></th>
+					<th class="ds-reporte__vacio"></th>
+					<th class="ds-reporte__vacio ds-col-opcional"></th>
+					<th class="ds-reporte__vacio"></th>
+					<th class="text-end" data-etiqueta="Pagado">'.self::dinero($t['pagado']).'</th>
+					<th class="text-end" data-etiqueta="Pendiente">'.self::dinero($t['pendiente']).'</th>
+					<th class="ds-reporte__vacio"></th>
+				</tr>';
+
+			return $tabla;
+		}
+
+		/**
+		 * El pie y los totales del informe de pagos. Los rellena
+		 * listarPagos() / listarPagosConsolidado(): hay que llamarlas ANTES.
+		 */
+		private $pieDePagos = '';
+		private $totalesDePagos = [];
+
+		public function pieValoresPagos(): string {
+			return $this->pieDePagos;
+		}
+		public function totalesValoresPagos(): array {
+			return $this->totalesDePagos;
 		}
 
 		public function fechaPagosReceptados($sede_id){		
@@ -319,7 +348,7 @@
 						<td class="ds-ficha__dato text-end" data-etiqueta="Saldos" data-order="'.(float)$rows['SALDO'].'">'.self::dinero($rows['SALDO']).'</td>
 						<td class="ds-ficha__dato text-end" data-etiqueta="Pensiones no pagadas" data-order="'.(int)$rows['NUM_PENSION'].'">'.(int)$rows['NUM_PENSION'].'</td>
 						<td class="ds-ficha__dato text-end" data-etiqueta="Valor pensiones" data-order="'.(float)$rows['PENSION'].'">'.self::dinero($rows['PENSION']).'</td>
-						<td class="ds-ficha__dato ds-pend__total text-end" data-etiqueta="Total" data-order="'.$total.'"><strong>'.self::dinero($total).'</strong></td>
+						<td class="ds-ficha__dato ds-reporte__total text-end" data-etiqueta="Total" data-order="'.$total.'"><strong>'.self::dinero($total).'</strong></td>
 					</tr>';
 			}
 
@@ -338,16 +367,16 @@
 			*/
 			$t = $this->totalesDePendientes;
 			$this->pieDePendientes =
-				'<tr class="ds-pend__subtotal">
+				'<tr class="ds-reporte__subtotal">
 					<th>SUB TOTAL</th>
 					<th class="text-end" data-etiqueta="Partidas">'.$t['num_saldo'].'</th>
 					<th class="text-end" data-etiqueta="Saldos">'.self::dinero($t['saldo']).'</th>
 					<th class="text-end" data-etiqueta="Pensiones">'.$t['num_pension'].'</th>
 					<th class="text-end" data-etiqueta="Valor">'.self::dinero($t['pension']).'</th>
-					<th class="ds-pend__vacio"></th>
+					<th class="ds-reporte__vacio"></th>
 				</tr>
-				<tr class="ds-pend__totalfila">
-					<th colspan="5">TOTAL <span class="ds-pend__detalle">'.$t['partidas'].' partidas de '.$t['alumnos'].' alumnos</span></th>
+				<tr class="ds-reporte__totalfila">
+					<th colspan="5">TOTAL <span class="ds-reporte__detalle">'.$t['partidas'].' partidas de '.$t['alumnos'].' alumnos</span></th>
 					<th class="text-end">'.self::dinero($t['total']).'</th>
 				</tr>';
 

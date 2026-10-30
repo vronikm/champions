@@ -1351,44 +1351,61 @@
 }
 
 /* =========================================================================
-   PAGOS PENDIENTES (reportePendientes), 2026-10-30. En el teléfono cada
-   alumno es una ficha (.ds-crud__tabla). El pie —SUB TOTAL y TOTAL de todo
-   el informe— queda fijo al pie de la pantalla, se vean 10 filas o todas.
+   REPORTES CON TOTALES (reportePendientes, reportePagos), 2026-10-30. En el
+   teléfono cada fila es una ficha (.ds-crud__tabla). El pie —los totales de
+   todo el informe— queda fijo al pie de la pantalla, se vean 10 filas o todas.
    ========================================================================= */
 /* .app-main lleva overflow:auto (AdminLTE) pero no se desplaza —lo hace la
    página—, y un sticky se pega al contenedor de desplazamiento más cercano:
    el pie nunca quedaba fijo en el escritorio. clip recorta igual a lo
    ancho sin convertirlo en contenedor de desplazamiento. body.layout-fixed:
    la regla de AdminLTE (.sidebar-expand.layout-fixed .app-main) pesa más. */
-body.layout-fixed .app-main:has(.ds-pend__tabla),
-.app-main:has(.ds-pend__tabla) { overflow-x: clip; overflow-y: visible; }
-.ds-pend__cabecera .btn { white-space: nowrap; }
-.ds-pend__tabla td.ds-pend__total { white-space: nowrap; }
-.ds-pend__tabla > tfoot.ds-pend__pie {
+body.layout-fixed .app-main:has(.ds-reporte__tabla),
+.app-main:has(.ds-reporte__tabla) { overflow-x: clip; overflow-y: visible; }
+.ds-reporte__cabecera .btn { white-space: nowrap; }
+.ds-reporte__tabla td.ds-reporte__total { white-space: nowrap; }
+/* Un dato con otro debajo, más pequeño: la fecha de registro bajo la de
+   pago, la forma de pago bajo el rubro. */
+.ds-reporte__valor { display: inline-block; }
+.ds-reporte__sub { display: block; font-size: .8rem; color: var(--bs-secondary-color); }
+/* El periodo bajo la fecha, sólo donde su columna se oculta (992-1279 px). */
+.ds-reporte__sub.ds-reporte__si-oculta { display: none; }
+@media (min-width: 992px) and (max-width: 1279.98px) {
+    .ds-reporte__sub.ds-reporte__si-oculta { display: block; }
+}
+@media (min-width: 992px) {
+    /* La tabla no puede salirse de la tarjeta: el pie fijo no admite
+       desplazarla a lo ancho (qa_reporte_pagos lo mide de 992 a 1920 px). */
+    .ds-reporte__tabla td.ds-reporte__nowrap { white-space: nowrap; }
+    /* Encabezados en dos líneas («Fecha de / pago»): en una pedían casi
+       200 px de más. */
+    table.dataTable.ds-reporte__tabla > thead > tr > th { white-space: normal; vertical-align: bottom; }
+}
+.ds-reporte__tabla > tfoot.ds-reporte__pie {
     position: sticky; bottom: 0; z-index: 3;
     box-shadow: 0 -2px 6px rgba(var(--bs-body-color-rgb), .08);
 }
-.ds-pend__tabla > tfoot.ds-pend__pie > tr > th {
+.ds-reporte__tabla > tfoot.ds-reporte__pie > tr > th {
     background: var(--bs-tertiary-bg) !important;
     border-top: 1px solid var(--bs-border-color);
     white-space: nowrap;
 }
-.ds-pend__tabla > tfoot .ds-pend__totalfila > th { font-size: 1.05rem; }
-.ds-pend__detalle { font-weight: 400; font-size: .85rem; color: var(--bs-secondary-color); margin-left: .35rem; }
+.ds-reporte__tabla > tfoot .ds-reporte__totalfila > th { font-size: 1.05rem; }
+.ds-reporte__detalle { font-weight: 400; font-size: .85rem; color: var(--bs-secondary-color); margin-left: .35rem; }
 
 @media (max-width: 991.98px) {
-    .ds-pend__cabecera .btn { flex: 1 1 auto; }
-    .ds-pend__cabecera > .me-auto { flex: 1 1 100%; }
+    .ds-reporte__cabecera .btn { flex: 1 1 auto; }
+    .ds-reporte__cabecera > .me-auto { flex: 1 1 100%; }
     /* Las cifras de la ficha: rótulo a la izquierda, número a la derecha. */
-    .ds-pend__tabla > tbody > tr > td.ds-ficha__dato { display: flex; justify-content: space-between; gap: .5rem; text-align: right !important; }
-    .ds-pend__tabla > tbody > tr > td.ds-pend__total {
+    .ds-reporte__tabla > tbody > tr > td.ds-ficha__dato { display: flex; justify-content: space-between; gap: .5rem; text-align: right !important; }
+    .ds-reporte__tabla > tbody > tr > td.ds-reporte__total {
         margin-top: .25rem; padding-top: .35rem !important;
         border-top: 1px dashed var(--bs-border-color) !important;
     }
 
     /* El pie, una franja compacta fija abajo: SUB TOTAL en dos columnas y,
        debajo, el TOTAL. */
-    .ds-pend__tabla > tfoot.ds-pend__pie {
+    .ds-reporte__tabla > tfoot.ds-reporte__pie {
         display: block;
         margin-top: .5rem;
         border: 1px solid var(--bs-border-color);
@@ -1396,29 +1413,37 @@ body.layout-fixed .app-main:has(.ds-pend__tabla),
         background: var(--bs-tertiary-bg);
         overflow: hidden;
     }
-    .ds-pend__tabla > tfoot.ds-pend__pie > tr {
+    .ds-reporte__tabla > tfoot.ds-reporte__pie > tr {
         display: grid; grid-template-columns: 1fr 1fr; gap: .1rem .9rem;
         padding: .45rem .75rem;
     }
-    .ds-pend__tabla > tfoot.ds-pend__pie > tr > th {
+    .ds-reporte__tabla > tfoot.ds-reporte__pie > tr > th {
         display: flex; justify-content: space-between; gap: .4rem;
         padding: 0; border: 0; font-size: .82rem; font-weight: 600;
         background: transparent !important;
     }
-    .ds-pend__tabla > tfoot.ds-pend__pie > tr > th[data-etiqueta]::before {
+    .ds-reporte__tabla > tfoot.ds-reporte__pie > tr > th[data-etiqueta]::before {
         content: attr(data-etiqueta); font-weight: 400; color: var(--bs-secondary-color);
     }
-    .ds-pend__tabla > tfoot .ds-pend__subtotal > th:first-child {
+    .ds-reporte__tabla > tfoot .ds-reporte__subtotal > th:first-child {
         grid-column: 1 / -1; font-size: .72rem; letter-spacing: .03em; color: var(--bs-secondary-color);
     }
-    .ds-pend__tabla > tfoot .ds-pend__vacio { display: none !important; }
-    /* tr.ds-pend__totalfila: con menos peso, la regla general de dos
+    .ds-reporte__tabla > tfoot .ds-reporte__vacio { display: none !important; }
+    /* tr.ds-reporte__totalfila: con menos peso, la regla general de dos
        columnas le ganaba y el importe quedaba en medio. */
-    .ds-pend__tabla > tfoot.ds-pend__pie > tr.ds-pend__totalfila {
+    .ds-reporte__tabla > tfoot.ds-reporte__pie > tr.ds-reporte__totalfila {
         grid-template-columns: 1fr auto; align-items: baseline;
         border-top: 1px solid var(--bs-border-color);
     }
-    .ds-pend__tabla > tfoot.ds-pend__pie > tr.ds-pend__totalfila > th { font-size: 1rem; }
-    .ds-pend__tabla > tfoot.ds-pend__pie > tr.ds-pend__totalfila > th:first-child { display: block; white-space: normal; }
-    .ds-pend__tabla > tfoot .ds-pend__detalle { font-size: .75rem; margin-left: .25rem; }
+    .ds-reporte__tabla > tfoot.ds-reporte__pie > tr.ds-reporte__totalfila > th { font-size: 1rem; }
+    .ds-reporte__tabla > tfoot.ds-reporte__pie > tr.ds-reporte__totalfila > th:first-child { display: block; white-space: normal; }
+    .ds-reporte__tabla > tfoot .ds-reporte__detalle { font-size: .75rem; margin-left: .25rem; }
+    /* Pagos: el TOTAL arriba y, debajo, Pagado y Pendiente lado a lado. */
+    .ds-reporte__tabla > tfoot.ds-reporte__pie > tr.ds-reporte__totalfila--varios { grid-template-columns: 1fr 1fr; border-top: 0; }
+    .ds-reporte__tabla > tfoot.ds-reporte__pie > tr.ds-reporte__totalfila--varios > th:first-child { grid-column: 1 / -1; }
+    .ds-reporte__tabla > tfoot.ds-reporte__pie > tr.ds-reporte__totalfila--varios > th[data-etiqueta] { font-size: .95rem; }
+    /* En la ficha el dato va a la derecha, con su segunda línea debajo. */
+    .ds-reporte__tabla .ds-reporte__valor { text-align: right; }
+    /* Filtro de fechas: más bajo en el teléfono. */
+    .ds-reporte__filtro > .card-body { padding: .75rem; }
 }

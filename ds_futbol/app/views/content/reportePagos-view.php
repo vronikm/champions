@@ -3,17 +3,13 @@
 	$insRecibidos = new reporteController();
 	$sede_id 	  = (($url[1] ?? "") != "") ? $url[1] : "";
 
-	if(isset($_POST['pago_fecha_inicio'])){
-		$rp_fecha_inicio = $insRecibidos->limpiarCadena($_POST['pago_fecha_inicio']);
-	} ELSE{
-		$rp_fecha_inicio = date('Y-m-01'); // Primer día del mes actual;
-	}
-
-	if(isset($_POST['pago_fecha_fin'])){
-		$rp_fecha_fin = $insRecibidos->limpiarCadena($_POST['pago_fecha_fin']);
-	} ELSE{
-		$rp_fecha_fin = date('Y-m-t');     // Último día del mes actual
-	}
+	/* Fechas del filtro: las del formulario o el mes actual. Sólo se acepta
+	   aaaa-mm-dd: van también en la dirección del PDF. */
+	$fechaValida = static fn($f) => is_string($f) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $f) && checkdate((int)substr($f, 5, 2), (int)substr($f, 8, 2), (int)substr($f, 0, 4));
+	$rp_fecha_inicio = $insRecibidos->limpiarCadena($_POST['pago_fecha_inicio'] ?? '');
+	$rp_fecha_fin    = $insRecibidos->limpiarCadena($_POST['pago_fecha_fin'] ?? '');
+	if (!$fechaValida($rp_fecha_inicio)) { $rp_fecha_inicio = date('Y-m-01'); }   // Primer día del mes actual
+	if (!$fechaValida($rp_fecha_fin))    { $rp_fecha_fin    = date('Y-m-t'); }    // Último día del mes actual
 
 	$datos=$insRecibidos->seleccionarDatos("Unico","general_sede","sede_id",$sede_id);
 	if($datos->rowCount()==1){
@@ -22,10 +18,20 @@
 	}else{
 		$sede_nombre = "";
 	}
+
+	/* Se pinta primero el cuerpo: es quien calcula los totales del pie. */
+	$filas   = $sede_id != "" ? $insRecibidos->listarPagos($rp_fecha_inicio, $rp_fecha_fin, $sede_id)
+	                          : $insRecibidos->listarPagosConsolidado($rp_fecha_inicio, $rp_fecha_fin);
+	$pie     = $insRecibidos->pieValoresPagos();
+	$totales = $insRecibidos->totalesValoresPagos();
+
+	$h   = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+	$pdf = APP_URL . 'reportePagosPDF/' . ((int)$sede_id) . '/' . $rp_fecha_inicio . '/' . $rp_fecha_fin . '/';
 ?>
 
 <?php
-	/* La cabecera es comun a todas las vistas: ds_futbol/app/views/inc/cabecera.php */
+	/* La cabecera es comun a todas las vistas: ds_futbol/app/views/inc/cabecera.php
+	   Estilos: futbol.css (REPORTES CON TOTALES). */
 	$tituloVista = 'Reporte de pagos';
 	$extras      = array (0 => 'datatables',1 => 'swal',);
 	require_once "app/views/inc/cabecera.php";
@@ -38,205 +44,177 @@
 
       <!-- Main Sidebar Container -->
       <?php require_once "app/views/inc/main-sidebar.php"; ?>
-      <!-- /.Main Sidebar Container -->  
+      <!-- /.Main Sidebar Container -->
 
       <!-- vista -->
       <div class="app-main">
 
-		<!-- Content Header (Page header) -->
 		<div class="app-content-header">
 			<div class="container-fluid">
-			<div class="row mb-2">
-				<div class="col-sm-6">
-				<h1 class="m-0">Búsqueda de pagos realizados <?php echo $sede_nombre; ?></h1>
-				</div><!-- /.col -->
-				<div class="col-sm-6">
-				<ol class="breadcrumb float-sm-end">
-					<li class="breadcrumb-item"><a href="#">Nuevo</a></li>
-					<li class="breadcrumb-item active">Dashboard</li>
-				</ol>
-				</div><!-- /.col -->
-			</div><!-- /.row -->
-			</div><!-- /.container-fluid -->
-		</div>
-		<!-- /.content-header -->
-
-		<!-- Section listado de alumnos -->
-		<section class="app-content">
-			<form action="<?php echo APP_URL."reportePagos/".$sede_id ?>" method="POST" autocomplete="off" enctype="multipart/form-data" >			
-			<div class="container-fluid">
-				<div class="card card-default">
-					<div class="card-header">
-						<h3 class="card-title">Criterios de búsqueda</h3>
-						<div class="card-tools">
-							<button type="button" class="btn btn-tool" data-lte-toggle="card-collapse" title="Plegar o desplegar" aria-label="Plegar o desplegar"><i data-lte-icon="expand" class="fas fa-plus"></i><i data-lte-icon="collapse" class="fas fa-minus"></i></button>
-						</div>
-					</div>  
-					<!-- card-body -->                
-					<div class="card-body">
-						<div class="row">
-							<div class="col-md-4">
-								<div class="mb-3 campo">
-									<label for="pago_fecha">Fecha inicio</label>
-									<div class="input-group">
-																	<span class="input-group-text"><i class="far fa-calendar-alt"></i></span>
-						
-										<input type="date" class="form-control" id="pago_fecha_inicio" name="pago_fecha_inicio" value="<?php echo htmlspecialchars((string)$rp_fecha_inicio, ENT_QUOTES, 'UTF-8'); ?>" required>										
-									</div>
-									<!-- /.input group -->
-								</div>
-							</div>
-							<div class="col-md-4">
-								<div class="mb-3 campo">
-									<label for="pago_fecha">Fecha fin</label>
-									<div class="input-group">
-																	<span class="input-group-text"><i class="far fa-calendar-alt"></i></span>
-						
-										<input type="date" class="form-control" id="pago_fecha_fin" name="pago_fecha_fin" value="<?php echo htmlspecialchars((string)$rp_fecha_fin, ENT_QUOTES, 'UTF-8'); ?>" required>										
-									</div>
-									<!-- /.input group -->
-								</div>
-							</div>	
-							
-							<div class="col-md-3 d-flex align-items-end">
-								<div class="mb-3 w-100">
-																		<?php echo ds_boton_buscar(); ?>
-								</div>
-							</div>
-						</div>					
+				<div class="d-flex flex-wrap align-items-center gap-2 ds-reporte__cabecera">
+					<div class="me-auto">
+						<h1 class="m-0">Pagos realizados</h1>
+						<p class="small text-body-secondary mb-0">
+							<i class="fas fa-location-dot me-1" aria-hidden="true"></i><?php echo $sede_nombre !== '' ? 'Sede ' . $h($sede_nombre) : 'Todas las sedes'; ?>
+							· del <?php echo reporteController::fechaCorta($rp_fecha_inicio); ?> al <?php echo reporteController::fechaCorta($rp_fecha_fin); ?>
+						</p>
 					</div>
+					<?php /* Regresar: a la pantalla de la que se llegó (panel,
+							 reportes…). Abierta sola, al panel. */ ?>
+					<?php echo ds_boton('volver', 'Regresar', ['href' => APP_URL . 'dashboard/', 'estilo' => 'secondary', 'class' => 'btn-sm', 'id' => 'btnRegresar']); ?>
+					<?php echo ds_boton('imprimir', 'Imprimir', ['href' => $pdf, 'estilo' => 'success', 'class' => 'btn-sm', 'id' => 'btnImprimir', 'target' => '_blank', 'title' => 'Reporte en PDF con las fechas elegidas']); ?>
 				</div>
-            </div>  
-			</form>
+			</div>
+		</div>
+
+		<section class="app-content">
 			<div class="container-fluid">
-			<!-- Small boxes (Stat box) -->
-				<div class="card card-default">
-					<div class="card-header">
-						<h3 class="card-title">Resultado de la búsqueda</h3>
-						<div class="card-tools">
-							<button type="button" class="btn btn-tool" data-lte-toggle="card-collapse" title="Plegar o desplegar" aria-label="Plegar o desplegar"><i data-lte-icon="expand" class="fas fa-plus"></i><i data-lte-icon="collapse" class="fas fa-minus"></i></button>
+				<form action="<?php echo APP_URL."reportePagos/".$h($sede_id) ?>" method="POST" autocomplete="off" class="card card-default ds-reporte__filtro">
+					<div class="card-body">
+						<div class="row g-2 align-items-end">
+							<div class="col-6 col-md-4">
+								<label class="form-label mb-1" for="pago_fecha_inicio">Desde</label>
+								<input type="date" class="form-control" id="pago_fecha_inicio" name="pago_fecha_inicio" value="<?php echo $h($rp_fecha_inicio); ?>" required>
+							</div>
+							<div class="col-6 col-md-4">
+								<label class="form-label mb-1" for="pago_fecha_fin">Hasta</label>
+								<input type="date" class="form-control" id="pago_fecha_fin" name="pago_fecha_fin" value="<?php echo $h($rp_fecha_fin); ?>" required>
+							</div>
+							<div class="col-12 col-md-4 col-lg-3">
+								<?php echo ds_boton_buscar(); ?>
+							</div>
+						</div>
+					</div>
+				</form>
+
+				<div class="card ds-crud__lista ds-reporte__lista">
+					<div class="card-header d-flex flex-wrap align-items-center gap-2">
+						<h3 class="card-title me-auto">
+							<i class="fas fa-money-bill-wave me-2" aria-hidden="true"></i>Pagos
+							<span class="badge text-bg-secondary ms-1"><?php echo (int)($totales['pagos'] ?? 0); ?></span>
+						</h3>
+						<div class="ds-pagos__resumen" title="Suma de la columna «Pagado»">
+							<span class="text-body-secondary">Total pagado</span>
+							<strong class="text-success"><?php echo reporteController::dinero($totales['pagado'] ?? 0); ?></strong>
 						</div>
 					</div>
 					<div class="card-body">
-						<div class="table-responsive">
-						<table id="example1" class="table table-bordered table-striped table-sm" style="font-size: 13px;">
+						<table id="tablaPagos" class="table table-hover align-middle ds-crud__tabla ds-reporte__tabla" style="width:100%">
 							<thead>
 								<tr>
-									<th>Sede</th>
-									<th>Identificación</th>
-									<th>Nombres y apellidos</th>
-									<th>Fecha Pago</th>
-									<th>F. registro pago</th>									
-									<th>Periodo</th>
-									<th>Rubro</th>
-									<th>F. Pago</th>
-									<th>V. Pagado</th>
-									<th>V. Pendiente</th>
+									<th>Alumno</th>
+									<th>Fecha de pago</th>
+									<th class="ds-col-opcional">Periodo</th>
+									<th>Rubro y forma de pago</th>
+									<th class="text-end">Pagado</th>
+									<th class="text-end">Pendiente</th>
 									<th>Estado</th>
 								</tr>
 							</thead>
 							<tbody>
-								<?php 
-									if($sede_id!=""){
-										echo $insRecibidos->listarPagos($rp_fecha_inicio, $rp_fecha_fin, $sede_id); 
-									}else{
-										echo $insRecibidos->listarPagosConsolidado($rp_fecha_inicio, $rp_fecha_fin); 
-									}	
-								?>								
+								<?php echo $filas; ?>
 							</tbody>
+							<?php if ($pie !== ''): ?>
+							<?php /* El TOTAL va en el pie: es de TODO el informe y se ve
+									 siempre, se elija ver 10 filas o todas, y aunque se
+									 filtre; futbol.css lo deja fijo al pie de la pantalla. */ ?>
+							<tfoot class="ds-reporte__pie">
+								<?php echo $pie; ?>
+							</tfoot>
+							<?php endif; ?>
 						</table>
-						</div>	
+						<p class="small text-body-secondary mb-0 mt-2">
+							<i class="fas fa-circle-info me-1" aria-hidden="true"></i><?php echo $sede_id != ""
+								? 'Pagos y abonos registrados en el sistema entre las dos fechas.'
+								: 'Pagos y abonos con fecha de pago entre las dos fechas, de todas las sedes.'; ?>
+						</p>
 					</div>
 				</div>
-			<!-- /.row -->
 			</div><!-- /.container-fluid -->
 		</section>
-		<!-- /.section -->      
+		<!-- /.section -->
       </div>
       <!-- /.vista -->
       <?php require_once "app/views/inc/footer.php"; ?>
-
-      <!-- Control Sidebar -->
-      <aside class="control-sidebar control-sidebar-dark">
-        <!-- Control sidebar content goes here -->
-      </aside>
-      <!-- /.control-sidebar -->
     </div>
-    <!-- ./wrapper -->    
+    <!-- ./wrapper -->
 	<!-- jQuery -->
 	<script src="<?php echo APP_URL; ?>app/views/dist/plugins/jquery/jquery.min.js"></script>
-	<!-- Bootstrap 4 -->
 	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/overlayscrollbars/js/overlayscrollbars.browser.es6.min.js"></script>
 	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/bootstrap5/js/bootstrap.bundle.min.js"></script>
-	<!-- DataTables  & Plugins -->
+	<!-- DataTables: sin Responsive (en el teléfono cada fila es una ficha) ni
+	     botones de exportar: el PDF lo da «Imprimir» -->
 	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/dataTables.min.js"></script>
 	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/dataTables.bootstrap5.min.js"></script>
-	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/dataTables.responsive.min.js"></script>
-	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/responsive.bootstrap5.min.js"></script>
-	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/dataTables.buttons.min.js"></script>
-	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/buttons.bootstrap5.min.js"></script>
-	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/buttons.html5.min.js"></script>
-	<?php /* pdfmake y jszip pesan 2,2 MB y sirven a dos botones: se traen
-			 al pulsarlos, no en cada carga. Va DESPUES de buttons.html5, que es
-			 quien define esos botones. */ ?>
-	<script src="<?php echo ds_recurso('ds_core/assets/js/exportar.js'); ?>"></script>
-	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/buttons.print.min.js"></script>
-	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/datatables2/js/buttons.colVis.min.js"></script>
-	<!-- AdminLTE App -->
-	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/adminlte4/js/adminlte.min.js"></script>	
+	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/adminlte4/js/adminlte.min.js"></script>
 	<script src="<?php echo ds_recurso('ds_futbol/app/views/dist/js/ajax.js'); ?>" ></script>
 	<script src="<?php echo ds_recurso('ds_futbol/app/views/dist/js/main.js'); ?>" ></script>
-    <!-- Page specific script -->
 	<script>
 	document.addEventListener('DOMContentLoaded', function () {
-		new DataTable("#example1", {
-			"paging": true,
-			"lengthChange": false,
-			"searching": false,
-			"ordering": false,
-			"info": true,
-			"autoWidth": false,
-			"responsive": true, 
-			"language": {
-				"decimal": "",
-				"emptyTable": "No hay datos disponibles en la tabla",
-				"info": "Mostrando _START_ a _END_ de _TOTAL_ entradas",
-				"infoEmpty": "Mostrando 0 a 0 de 0 entradas",
-				"infoFiltered": "(filtrado de _MAX_ entradas totales)",
-				"infoPostFix": "",
-				"thousands": ",",
-				"lengthMenu": "Mostrar _MENU_ entradas",
-				"loadingRecords": "Cargando...",
-				"processing": "Procesando...",
-				"search": "Buscar:",
-				"zeroRecords": "No se encontraron registros coincidentes",
-				"paginate": {
-					"first": "Primero",
-					"last": "Último",
-					"next": "Siguiente",
-					"previous": "Anterior"
-				},
-				"aria": {
-					"sortAscending": ": activar para ordenar la columna ascendente",
-					"sortDescending": ": activar para ordenar la columna descendente"
-				},
-			"buttons": {
-					"copy": "Copiar",
-					"print": "Imprimir"
-				}
+		/* «Mostrar N» elige cuántos pagos por página y se recuerda. */
+		var CLAVE = 'ds-pagos-reporte-por-pagina', LARGOS = [10, 25, 50, 100, -1], largo = 25;
+		try { var g = parseInt(localStorage.getItem(CLAVE), 10); if (LARGOS.indexOf(g) !== -1) { largo = g; } } catch (e) {}
+		var tabla = new DataTable('#tablaPagos', {
+			autoWidth: false,
+			pageLength: largo,
+			lengthMenu: [LARGOS, [10, 25, 50, 100, 'Todos']],
+			order: [[1, 'desc']],
+			columnDefs: [
+				{ targets: [0, 1], type: 'string' },   /* data-order: nombre y fecha ISO */
+				{ targets: [4, 5], type: 'num' }       /* data-order: el número sin formato */
+			],
+			layout: {
+				topStart: 'pageLength',
+				topEnd: 'search',
+				bottomStart: 'info',
+				bottomEnd: { paging: { firstLast: false } }
 			},
-			layout: { topStart: 'buttons' },
-			"buttons": ["copy", "csv", "excel", "pdf", "print", "colvis"]
-			});
+			language: {
+				emptyTable: "No hay pagos entre esas fechas",
+				info: "_START_ a _END_ de _TOTAL_ pagos",
+				infoEmpty: "Sin pagos",
+				infoFiltered: "(de _MAX_)",
+				lengthMenu: "Mostrar _MENU_",
+				search: "",
+				searchPlaceholder: "Filtrar por nombre, cédula, rubro…",
+				zeroRecords: "Ningún pago coincide con el filtro",
+				paginate: { next: "Siguiente", previous: "Anterior" },
+				aria: {
+					sortAscending: ": ordenar de forma ascendente",
+					sortDescending: ": ordenar de forma descendente"
+				}
+			}
 		});
+		tabla.on('length', function (e, s, nuevo) {
+			try { localStorage.setItem(CLAVE, String(nuevo)); } catch (err) {}
+		});
+	});
+
+	/* «Regresar» vuelve a la pantalla anterior cuando se llegó desde el
+	   sistema; abierta sola, el enlace lleva al panel. Tras «Buscar» la
+	   anterior es esta misma pantalla, así que se salta: se cuenta cuántas
+	   búsquedas se hicieron aquí y se retrocede todas. */
+	(function () {
+		var b = document.getElementById('btnRegresar');
+		var CLAVE = 'ds-pagos-reporte-busquedas';
+		var busquedas = 0;
+		try {
+			if (performance.getEntriesByType('navigation')[0].type === 'navigate' && document.referrer.indexOf('/reportePagos/') === -1) { sessionStorage.removeItem(CLAVE); }
+			busquedas = parseInt(sessionStorage.getItem(CLAVE), 10) || 0;
+		} catch (e) {}
+		document.querySelector('.ds-reporte__filtro').addEventListener('submit', function () {
+			try { sessionStorage.setItem(CLAVE, String(busquedas + 1)); } catch (e) {}
+		});
+		var desdeAqui = false;
+		try { desdeAqui = !!document.referrer && new URL(document.referrer).origin === location.origin; } catch (e) {}
+		if (!b || !desdeAqui || history.length < 2 + busquedas) { return; }
+		b.addEventListener('click', function (e) {
+			if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) { return; }
+			e.preventDefault();
+			try { sessionStorage.removeItem(CLAVE); } catch (err) {}
+			history.go(-(1 + busquedas));
+		});
+	})();
 	</script>
   </body>
 </html>
-
-
-
-
-
-
-
-

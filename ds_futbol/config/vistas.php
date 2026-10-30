@@ -38,7 +38,7 @@ return [
     "jugadorLista", "jugadorNew", "asistenciaHorarioJugador", "cobranzaPension",
     "cobranzaUniforme", "cobranzaDetallePension", "cobranzaDetalleUniforme",
     "jugadorListaPDF", "empleadoIE", "empleadoDescargaEgreso", "pagosUniformeUpdate",
-    "reporteRubros", "reportePagosReceptadosResumen", "alumnoListaPDF", "reportePendientesPDF", "ingresoList",
+    "reporteRubros", "reportePagosReceptadosResumen", "alumnoListaPDF", "reportePendientesPDF", "reportePagosPDF", "ingresoList",
     "reporteRepresentantesSede", "reporteContactosEmergenciaSede",
     "reporteRepresentanteFactura", "asistenciaHorarioLista", "empleadoEgresoUpdate",
     "asistencia", "asistenciaAlumno", "egresoList", "balanceResultados",

@@ -1709,6 +1709,14 @@ class coreController
         $movil     = trim((string)($_POST['escuela_movil'] ?? ''));
         $quitarLogo = ($_POST['quitar_logo']  ?? '') === '1';
         $quitarFirma= ($_POST['quitar_firma'] ?? '') === '1';
+        /* Pie de los PDF: una sola línea de texto plano (FPDF no interpreta
+           etiquetas y un salto de línea no cabe en el pie). */
+        $pie = trim(preg_replace('/\s+/u', ' ', strip_tags((string)($_POST['escuela_pie_pdf'] ?? ''))));
+
+        if (mb_strlen($pie, 'UTF-8') > 200) {
+            return $this->alerta('simple', 'Pie de los PDF muy largo',
+                'Admite hasta 200 caracteres: en una línea de pie no cabe más.', 'error');
+        }
 
         if ($nombre === '') {
             return $this->alerta('simple', 'Faltan datos',
@@ -1736,15 +1744,21 @@ class coreController
             return $this->alerta('simple', 'Firma no válida', substr($firma, 1), 'error');
         }
 
+        /* Sin la migración 080 la columna no existe: se guarda lo demás y el
+           pie no se toca (la pantalla ya avisa que falta la migración). */
+        $hayPie = array_key_exists('escuela_pie_pdf', $actual);
+
         $n = $this->escribir(
             "UPDATE general_escuela
                 SET escuela_nombre = :n, escuela_ruc = :r, escuela_direccion = :d,
                     escuela_email = :e, escuela_telefono = :t, escuela_movil = :m,
-                    escuela_logo = :l, escuela_firma = :f
+                    escuela_logo = :l, escuela_firma = :f"
+                    . ($hayPie ? ", escuela_pie_pdf = :p" : "") . "
               WHERE escuela_id = :id",
             [':n' => $nombre, ':r' => $ruc, ':d' => $direccion, ':e' => $email,
              ':t' => $telefono !== '' ? $telefono : null, ':m' => $movil,
              ':l' => $logo, ':f' => $firma, ':id' => $id]
+            + ($hayPie ? [':p' => $pie !== '' ? $pie : null] : [])
         );
 
         return $n >= 0

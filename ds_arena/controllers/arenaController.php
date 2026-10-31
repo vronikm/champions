@@ -2112,8 +2112,10 @@ class arenaController
         $pdf->Image($tmp, 136.5, 91, 27, 27, 'PNG');
         @unlink($tmp);
 
-        $pdf->SetXY(10, 122); $pdf->SetFont('Arial', '', 6.5);
-        $pdf->Cell(190, 4, $t('Emitido el ' . date('d/m/Y H:i') . ' · Este recibo no reemplaza al comprobante electrónico del SRI.'), 0, 0, 'C');
+        /* Justo bajo el recuadro (termina en 121): al final de la hoja va el
+           pie de Core › Organización (ds_pdf_pie), y a 122 se encimaban. */
+        $pdf->SetXY(10, 121.2); $pdf->SetFont('Arial', '', 6);
+        $pdf->Cell(190, 2.4, $t('Emitido el ' . date('d/m/Y H:i') . ' · Este recibo no reemplaza al comprobante electrónico del SRI.'), 0, 0, 'C');
 
         return $pdf->Output('S');
     }

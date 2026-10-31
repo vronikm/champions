@@ -91,6 +91,7 @@ $carnetWidth  = 85.6;   // mm (tarjeta de crédito estándar)
 $carnetHeight = 53.98;  // mm
 
 $pdf = new AlphaPDF('L', 'mm', array($carnetWidth, $carnetHeight));
+$pdf->dsSinPie = true;   /* un carné no lleva el pie de Core › Organización */
 $pdf->SetAutoPagebreak(false);
 $pdf->SetMargins(0, 0, 0);
 $pdf->AddPage();

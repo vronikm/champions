@@ -433,3 +433,56 @@ if (!function_exists('ds_organizacion')) {
         $pdf->Cell($ancho, $mitad, $linea2, 0, 0, 'L');
     }
 }
+
+if (!function_exists('ds_pie_pdf_texto')) {
+    /**
+     * El texto del pie de los PDF (Core › Organización, 2026-10-30): una
+     * línea que la organización elige —publicidad, contacto— y que sale al
+     * final de cada página de todos los reportes y recibos. Vacío: sin pie.
+     */
+    function ds_pie_pdf_texto(): string
+    {
+        return trim((string)(ds_organizacion()['escuela_pie_pdf'] ?? ''));
+    }
+
+    /**
+     * Dibuja el pie en la página que se está cerrando. Lo llama FPDF desde
+     * _endpage() (ds_futbol/app/lib/fpdf.php), después del Footer() propio
+     * de cada documento: por eso queda debajo de todo lo demás.
+     *
+     * Una línea centrada, pequeña y gris, entre 6,5 y 3,5 mm del borde inferior. Si no
+     * cabe en el ancho se reduce la letra hasta 5 pt y, si aún no cabe, se
+     * recorta con «…»: nunca pasa a una segunda línea que pisaría el pie del
+     * documento. No falla nunca: un PDF sin este pie es mejor que ninguno.
+     */
+    function ds_pdf_pie(object $pdf): void
+    {
+        try {
+            $texto = ds_pie_pdf_texto();
+            if ($texto === '') {
+                return;
+            }
+            $t = mb_convert_encoding($texto, 'Windows-1252', 'UTF-8');
+            $margen = 8;
+            $ancho  = $pdf->GetPageWidth() - 2 * $margen;
+            $tam    = 6.5;
+            $pdf->SetFont('Arial', '', $tam);
+            while ($tam > 5 && $pdf->GetStringWidth($t) > $ancho) {
+                $tam -= 0.5;
+                $pdf->SetFontSize($tam);
+            }
+            if ($pdf->GetStringWidth($t) > $ancho) {
+                $puntos = chr(133);
+                while ($t !== '' && $pdf->GetStringWidth($t . $puntos) > $ancho) {
+                    $t = substr($t, 0, -1);
+                }
+                $t = rtrim($t) . $puntos;
+            }
+            $pdf->SetTextColor(120, 120, 120);
+            $pdf->SetXY($margen, $pdf->GetPageHeight() - 6.5);
+            $pdf->Cell($ancho, 3, $t, 0, 0, 'C');
+        } catch (\Throwable $e) {
+            /* Sin pie, pero con documento. */
+        }
+    }
+}

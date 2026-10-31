@@ -166,6 +166,7 @@ $resumen = $insCarnet->obtenerResumenImpresion($carnetsData);
 // CONFIGURACIÓN PDF
 // ============================================
 $pdf = new AlphaPDF('P', 'mm', 'A4');
+$pdf->dsSinPie = true;   /* un carné no lleva el pie de Core › Organización */
 $pdf->SetAutoPagebreak(false);
 $pdf->SetMargins(0, 0, 0);
 

@@ -64,6 +64,8 @@ protected $InFooter;           // flag set when processing footer
 protected $AliasNbPages;       // alias for total number of pages
 protected $ZoomMode;           // zoom display mode
 protected $LayoutMode;         // layout display mode
+// DigiSports: true en los documentos que no llevan el pie de Core › Organización (carnés)
+public $dsSinPie = false;
 protected $metadata;           // document properties
 protected $CreationDate;       // document creation date
 protected $PDFVersion;         // PDF version number
@@ -1128,6 +1130,17 @@ protected function _beginpage($orientation, $size, $rotation)
 
 protected function _endpage()
 {
+	/* DigiSports (2026-10-30): el pie de Core › Organización, al final de
+	   cada página de TODOS los PDF, después del Footer() propio de cada uno.
+	   Aquí y no en cada Footer(): son diecisiete documentos y varios no
+	   tienen Footer(). InFooter evita que el texto dispare un salto de
+	   página. AddPage() restablece después la fuente y los colores. */
+	if($this->state==2 && !$this->dsSinPie && function_exists('ds_pdf_pie'))
+	{
+		$this->InFooter = true;
+		ds_pdf_pie($this);
+		$this->InFooter = false;
+	}
 	$this->state = 1;
 }
 

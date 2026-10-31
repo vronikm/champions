@@ -345,6 +345,7 @@ CSS;
     <!-- Exportar -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="<?php echo ds_recurso('ds_core/assets/js/pie-pdf.js'); ?>" data-pie="<?php echo htmlspecialchars(ds_pie_pdf_texto(), ENT_QUOTES, 'UTF-8'); ?>"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
     <?php if(!empty($lugar)): ?>
@@ -390,6 +391,7 @@ CSS;
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
       pdf.addImage(imgData, 'PNG', 0, 10, pdfWidth, pdfHeight);
+      dsPiePdf(pdf);   /* pie de Core › Organización */
       pdf.save(nombreArchivo + ".pdf");
     }
     </script>

@@ -173,6 +173,38 @@ require_once __DIR__ . "/inc/layout-top.php";
                             <?php endif; ?>
                         </div>
                     </div>
+
+                    <hr>
+
+                    <!-- Pie de los PDF: una línea al final de cada página de reportes y recibos -->
+                    <?php $hayPie = array_key_exists('escuela_pie_pdf', $org); ?>
+                    <div class="mb-1" id="bloquePiePdf">
+                        <label for="escuela_pie_pdf">Pie de los PDF</label>
+                        <input type="text" class="form-control" id="escuela_pie_pdf" name="escuela_pie_pdf"
+                               maxlength="200" <?php echo $puedeEdit && $hayPie ? '' : 'readonly'; ?>
+                               placeholder="Ej.: Desarrollado por Empresa - sitio web - correo - teléfono"
+                               value="<?php echo htmlspecialchars((string)($org['escuela_pie_pdf'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>">
+                        <div class="d-flex flex-wrap justify-content-between gap-2">
+                            <small class="text-muted">
+                                Una línea que sale al final de cada página de todos los reportes y recibos en PDF.
+                                Vacío: sin pie. Los carnés no la llevan.
+                            </small>
+                            <small class="text-muted" id="piePdfCuenta" aria-live="polite"></small>
+                        </div>
+                        <?php if (!$hayPie): ?>
+                            <div class="alert alert-warning py-2 mt-2 mb-0 small">
+                                <i class="fas fa-database me-1" aria-hidden="true"></i>
+                                Falta aplicar la migración <code>080_pie_pdf.sql</code> en la base para poder guardarlo.
+                            </div>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- Cómo quedará al pie de una página -->
+                    <div class="ds-pie-pdf__muestra mt-2" aria-hidden="true">
+                        <span class="ds-pie-pdf__pagina">Página 1 de 1</span>
+                        <span class="ds-pie-pdf__texto" id="vistaPreviaPie"><?php
+                            echo htmlspecialchars((string)($org['escuela_pie_pdf'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></span>
+                    </div>
                 </div>
 
                 <?php echo ds_acciones_form(APP_URL . 'panel/', [
@@ -196,6 +228,9 @@ require_once __DIR__ . "/inc/layout-top.php";
                         Se configuran por sede en <a href="<?php echo APP_URL; ?>sedeList/">Sedes</a>.</li>
                     <li>Si no hay firma cargada, los recibos salen con la línea de firma en blanco
                         para firmarlos a mano.</li>
+                    <li>El <strong>pie de los PDF</strong> va al final de cada página, debajo del pie
+                        propio de cada documento, en letra pequeña. Si es muy largo se achica y,
+                        si aún no cabe, se recorta.</li>
                 </ul>
             </div>
         </div>
@@ -215,6 +250,21 @@ require_once __DIR__ . "/inc/layout-top.php";
         });
     }
 
+    /* Pie de los PDF: vista previa y caracteres que quedan. */
+    var pie = document.getElementById('escuela_pie_pdf');
+    var pieMuestra = document.getElementById('vistaPreviaPie');
+    var pieCuenta = document.getElementById('piePdfCuenta');
+    function pintarPie() {
+        var v = pie.value.replace(/\s+/g, ' ').trim();
+        pieMuestra.textContent = v || 'Sin pie';
+        pieMuestra.classList.toggle('ds-pie-pdf__texto--vacio', !v);
+        pieCuenta.textContent = (200 - pie.value.length) + ' caracteres disponibles';
+    }
+    if (pie && pieMuestra && pieCuenta) {
+        pie.addEventListener('input', pintarPie);
+        pintarPie();
+    }
+
     /* Logo y firma comparten comportamiento: se marcan para quitar y la
        baja se confirma al guardar el formulario. */
     document.querySelectorAll('[data-quitar]').forEach(function (boton) {
@@ -227,5 +277,19 @@ require_once __DIR__ . "/inc/layout-top.php";
     });
 })();
 </script>
+
+<style>
+/* Muestra del pie: el borde inferior de una hoja, con el pie del documento
+   y, debajo, la línea de la organización en pequeño y gris. */
+.ds-pie-pdf__muestra {
+    display: flex; flex-direction: column; align-items: center; gap: .1rem;
+    padding: .6rem .75rem .45rem; background: #fff; color: #555;
+    border: 1px solid var(--core-borde); border-top: 1px dashed var(--core-borde);
+    border-radius: 0 0 var(--ds-radius-sm) var(--ds-radius-sm);
+}
+.ds-pie-pdf__pagina { align-self: flex-end; font-size: .72rem; color: #888; }
+.ds-pie-pdf__texto { font-size: .7rem; color: #787878; text-align: center; overflow-wrap: anywhere; }
+.ds-pie-pdf__texto--vacio { font-style: italic; color: #aaa; }
+</style>
 
 <?php require_once __DIR__ . "/inc/layout-bottom.php"; ?>

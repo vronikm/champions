@@ -98,7 +98,7 @@ require_once __DIR__ . "/inc/layout-top.php";
 
     <div class="card-footer text-muted small">
         El saldo se alimenta de vueltos que el cliente decide no llevarse y de transferencias
-        anticipadas. Se consume al pagar reservas o cuando el cliente pide que se le devuelva.
+        o depósitos en efectivo anticipados. Se consume al pagar reservas o cuando el cliente pide que se le devuelva.
     </div>
 </div>
 
@@ -132,6 +132,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                             <label for="origen">Origen</label>
                             <select class="form-select" id="origen" name="origen">
                                 <option value="TRA">Transferencia del cliente</option>
+                                <option value="EFE">Depósito en efectivo</option>
                                 <option value="AJU">Ajuste manual</option>
                             </select>
                         </div>

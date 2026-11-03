@@ -1791,7 +1791,11 @@ class arenaController
         );
     }
 
-    /** Transferencia anticipada o ajuste que suma saldo a favor. */
+    /**
+     * Ingreso: transferencia o depósito en efectivo anticipados, o ajuste,
+     * que suma saldo a favor. Se registra desde el listado (eligiendo el
+     * cliente) o desde el detalle del monedero de un cliente.
+     */
     public function ingresoMonedero(): string
     {
         if (!puede_crear('monederoList')) {
@@ -1800,12 +1804,17 @@ class arenaController
 
         $cliente    = (int)($_POST['cliente_id'] ?? 0);
         $valor      = round((float)str_replace(',', '.', (string)($_POST['valor'] ?? '0')), 2);
-        $origen     = in_array($_POST['origen'] ?? 'TRA', ['TRA','AJU'], true) ? $_POST['origen'] : 'TRA';
-        $referencia = trim((string)($_POST['referencia'] ?? ''));
-        $detalle    = trim((string)($_POST['detalle'] ?? ''));
+        $origen     = in_array($_POST['origen'] ?? 'TRA', ['TRA','EFE','AJU'], true) ? $_POST['origen'] : 'TRA';
+        $referencia = mb_substr(trim((string)($_POST['referencia'] ?? '')), 0, 60);
+        $detalle    = mb_substr(trim((string)($_POST['detalle'] ?? '')), 0, 200);
 
-        if ($this->cliente($cliente) === null) {
+        $datos = $this->cliente($cliente);
+        if ($datos === null) {
             return $this->alerta('simple', 'Cliente no válido', 'Seleccione un cliente.', 'error');
+        }
+        if ($datos['cliente_estado'] === 'E') {
+            return $this->alerta('simple', 'Cliente dado de baja',
+                'No se puede acreditar saldo a un cliente dado de baja.', 'error');
         }
         if ($valor <= 0) {
             return $this->alerta('simple', 'Valor no válido', 'El importe debe ser mayor que cero.', 'error');

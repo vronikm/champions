@@ -565,6 +565,22 @@
 
 .ds-launcher__panel.abierto { display: block; }
 
+/* En el teléfono el botón queda a media barra (a su derecha van el tema y
+   el usuario) y el panel, alineado a su borde derecho, se salía por la
+   izquierda de la pantalla (2026-11-04). Ahí va fijo, a lo ancho, bajo la
+   barra; la altura la pone app-launcher.php al abrirlo. */
+@media (max-width: 767.98px) {
+    .ds-launcher__panel {
+        position: fixed;
+        top: 64px;
+        left: 12px;
+        right: 12px;
+        width: auto;
+        max-height: calc(100dvh - 80px);
+        overflow-y: auto;
+    }
+}
+
 .ds-launcher__titulo {
     padding: 8px 12px 10px;
     font-size: .68rem;

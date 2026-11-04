@@ -74,6 +74,13 @@ $moduloActual = defined('APP_URL') ? APP_URL : '';
         e.preventDefault();
         var abierto = panel.classList.toggle('abierto');
         boton.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+        /* En el teléfono el panel es fijo (digisports.css): se coloca justo
+           bajo el botón, mida lo que mida la barra. */
+        if (abierto && getComputedStyle(panel).position === 'fixed') {
+            panel.style.top = Math.round(boton.getBoundingClientRect().bottom + 8) + 'px';
+        } else {
+            panel.style.top = '';
+        }
     });
 
     /* Cerrar al pulsar fuera o con Escape. */

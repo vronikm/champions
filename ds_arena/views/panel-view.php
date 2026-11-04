@@ -46,6 +46,9 @@ $vistaActual = 'panel';
 $reservas = static fn (array $f) => APP_URL . 'reservaList/?' . http_build_query($f);
 $hoyIso   = date('Y-m-d');
 
+/* Las semanas de las reservas fijas, al día: cuentan en la agenda de hoy. */
+$insArena->extenderReservasFijas();
+
 $ocupacion = $insArena->ocupacionHoy();
 $atencion  = $insArena->requiereAtencion();
 $pulso     = $insArena->pulso();

@@ -14,7 +14,7 @@ MYSQL=/ruta/a/mysql MYSQL_OPTS="-u USUARIO -pCLAVE" \
   ds_core/database/migracion_champions/aplicar_migracion.sh BASE
 ```
 
-Aplica los 82 archivos en el orden correcto y se detiene en el primer error.
+Aplica los 83 archivos en el orden correcto y se detiene en el primer error.
 Antes de empezar comprueba que `BASE` sea una copia de SoccerEasy **sin migrar**:
 si ya tiene `facturas_electronicas`, no aplica nada, porque varias migraciones no
 se pueden repetir.
@@ -111,6 +111,11 @@ en desarrollo y llevar el resultado a producción con un volcado (ver más abajo
 21. `080_pie_pdf.sql`: texto del pie de los PDF (`escuela_pie_pdf`), que se
     escribe en Core › Organización y sale al final de cada página de todos los
     reportes y recibos. Queda vacía. Repetible.
+22. `081_arena_reserva_fija.sql`: reservas fijas de Arena (`dsa_reserva_fija`
+    y `dsa_reserva.reserva_fijaid`): un cliente alquila la misma instalación
+    el mismo día de la semana a la misma hora hasta que se cancela. Las
+    próximas semanas quedan como reservas normales y la serie aparta la
+    franja más allá. Repetible.
 
 ```bash
 mysql -u USUARIO -p --default-character-set=utf8mb4 BASE < ARCHIVO.sql

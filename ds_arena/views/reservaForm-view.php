@@ -20,8 +20,15 @@ $esAlta  = ($reserva === null);
 if ($esAlta && !puede_crear('reservaList'))  { require_once __DIR__ . "/accesoDenegado-view.php"; exit(); }
 if (!$esAlta && !puede_editar('reservaList')) { require_once __DIR__ . "/accesoDenegado-view.php"; exit(); }
 
-$tituloVista = $esAlta ? 'Nueva reserva' : 'Editar reserva ' . $reserva['reserva_codigo'];
+/* «Reserva fija» en el listado abre este mismo formulario con la
+   frecuencia semanal ya elegida. */
+$repetir = $esAlta && ($_GET['repetir'] ?? '') === '1';
+
+$tituloVista = $esAlta ? ($repetir ? 'Nueva reserva fija' : 'Nueva reserva') : 'Editar reserva ' . $reserva['reserva_codigo'];
 $vistaActual = 'reservaList';
+
+/* Las semanas de las reservas fijas, al día antes de mostrar horarios. */
+$insArena->extenderReservasFijas();
 
 /* Los clientes ya NO se cargan todos: se buscan (buscarClientes). Aquí sólo
    cuántos hay, y el elegido: el de la reserva al editar, o el que llega
@@ -161,6 +168,29 @@ require_once __DIR__ . "/inc/layout-top.php";
                                value="<?php echo $h($reserva['reserva_fecha'] ?? date('Y-m-d')); ?>">
                         <div class="ar-dias" id="tiraDias" role="group" aria-label="Próximos días"></div>
                     </div>
+
+                    <?php if ($esAlta): ?>
+                    <?php /*
+                    | RESERVA FIJA (2026-11-02): la misma hora, ese día de la semana,
+                    | hasta que se cancele. La fecha elegida es la primera semana.
+                    | El servidor (guardarReservaFija) comprueba también todas las
+                    | semanas siguientes: ninguna reserva ni otra serie en la franja.
+                    */ ?>
+                    <fieldset class="mt-3 border-0 p-0 m-0 pt-3">
+                        <legend class="form-label fw-medium fs-6 mb-1">¿Con qué frecuencia?</legend>
+                        <div class="ar-frecuencia" role="radiogroup">
+                            <input type="radio" class="btn-check" name="reserva_repetir" id="repetirNo" value="N" autocomplete="off"<?php echo $repetir ? '' : ' checked'; ?>>
+                            <label class="btn btn-outline-secondary" for="repetirNo"><i class="far fa-calendar me-1" aria-hidden="true"></i>Sólo este día</label>
+                            <input type="radio" class="btn-check" name="reserva_repetir" id="repetirSi" value="S" autocomplete="off"<?php echo $repetir ? ' checked' : ''; ?>>
+                            <label class="btn btn-outline-primary" for="repetirSi"><i class="fas fa-repeat me-1" aria-hidden="true"></i>Todas las semanas</label>
+                        </div>
+                        <div class="form-text" id="repetirAyuda">
+                            Reserva fija: la misma hora cada semana, hasta que el cliente o el recinto la cancelen.
+                            Las próximas <?php echo arenaController::FIJA_SEMANAS; ?> semanas quedan en la agenda para cobrarlas
+                            por anticipado o después de usar la instalación.
+                        </div>
+                    </fieldset>
+                    <?php endif; ?>
                 </div>
             </div>
 
@@ -213,7 +243,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                     <span class="ar-barra__detalle" id="importeDetalle"></span>
                 </div>
                 <a href="<?php echo APP_URL; ?>reservaList/" class="btn btn-secondary" aria-label="Cancelar"><i class="fas fa-xmark me-1" aria-hidden="true"></i><span class="ar-barra__txt">Cancelar</span></a>
-                <button type="submit" class="btn btn-success"><i class="fas fa-floppy-disk me-1" aria-hidden="true"></i><?php echo $esAlta ? 'Reservar' : 'Guardar'; ?></button>
+                <button type="submit" class="btn btn-success"><i class="fas fa-floppy-disk me-1" aria-hidden="true"></i><span id="textoGuardar"><?php echo $esAlta ? 'Reservar' : 'Guardar'; ?></span></button>
             </div>
         </form>
     </div>
@@ -248,6 +278,8 @@ require_once __DIR__ . "/inc/layout-top.php";
     var resumen   = document.getElementById('agendaResumen');
     var form      = inst.form;
     var guardar   = form.querySelector('button[type="submit"]');
+    var textoGuardar = document.getElementById('textoGuardar');
+    var repetirSi = document.getElementById('repetirSi');   /* sólo en el alta */
 
     var bloques   = [];      /* lo que devolvió el servidor para el día */
     var ancla     = null;    /* índice del primer bloque tocado */
@@ -461,16 +493,26 @@ require_once __DIR__ . "/inc/layout-top.php";
         var tarifa = sel ? +bloques[sel.i].tarifa : (datos[inst.value] ? datos[inst.value].valorhora : 0);
         var fuera  = !sel;
 
+        var semanal = repetirSi && repetirSi.checked;
+        var nombreDia = dias[diaIso(fecha.value)].toLowerCase();
+
         resumen.hidden = false;
-        resumen.innerHTML = '<i class="fas fa-calendar-check me-2"></i>' +
-            '<strong>' + esc(fechaLarga(fecha.value)) + '</strong> · ' +
-            esc(desde.value) + ' a ' + esc(hasta.value) + ' · ' +
-            horas.toFixed(2).replace(/\.?0+$/, '') + (horas === 1 ? ' hora' : ' horas') +
-            (fuera ? '<br><small class="text-muted">Es el horario actual de la reserva. Toque un horario libre para cambiarlo.</small>' : '');
+        resumen.classList.toggle('ar-resumen--fija', !!semanal);
+        resumen.innerHTML = semanal
+            ? '<i class="fas fa-repeat me-2"></i>' +
+              '<strong>Cada ' + esc(nombreDia) + '</strong> · ' + esc(desde.value) + ' a ' + esc(hasta.value) + ' · ' +
+              horas.toFixed(2).replace(/\.?0+$/, '') + (horas === 1 ? ' hora' : ' horas') +
+              '<br><small>Desde el ' + esc(fechaLarga(fecha.value).toLowerCase()) + ', hasta que se cancele.</small>'
+            : '<i class="fas fa-calendar-check me-2"></i>' +
+              '<strong>' + esc(fechaLarga(fecha.value)) + '</strong> · ' +
+              esc(desde.value) + ' a ' + esc(hasta.value) + ' · ' +
+              horas.toFixed(2).replace(/\.?0+$/, '') + (horas === 1 ? ' hora' : ' horas') +
+              (fuera ? '<br><small class="text-muted">Es el horario actual de la reserva. Toque un horario libre para cambiarlo.</small>' : '');
 
         caja.style.display = ''; pista.hidden = true;
-        total.textContent = '$' + (horas * tarifa).toFixed(2);
+        total.textContent = '$' + (horas * tarifa).toFixed(2) + (semanal ? ' / semana' : '');
         detalle.textContent = horas.toFixed(2).replace(/\.?0+$/, '') + ' h × $' + tarifa.toFixed(2) + ' por hora';
+        if (textoGuardar && RESERVA === 0) { textoGuardar.textContent = semanal ? 'Reservar cada ' + nombreDia : 'Reservar'; }
         if (guardar) { guardar.disabled = false; guardar.title = ''; }
     }
 
@@ -491,6 +533,21 @@ require_once __DIR__ . "/inc/layout-top.php";
 
     inst.addEventListener('change', cambio);
     fecha.addEventListener('change', cambio);
+    form.querySelectorAll('input[name="reserva_repetir"]').forEach(function (r) {
+        r.addEventListener('change', actualizarResumen);
+    });
+
+    /* La serie dice qué se va a apartar antes de guardarla. */
+    if (repetirSi) {
+        form.addEventListener('submit', function () {
+            form.setAttribute('data-confirmar', repetirSi.checked && desde.value
+                ? 'Se apartará ' + (datos[inst.value] ? inst.options[inst.selectedIndex].text.split('—')[0].trim() : 'la instalación') +
+                  ' cada ' + dias[diaIso(fecha.value)].toLowerCase() + ' de ' + desde.value + ' a ' + hasta.value +
+                  ', desde el ' + fechaLarga(fecha.value).toLowerCase() + ', hasta que se cancele.'
+                : '');
+            if (!form.getAttribute('data-confirmar')) { form.removeAttribute('data-confirmar'); }
+        }, true);
+    }
 
     resumenInstalacion();
     pintarTira();
@@ -653,6 +710,11 @@ require_once __DIR__ . "/inc/layout-top.php";
 </script>
 
 <style>
+    /* Frecuencia: dos opciones del mismo ancho, en una fila también en el teléfono. */
+    .ar-frecuencia { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+    .ar-frecuencia .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 2.75rem; white-space: nowrap; padding-inline: .5rem; }
+    .ar-resumen--fija { border-color: var(--bs-primary); }
+
     /* Tira de días */
     .ar-dias { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; max-width: 100%; }
     .ar-dia {

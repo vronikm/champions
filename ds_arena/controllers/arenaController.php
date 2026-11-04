@@ -392,6 +392,15 @@ class arenaController
                 "No se puede eliminar: tiene {$reservas} reserva(s) vigente(s). Cancélelas o desactive la instalación.", 'error');
         }
 
+        $fijas = (int)$this->escalar(
+            "SELECT COUNT(1) FROM dsa_reserva_fija WHERE fija_instalacionid = :id AND fija_estado = 'A'",
+            [':id' => $id]
+        );
+        if ($fijas > 0) {
+            return $this->alerta('simple', 'Instalación con reservas fijas',
+                "No se puede eliminar: tiene {$fijas} reserva(s) fija(s) activa(s). Cancélelas en Reservas.", 'error');
+        }
+
         /* Baja lógica: conserva el histórico de reservas ya cumplidas. */
         $n = $this->escribir(
             "UPDATE dsa_instalacion SET instalacion_estado = 'E' WHERE instalacion_id = :id",
@@ -1046,6 +1055,15 @@ class arenaController
                 "No se puede eliminar: tiene {$vigentes} reserva(s) vigente(s).", 'error');
         }
 
+        $fijas = (int)$this->escalar(
+            "SELECT COUNT(1) FROM dsa_reserva_fija WHERE fija_clienteid = :id AND fija_estado = 'A'",
+            [':id' => $id]
+        );
+        if ($fijas > 0) {
+            return $this->alerta('simple', 'Cliente con reservas fijas',
+                "No se puede eliminar: tiene {$fijas} reserva(s) fija(s) activa(s). Cancélelas en Reservas.", 'error');
+        }
+
         $saldo = (float)$this->escalar(
             "SELECT COALESCE(monedero_saldo,0) FROM dsa_monedero WHERE monedero_clienteid = :id",
             [':id' => $id]
@@ -1113,7 +1131,7 @@ class arenaController
      */
     public function verificarDisponibilidad(int $instalacionid, string $fecha,
                                             string $inicio, string $fin,
-                                            int $excluirReserva = 0): array
+                                            int $excluirReserva = 0, int $excluirFija = 0): array
     {
         $inst = $this->instalacion($instalacionid);
         if ($inst === null || $inst['instalacion_estado'] !== 'A') {
@@ -1176,6 +1194,18 @@ class arenaController
                                 substr($ocupada[0]['reserva_horafin'], 0, 5) . '.'];
         }
 
+        /* 4. Sin cruce con una reserva fija en las semanas que todavía no
+              tienen su reserva (las que sí la tienen ya las cubre el 3). */
+        $fija = $this->fijaQueAparta($instalacionid, $fecha, $inicio, $fin,
+                                     $excluirFija ?: $this->fijaDeReserva($excluirReserva));
+        if ($fija) {
+            return ['ok' => false,
+                    'motivo' => 'Esa hora está apartada por la reserva fija ' . $fija['fija_codigo'] .
+                                ' (cada ' . strtolower($nombres[$dia]) . ' de ' .
+                                substr($fija['fija_horainicio'], 0, 5) . ' a ' .
+                                substr($fija['fija_horafin'], 0, 5) . ').'];
+        }
+
         return ['ok' => true, 'motivo' => ''];
     }
 
@@ -1231,6 +1261,13 @@ class arenaController
                     AND reserva_estado IN ('P','C') AND reserva_id <> :ex",
                 [':i' => $instalacionid, ':f' => $fecha, ':ex' => $excluirReserva]
             ));
+
+        /* Las reservas fijas apartan la franja en las semanas que aún no
+           tienen su reserva: para quien elige, es lo mismo que ocupado. */
+        foreach ($this->fijasQueApartan($instalacionid, $fecha, $this->fijaDeReserva($excluirReserva)) as $f) {
+            $reservas[] = ['ini' => $aMin($f['fija_horainicio']), 'fin' => $aMin($f['fija_horafin']),
+                           'codigo' => $f['fija_codigo'] . ' (fija)'];
+        }
 
         /* Los bloqueos son intervalos de fecha y hora: se recortan al día. */
         $inicioDia = strtotime($fecha . ' 00:00:00');
@@ -1351,6 +1388,9 @@ class arenaController
             /* Una cancelada no se cobra: su saldo no es deuda. */
             $sql .= " AND r.reserva_saldo > 0 AND r.reserva_estado <> 'X'";
         }
+        if (!empty($filtros['fija'])) {
+            $sql .= " AND r.reserva_fijaid = :fj";       $params[':fj'] = (int)$filtros['fija'];
+        }
 
         return [$sql, $params];
     }
@@ -1397,7 +1437,7 @@ class arenaController
         $sql = "SELECT r.reserva_id, r.reserva_codigo, r.reserva_fecha,
                        r.reserva_horainicio, r.reserva_horafin, r.reserva_horas,
                        r.reserva_total, r.reserva_abonado, r.reserva_saldo,
-                       r.reserva_estado,
+                       r.reserva_estado, r.reserva_fijaid, fj.fija_codigo,
                        c.cliente_nombre, c.cliente_identificacion,
                        i.instalacion_nombre,
                        s.sede_nombre
@@ -1405,6 +1445,7 @@ class arenaController
                   JOIN dsa_cliente     c ON c.cliente_id     = r.reserva_clienteid
                   JOIN dsa_instalacion i ON i.instalacion_id = r.reserva_instalacionid
                   LEFT JOIN general_sede s ON s.sede_id      = r.reserva_sedeid
+                  LEFT JOIN dsa_reserva_fija fj ON fj.fija_id = r.reserva_fijaid
                  WHERE 1 = 1" . $where
              . " ORDER BY r.reserva_fecha DESC, r.reserva_horainicio DESC, r.reserva_id DESC"
              . " LIMIT " . (int)$porPagina . " OFFSET " . (int)$desde;
@@ -1458,10 +1499,13 @@ class arenaController
     {
         $r = $this->filas(
             "SELECT r.*, c.cliente_nombre, c.cliente_identificacion,
-                    i.instalacion_nombre, i.instalacion_codigo
+                    i.instalacion_nombre, i.instalacion_codigo,
+                    fj.fija_codigo, fj.fija_dia, fj.fija_estado,
+                    fj.fija_horainicio, fj.fija_horafin
                FROM dsa_reserva r
                JOIN dsa_cliente c ON c.cliente_id = r.reserva_clienteid
                JOIN dsa_instalacion i ON i.instalacion_id = r.reserva_instalacionid
+               LEFT JOIN dsa_reserva_fija fj ON fj.fija_id = r.reserva_fijaid
               WHERE r.reserva_id = :id", [':id' => $id]);
 
         return $r[0] ?? null;
@@ -1493,6 +1537,11 @@ class arenaController
         }
         if ($id === 0 && !puede_crear('reservaList')) {
             return $this->alerta('simple', 'Acceso denegado', 'Su rol no puede crear reservas.', 'error');
+        }
+
+        /* «Todas las semanas»: la reserva nace como reserva fija. */
+        if ($id === 0 && ($_POST['reserva_repetir'] ?? '') === 'S') {
+            return $this->guardarReservaFija();
         }
 
         $cliente     = (int)($_POST['reserva_clienteid'] ?? 0);
@@ -1678,6 +1727,439 @@ class arenaController
         return $n >= 0
             ? $this->alerta('recargar', $r['reserva_estado'] === 'X' ? 'Reserva reactivada' : 'Reserva ' . $nombre, $texto)
             : $this->alerta('simple', 'Error', 'No fue posible cambiar el estado.', 'error');
+    }
+
+    /*======================================================================
+      Reservas fijas
+
+      Un cliente que alquila la misma instalación el mismo día de la
+      semana a la misma hora —«los martes de 19:00 a 21:00»— hasta que él
+      o el recinto deciden dejarlo (2026-11-02, migración 081).
+
+      LA SERIE Y SUS SEMANAS
+
+      dsa_reserva_fija guarda la serie. Las próximas FIJA_SEMANAS semanas
+      existen como reservas normales con reserva_fijaid: se cobran antes o
+      después de usar la cancha, se cancela una sola (un feriado) sin tocar
+      las demás y cada pago tiene su recibo. generarSemanasFija() las va
+      creando a medida que avanza el calendario; la llaman las pantallas de
+      reservas y el panel (extenderReservasFijas), así que no hace falta
+      ninguna tarea programada.
+
+      MÁS ALLÁ, LA SERIE SIGUE APARTANDO LA FRANJA
+
+      Las semanas posteriores a fija_generadahasta todavía no tienen su
+      reserva, pero tampoco están libres: verificarDisponibilidad() y
+      disponibilidadDia() consultan la serie para esas fechas. Las semanas
+      ya creadas se rigen por su reserva: si se cancela la de un feriado,
+      esa hora queda libre ese día y sólo ese día.
+      ======================================================================*/
+
+    /** Semanas que una reserva fija tiene siempre en la agenda. */
+    public const FIJA_SEMANAS = 4;
+
+    /** La serie a la que pertenece una reserva (0 si es suelta). */
+    private function fijaDeReserva(int $reservaId): int
+    {
+        return $reservaId > 0
+            ? (int)$this->escalar("SELECT COALESCE(reserva_fijaid, 0) FROM dsa_reserva WHERE reserva_id = :r",
+                                  [':r' => $reservaId])
+            : 0;
+    }
+
+    /** Series activas que apartan su franja en una fecha que aún no tiene su reserva. */
+    private function fijasQueApartan(int $instalacionid, string $fecha, int $excluirFija = 0): array
+    {
+        return $this->filas(
+            "SELECT fija_id, fija_codigo, fija_horainicio, fija_horafin
+               FROM dsa_reserva_fija
+              WHERE fija_instalacionid = :i AND fija_estado = 'A' AND fija_dia = :d
+                AND fija_desde <= :f
+                AND (fija_hasta IS NULL OR fija_hasta >= :f2)
+                AND (fija_generadahasta IS NULL OR fija_generadahasta < :f3)
+                AND fija_id <> :ex
+              ORDER BY fija_horainicio",
+            [':i' => $instalacionid, ':d' => (int)date('N', strtotime($fecha)),
+             ':f' => $fecha, ':f2' => $fecha, ':f3' => $fecha, ':ex' => $excluirFija]
+        );
+    }
+
+    /** La primera de esas series que se cruza con el intervalo, o null. */
+    private function fijaQueAparta(int $instalacionid, string $fecha, string $inicio, string $fin,
+                                   int $excluirFija = 0): ?array
+    {
+        foreach ($this->fijasQueApartan($instalacionid, $fecha, $excluirFija) as $f) {
+            if (substr($f['fija_horainicio'], 0, 5) < substr($fin, 0, 5)
+                && substr($f['fija_horafin'], 0, 5) > substr($inicio, 0, 5)) {
+                return $f;
+            }
+        }
+        return null;
+    }
+
+    /** Código legible y correlativo por año: FIJ-2026-00001 */
+    private function siguienteCodigoFija(): string
+    {
+        $anio   = date('Y');
+        $ultimo = (string)$this->escalar(
+            "SELECT fija_codigo FROM dsa_reserva_fija WHERE fija_codigo LIKE :p ORDER BY fija_id DESC LIMIT 1",
+            [':p' => 'FIJ-' . $anio . '-%']);
+        $n = $ultimo !== '' ? ((int)substr($ultimo, -5)) + 1 : 1;
+        return sprintf('FIJ-%s-%05d', $anio, $n);
+    }
+
+    private static function fechaCorta(string $fecha): string
+    {
+        return date('d/m/Y', strtotime($fecha));
+    }
+
+    /**
+     * Alta de una reserva fija, desde el formulario de reserva con
+     * «Todas las semanas». La fecha elegida es la primera semana.
+     */
+    private function guardarReservaFija(): string
+    {
+        $cliente     = (int)($_POST['reserva_clienteid'] ?? 0);
+        $instalacion = (int)($_POST['reserva_instalacionid'] ?? 0);
+        $fecha       = trim((string)($_POST['reserva_fecha'] ?? ''));
+        $inicio      = trim((string)($_POST['reserva_horainicio'] ?? ''));
+        $fin         = trim((string)($_POST['reserva_horafin'] ?? ''));
+        $observacion = mb_substr(trim((string)($_POST['reserva_observacion'] ?? '')), 0, 250);
+
+        $cli = $this->cliente($cliente);
+        if ($cli === null || $cli['cliente_estado'] === 'E') {
+            return $this->alerta('simple', 'Cliente no válido', 'Seleccione un cliente.', 'error');
+        }
+        $inst = $this->instalacion($instalacion);
+        if ($inst === null) {
+            return $this->alerta('simple', 'Instalación no válida', 'Seleccione una instalación.', 'error');
+        }
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)
+            || !preg_match('/^\d{2}:\d{2}$/', $inicio)
+            || !preg_match('/^\d{2}:\d{2}$/', $fin)) {
+            return $this->alerta('simple', 'Datos incompletos', 'Indique fecha, hora de inicio y hora de fin.', 'error');
+        }
+        if ($fin <= $inicio) {
+            return $this->alerta('simple', 'Rango no válido', 'La hora de fin debe ser posterior a la de inicio.', 'error');
+        }
+        if ($fecha < date('Y-m-d')) {
+            return $this->alerta('simple', 'Fecha no válida', 'Una reserva fija empieza hoy o más adelante.', 'error');
+        }
+
+        $dia     = (int)date('N', strtotime($fecha));
+        $nombre  = strtolower($this->dias()[$dia]);
+        $franja  = "cada {$nombre} de {$inicio} a {$fin}";
+
+        /* La primera semana, con las mismas reglas que una reserva suelta. */
+        $disp = $this->verificarDisponibilidad($instalacion, $fecha, $inicio, $fin);
+        if (!$disp['ok']) {
+            return $this->alerta('simple', 'No disponible', $disp['motivo'], 'error');
+        }
+
+        /* Las semanas siguientes, sin límite: otra serie en esa franja… */
+        $otra = $this->filas(
+            "SELECT fija_codigo, fija_horainicio, fija_horafin FROM dsa_reserva_fija
+              WHERE fija_instalacionid = :i AND fija_estado = 'A' AND fija_dia = :d
+                AND (fija_hasta IS NULL OR fija_hasta >= :f)
+                AND fija_horainicio < :fin AND fija_horafin > :ini
+              LIMIT 1",
+            [':i' => $instalacion, ':d' => $dia, ':f' => $fecha, ':fin' => $fin, ':ini' => $inicio]);
+        if ($otra) {
+            return $this->alerta('simple', 'Franja ya apartada',
+                'La reserva fija ' . $otra[0]['fija_codigo'] . ' ya ocupa esa instalación cada ' . $nombre .
+                ' de ' . substr($otra[0]['fija_horainicio'], 0, 5) . ' a ' . substr($otra[0]['fija_horafin'], 0, 5) .
+                '. Elija otra hora u otra instalación.', 'error');
+        }
+
+        /* …o reservas sueltas ya tomadas ese día de la semana, por lejanas que estén. */
+        $choques = $this->filas(
+            "SELECT reserva_codigo, reserva_fecha, reserva_horainicio, reserva_horafin FROM dsa_reserva
+              WHERE reserva_instalacionid = :i AND reserva_estado IN ('P','C')
+                AND reserva_fecha >= :f AND WEEKDAY(reserva_fecha) + 1 = :d
+                AND reserva_horainicio < :fin AND reserva_horafin > :ini
+              ORDER BY reserva_fecha
+              LIMIT 6",
+            [':i' => $instalacion, ':f' => $fecha, ':d' => $dia, ':fin' => $fin, ':ini' => $inicio]);
+        if ($choques) {
+            $lista = array_map(static fn ($r) => $r['reserva_codigo'] . ' el ' . self::fechaCorta($r['reserva_fecha']) .
+                ' (' . substr($r['reserva_horainicio'], 0, 5) . '–' . substr($r['reserva_horafin'], 0, 5) . ')',
+                array_slice($choques, 0, 5));
+            return $this->alerta('simple', 'Hay reservas en esa franja',
+                'No se puede apartar ' . $franja . ': ' . implode(', ', $lista) .
+                (count($choques) > 5 ? ' y otras' : '') .
+                '. Cámbielas de horario o cancélelas, o elija otra hora.', 'error');
+        }
+
+        if ($this->tarifaAplicable($instalacion, $fecha, $inicio) <= 0) {
+            return $this->alerta('simple', 'Tarifa no definida',
+                'La instalación no tiene tarifa por hora. Configúrela antes de reservar.', 'error');
+        }
+
+        $con = $this->con();
+        if ($con === null) {
+            return $this->alerta('simple', 'Error', 'Sin conexión a la base de datos.', 'error');
+        }
+
+        try {
+            $con->beginTransaction();
+            $codigo = $this->siguienteCodigoFija();
+            $con->prepare(
+                "INSERT INTO dsa_reserva_fija
+                    (fija_codigo, fija_clienteid, fija_instalacionid, fija_sedeid, fija_dia,
+                     fija_horainicio, fija_horafin, fija_desde, fija_estado, fija_observacion, fija_usuarioid)
+                 VALUES (:cod, :c, :i, :s, :d, :ini, :fin, :f, 'A', :o, :u)"
+            )->execute([
+                ':cod' => $codigo, ':c' => $cliente, ':i' => $instalacion,
+                ':s' => (int)$inst['instalacion_sedeid'], ':d' => $dia,
+                ':ini' => $inicio, ':fin' => $fin, ':f' => $fecha,
+                ':o' => $observacion !== '' ? $observacion : null,
+                ':u' => (int)($_SESSION['usuarioid'] ?? 0) ?: null,
+            ]);
+            $fijaId = (int)$con->lastInsertId();
+            $hecho  = $this->generarSemanasFija($fijaId);
+            $con->commit();
+        } catch (\Throwable $e) {
+            if ($con->inTransaction()) $con->rollBack();
+            return $this->alerta('simple', 'No se pudo crear la reserva fija', $e->getMessage(), 'error');
+        }
+
+        $texto = "{$codigo} · {$franja}, desde el " . self::fechaCorta($fecha) . ', hasta que se cancele. ' .
+                 ($hecho['creadas'] === 1 ? 'Quedó en la agenda 1 semana' : "Quedaron en la agenda {$hecho['creadas']} semanas") .
+                 '; cada una se cobra desde su reserva, por anticipado o después de usar la instalación.';
+        if ($hecho['omitidas']) {
+            $texto .= ' Sin reserva por bloqueo u horario: ' . implode(', ', array_map(
+                static fn ($f) => self::fechaCorta($f), array_keys($hecho['omitidas']))) . '.';
+        }
+
+        return $this->alerta('redireccionar', 'Reserva fija creada', $texto,
+            $hecho['omitidas'] ? 'warning' : 'success', APP_URL . 'reservaList/?fija=' . $fijaId);
+    }
+
+    /**
+     * Crea las reservas de las semanas que faltan, hasta FIJA_SEMANAS por
+     * delante de hoy (o hasta el fin de la serie).
+     *
+     * Una semana que cae en un bloqueo o fuera del horario de atención se
+     * salta y se informa: esa semana no hay cancha. La fila de la serie se
+     * lee con FOR UPDATE, así que dos pantallas abiertas a la vez no crean
+     * la misma semana dos veces. Si quien llama ya abrió una transacción,
+     * se trabaja dentro de ella.
+     */
+    public function generarSemanasFija(int $fijaId): array
+    {
+        $resultado = ['creadas' => 0, 'omitidas' => []];
+        $con = $this->con();
+        if ($con === null) {
+            return $resultado;
+        }
+
+        $propia = !$con->inTransaction();
+        if ($propia) $con->beginTransaction();
+
+        try {
+            $stmt = $con->prepare("SELECT * FROM dsa_reserva_fija WHERE fija_id = :id FOR UPDATE");
+            $stmt->execute([':id' => $fijaId]);
+            $f = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($f && $f['fija_estado'] === 'A') {
+                $limite = date('Y-m-d', strtotime('+' . (self::FIJA_SEMANAS * 7 - 1) . ' days'));
+                if ($f['fija_hasta'] !== null && $f['fija_hasta'] < $limite) {
+                    $limite = $f['fija_hasta'];
+                }
+                $fecha  = $f['fija_generadahasta'] !== null
+                    ? date('Y-m-d', strtotime($f['fija_generadahasta'] . ' +7 days'))
+                    : $f['fija_desde'];
+                $inicio = substr($f['fija_horainicio'], 0, 5);
+                $fin    = substr($f['fija_horafin'], 0, 5);
+                $ultima = null;
+
+                $insertar = $con->prepare(
+                    "INSERT INTO dsa_reserva
+                        (reserva_codigo, reserva_clienteid, reserva_instalacionid, reserva_sedeid, reserva_fijaid,
+                         reserva_fecha, reserva_horainicio, reserva_horafin, reserva_horas,
+                         reserva_valorhora, reserva_total, reserva_abonado,
+                         reserva_estado, reserva_observacion, reserva_usuarioid)
+                     VALUES (:cod, :c, :i, :s, :fj, :f, :ini, :fin, :h, :v, :t, 0, 'P', :o, :u)");
+
+                while ($fecha <= $limite) {
+                    $ya = (int)$this->escalar(
+                        "SELECT COUNT(1) FROM dsa_reserva WHERE reserva_fijaid = :fj AND reserva_fecha = :f",
+                        [':fj' => $fijaId, ':f' => $fecha]);
+
+                    if ($ya === 0) {
+                        $disp = $this->verificarDisponibilidad((int)$f['fija_instalacionid'], $fecha,
+                                                               $inicio, $fin, 0, $fijaId);
+                        $valorhora = $this->tarifaAplicable((int)$f['fija_instalacionid'], $fecha, $inicio);
+                        $horas     = round((strtotime($fin) - strtotime($inicio)) / 3600, 2);
+
+                        if (!$disp['ok']) {
+                            $resultado['omitidas'][$fecha] = $disp['motivo'];
+                        } elseif ($valorhora <= 0) {
+                            $resultado['omitidas'][$fecha] = 'Sin tarifa por hora.';
+                        } else {
+                            $insertar->execute([
+                                ':cod' => $this->siguienteCodigo(), ':c' => (int)$f['fija_clienteid'],
+                                ':i' => (int)$f['fija_instalacionid'], ':s' => (int)$f['fija_sedeid'],
+                                ':fj' => $fijaId, ':f' => $fecha, ':ini' => $inicio, ':fin' => $fin,
+                                ':h' => $horas, ':v' => $valorhora, ':t' => round($horas * $valorhora, 2),
+                                ':o' => $f['fija_observacion'],
+                                ':u' => (int)($_SESSION['usuarioid'] ?? 0) ?: null,
+                            ]);
+                            $resultado['creadas']++;
+                        }
+                    }
+
+                    $ultima = $fecha;
+                    $fecha  = date('Y-m-d', strtotime($fecha . ' +7 days'));
+                }
+
+                if ($ultima !== null) {
+                    $con->prepare("UPDATE dsa_reserva_fija SET fija_generadahasta = :g WHERE fija_id = :id")
+                        ->execute([':g' => $ultima, ':id' => $fijaId]);
+                }
+            }
+
+            if ($propia) $con->commit();
+        } catch (\Throwable $e) {
+            if ($propia && $con->inTransaction()) $con->rollBack();
+            if (!$propia) throw $e;
+        }
+
+        return $resultado;
+    }
+
+    /**
+     * Pone al día la agenda de todas las series activas. La llaman las
+     * pantallas de reservas y el panel: es una consulta barata cuando no
+     * falta ninguna semana.
+     */
+    public function extenderReservasFijas(): void
+    {
+        $ids = $this->filas(
+            "SELECT fija_id FROM dsa_reserva_fija
+              WHERE fija_estado = 'A'
+                AND (fija_generadahasta IS NULL
+                     OR fija_generadahasta < CURDATE() + INTERVAL " . (self::FIJA_SEMANAS * 7 - 7) . " DAY)");
+        foreach ($ids as $r) {
+            $this->generarSemanasFija((int)$r['fija_id']);
+        }
+    }
+
+    /** Las series activas, con lo que hace falta para atenderlas. */
+    public function reservasFijas(): array
+    {
+        return $this->filas(
+            "SELECT f.fija_id, f.fija_codigo, f.fija_dia, f.fija_horainicio, f.fija_horafin,
+                    f.fija_desde, f.fija_observacion,
+                    c.cliente_id, c.cliente_nombre, c.cliente_identificacion,
+                    i.instalacion_nombre, i.instalacion_codigo,
+                    (SELECT MIN(r.reserva_fecha) FROM dsa_reserva r
+                      WHERE r.reserva_fijaid = f.fija_id AND r.reserva_estado IN ('P','C')
+                        AND r.reserva_fecha >= CURDATE()) AS proxima,
+                    (SELECT COALESCE(SUM(r.reserva_saldo), 0) FROM dsa_reserva r
+                      WHERE r.reserva_fijaid = f.fija_id AND r.reserva_estado <> 'X'
+                        AND r.reserva_fecha < CURDATE()) AS saldo_usado,
+                    (SELECT COUNT(1) FROM dsa_reserva r
+                      WHERE r.reserva_fijaid = f.fija_id AND r.reserva_estado <> 'X'
+                        AND r.reserva_fecha >= CURDATE() AND r.reserva_saldo <= 0) AS pagadas_adelantado
+               FROM dsa_reserva_fija f
+               JOIN dsa_cliente     c ON c.cliente_id     = f.fija_clienteid
+               JOIN dsa_instalacion i ON i.instalacion_id = f.fija_instalacionid
+              WHERE f.fija_estado = 'A'
+              ORDER BY f.fija_dia, f.fija_horainicio, i.instalacion_codigo"
+        );
+    }
+
+    public function reservaFija(int $id): ?array
+    {
+        $r = $this->filas(
+            "SELECT f.*, c.cliente_nombre, i.instalacion_nombre
+               FROM dsa_reserva_fija f
+               JOIN dsa_cliente     c ON c.cliente_id     = f.fija_clienteid
+               JOIN dsa_instalacion i ON i.instalacion_id = f.fija_instalacionid
+              WHERE f.fija_id = :id", [':id' => $id]);
+        return $r[0] ?? null;
+    }
+
+    /**
+     * Cancela una serie desde una fecha: deja de apartar la franja y se
+     * cancelan sus reservas desde ese día que no tienen pagos. Las que el
+     * cliente ya pagó por adelantado no se tocan —el dinero exige una
+     * decisión: que las use, devolverlo o pasarlo al monedero— y se nombran.
+     * Las semanas anteriores quedan como estaban, para cobrarlas.
+     */
+    public function cancelarReservaFija(): string
+    {
+        if (!puede_editar('reservaList')) {
+            return $this->alerta('simple', 'Acceso denegado', 'Su rol no puede modificar reservas.', 'error');
+        }
+
+        $id     = (int)($_POST['fija_id'] ?? 0);
+        $desde  = trim((string)($_POST['fija_cancelar_desde'] ?? ''));
+        $motivo = mb_substr(trim((string)($_POST['fija_motivo'] ?? '')), 0, 250);
+
+        $f = $this->reservaFija($id);
+        if ($f === null) {
+            return $this->alerta('simple', 'Reserva fija no encontrada', 'La reserva fija no existe.', 'error');
+        }
+        if ($f['fija_estado'] !== 'A') {
+            return $this->alerta('simple', 'Ya cancelada', "{$f['fija_codigo']} ya estaba cancelada.", 'info');
+        }
+        $p = explode('-', $desde);
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $desde) || !checkdate((int)$p[1], (int)$p[2], (int)$p[0])) {
+            return $this->alerta('simple', 'Fecha no válida', 'Indique desde qué día se cancela.', 'error');
+        }
+        if ($desde < date('Y-m-d')) {
+            return $this->alerta('simple', 'Fecha no válida',
+                'Se cancela desde hoy en adelante: las semanas ya pasadas se usaron y se cobran.', 'error');
+        }
+
+        $con = $this->con();
+        if ($con === null) {
+            return $this->alerta('simple', 'Error', 'Sin conexión a la base de datos.', 'error');
+        }
+
+        try {
+            $con->beginTransaction();
+            $con->prepare(
+                "UPDATE dsa_reserva_fija
+                    SET fija_estado = 'X', fija_hasta = DATE_SUB(:d, INTERVAL 1 DAY),
+                        fija_motivocancelacion = :m, fija_fechacancelacion = CURRENT_TIMESTAMP
+                  WHERE fija_id = :id AND fija_estado = 'A'"
+            )->execute([':d' => $desde, ':m' => $motivo !== '' ? $motivo : null, ':id' => $id]);
+
+            $stmt = $con->prepare(
+                "UPDATE dsa_reserva SET reserva_estado = 'X'
+                  WHERE reserva_fijaid = :id AND reserva_fecha >= :d
+                    AND reserva_estado IN ('P','C') AND reserva_abonado = 0");
+            $stmt->execute([':id' => $id, ':d' => $desde]);
+            $canceladas = $stmt->rowCount();
+            $con->commit();
+        } catch (\Throwable $e) {
+            if ($con->inTransaction()) $con->rollBack();
+            return $this->alerta('simple', 'No se pudo cancelar', $e->getMessage(), 'error');
+        }
+
+        $conPagos = $this->filas(
+            "SELECT reserva_codigo, reserva_fecha, reserva_abonado FROM dsa_reserva
+              WHERE reserva_fijaid = :id AND reserva_fecha >= :d
+                AND reserva_estado IN ('P','C') AND reserva_abonado > 0
+              ORDER BY reserva_fecha",
+            [':id' => $id, ':d' => $desde]);
+
+        $texto = "{$f['fija_codigo']} quedó cancelada desde el " . self::fechaCorta($desde) . '. ' .
+                 ($canceladas === 0 ? 'No había semanas sin pagos que cancelar; la hora vuelve a estar libre.'
+                    : ($canceladas === 1 ? 'Se canceló 1 reserva por venir' : "Se cancelaron {$canceladas} reservas por venir") .
+                      ' y la hora vuelve a estar libre.');
+        if ($conPagos) {
+            $texto .= (count($conPagos) === 1 ? ' Sigue en pie 1 ya pagada por adelantado: '
+                                              : ' Siguen en pie ' . count($conPagos) . ' ya pagadas por adelantado: ') .
+                implode(', ', array_map(static fn ($r) => $r['reserva_codigo'] . ' (' . self::fechaCorta($r['reserva_fecha']) .
+                    ', $' . number_format((float)$r['reserva_abonado'], 2) . ')', $conPagos)) .
+                '. Si el cliente no las usará, devuelva el importe o páselo al monedero y cancélelas.';
+        }
+
+        return $this->alerta('recargar', 'Reserva fija cancelada', $texto, $conPagos ? 'warning' : 'success');
     }
 
     /*======================================================================

@@ -90,6 +90,18 @@ require_once __DIR__ . "/inc/layout-top.php";
                         </small>
                     </dd>
 
+                    <?php if ($reserva['reserva_fijaid']): ?>
+                        <dt class="small text-muted">Reserva fija</dt>
+                        <dd>
+                            <a href="<?php echo APP_URL; ?>reservaList/?fija=<?php echo (int)$reserva['reserva_fijaid']; ?>">
+                                <i class="fas fa-repeat me-1" aria-hidden="true"></i><?php echo htmlspecialchars($reserva['fija_codigo'], ENT_QUOTES, 'UTF-8'); ?></a>
+                            · cada <?php echo htmlspecialchars(mb_strtolower($insArena->dias()[(int)$reserva['fija_dia']] ?? ''), ENT_QUOTES, 'UTF-8'); ?>
+                            de <?php echo substr($reserva['fija_horainicio'], 0, 5); ?> a <?php echo substr($reserva['fija_horafin'], 0, 5); ?>
+                            <?php if ($reserva['fija_estado'] === 'X'): ?><span class="badge text-bg-secondary ms-1">Cancelada</span><?php endif; ?>
+                            <small class="d-block text-muted">Cancelar esta semana no afecta a las demás.</small>
+                        </dd>
+                    <?php endif; ?>
+
                     <?php if ($reserva['reserva_observacion']): ?>
                         <dt class="small text-muted">Observación</dt>
                         <dd class="mb-0"><?php echo htmlspecialchars($reserva['reserva_observacion'], ENT_QUOTES, 'UTF-8'); ?></dd>

@@ -10,6 +10,13 @@ $vistaActual = 'reservaList';
 
 $instalaciones = $insArena->instalaciones();
 
+/* Las semanas de las reservas fijas, al día antes de listar. */
+$insArena->extenderReservasFijas();
+$fijas      = $insArena->reservasFijas();
+$fijaFiltro = (int)($_GET['fija'] ?? 0);
+$fijaVista  = $fijaFiltro > 0 ? $insArena->reservaFija($fijaFiltro) : null;
+$diasSemana = $insArena->dias();
+
 /*
 | UNA VENTANA POR DEFECTO, NO TODO EL HISTÓRICO
 |
@@ -27,9 +34,10 @@ $instalaciones = $insArena->instalaciones();
 */
 $sinFiltrar = !isset($_GET['instalacion']) && !isset($_GET['estado'])
            && !isset($_GET['desde']) && !isset($_GET['hasta'])
-           && !isset($_GET['saldo']);
+           && !isset($_GET['saldo']) && !isset($_GET['fija']);
 
 $filtros = [
+    'fija'        => $fijaFiltro,
     'instalacion' => (int)($_GET['instalacion'] ?? 0),
     'estado'      => (string)($_GET['estado'] ?? ''),
     'desde'       => $sinFiltrar ? date('Y-m-01') : (string)($_GET['desde'] ?? ''),
@@ -63,6 +71,7 @@ $recibosPorReserva = $insArena->pagosDeReservas(array_column($reservas, 'reserva
    no desde $_GET para que la ventana por defecto viaje también. */
 $urlPagina = static function (int $p) use ($filtros): string {
     $q = array_filter([
+        'fija'        => $filtros['fija'] ?: null,
         'instalacion' => $filtros['instalacion'] ?: null,
         'estado'      => $filtros['estado'] ?: null,
         'desde'       => $filtros['desde'] ?: null,
@@ -94,6 +103,66 @@ $totalSaldo   = $sumas['saldo'];
 require_once __DIR__ . "/inc/layout-top.php";
 ?>
 
+<?php if ($fijas): ?>
+<?php /*
+| RESERVAS FIJAS (2026-11-02): las series activas, una tarjeta por serie.
+| «Semanas» filtra el listado de abajo por la serie; «Cancelar» la termina
+| desde el día que se indique.
+*/ ?>
+<div class="card ar-fijas">
+    <div class="card-header d-flex align-items-center gap-2">
+        <h3 class="card-title mb-0"><i class="fas fa-repeat me-2 text-primary" aria-hidden="true"></i><?php
+            echo count($fijas); ?> reserva<?php echo count($fijas) === 1 ? '' : 's'; ?> fija<?php echo count($fijas) === 1 ? '' : 's'; ?></h3>
+        <small class="text-body-secondary ms-auto d-none d-md-inline">
+            Apartan su hora todas las semanas hasta que se cancelan
+        </small>
+    </div>
+    <div class="card-body ar-fijas__lista">
+        <?php foreach ($fijas as $f):
+            $deuda = (float)$f['saldo_usado'];
+            $nombreDia = $diasSemana[(int)$f['fija_dia']] ?? '';
+        ?>
+            <div class="ar-fija<?php echo $fijaFiltro === (int)$f['fija_id'] ? ' ar-fija--activa' : ''; ?>">
+                <div class="ar-fija__cuando">
+                    <span class="ar-fija__dia"><?php echo htmlspecialchars($nombreDia, ENT_QUOTES, 'UTF-8'); ?></span>
+                    <span class="ar-fija__hora"><?php echo substr($f['fija_horainicio'], 0, 5); ?>–<?php echo substr($f['fija_horafin'], 0, 5); ?></span>
+                </div>
+                <div class="ar-fija__datos">
+                    <strong><?php echo htmlspecialchars($f['cliente_nombre'], ENT_QUOTES, 'UTF-8'); ?></strong>
+                    <span><?php echo htmlspecialchars($f['instalacion_nombre'], ENT_QUOTES, 'UTF-8'); ?> · <code><?php echo htmlspecialchars($f['fija_codigo'], ENT_QUOTES, 'UTF-8'); ?></code></span>
+                    <span class="ar-fija__estado">
+                        <?php if ($f['proxima']): ?>
+                            <span>Próxima: <strong><?php echo date('d/m/Y', strtotime($f['proxima'])); ?></strong></span>
+                        <?php endif; ?>
+                        <?php if ((int)$f['pagadas_adelantado'] > 0): ?>
+                            <span class="badge text-bg-success"><?php echo (int)$f['pagadas_adelantado']; ?> pagada<?php echo (int)$f['pagadas_adelantado'] === 1 ? '' : 's'; ?> por adelantado</span>
+                        <?php endif; ?>
+                        <?php if ($deuda > 0): ?>
+                            <span class="badge text-bg-danger" title="Semanas ya usadas sin pagar">Debe $<?php echo number_format($deuda, 2); ?></span>
+                        <?php endif; ?>
+                    </span>
+                </div>
+                <div class="ar-fija__acciones">
+                    <a href="<?php echo APP_URL; ?>reservaList/?fija=<?php echo (int)$f['fija_id']; ?>"
+                       class="btn btn-sm btn-outline-secondary" title="Ver y cobrar sus semanas">
+                        <i class="fas fa-list me-1" aria-hidden="true"></i>Semanas
+                    </a>
+                    <?php if ($puedeEditar): ?>
+                        <button type="button" class="btn btn-sm btn-outline-danger js-cancelar-fija"
+                                data-id="<?php echo (int)$f['fija_id']; ?>"
+                                data-codigo="<?php echo htmlspecialchars($f['fija_codigo'], ENT_QUOTES, 'UTF-8'); ?>"
+                                data-detalle="<?php echo htmlspecialchars($f['cliente_nombre'] . ' · cada ' . mb_strtolower($nombreDia) . ' de ' . substr($f['fija_horainicio'], 0, 5) . ' a ' . substr($f['fija_horafin'], 0, 5), ENT_QUOTES, 'UTF-8'); ?>"
+                                title="Terminar la reserva fija">
+                            <i class="fas fa-ban me-1" aria-hidden="true"></i>Cancelar
+                        </button>
+                    <?php endif; ?>
+                </div>
+            </div>
+        <?php endforeach; ?>
+    </div>
+</div>
+<?php endif; ?>
+
 <div class="card">
     <div class="card-header d-flex flex-wrap justify-content-between align-items-center" style="gap:12px;">
         <h3 class="card-title mb-0">
@@ -104,9 +173,15 @@ require_once __DIR__ . "/inc/layout-top.php";
         </h3>
 
         <?php if ($puedeCrear && $instalaciones): ?>
-            <a href="<?php echo APP_URL; ?>reservaForm/" class="btn btn-primary btn-sm">
-                <i class="fas fa-plus me-1"></i> Nueva reserva
-            </a>
+            <div class="d-flex flex-wrap gap-2">
+                <a href="<?php echo APP_URL; ?>reservaForm/?repetir=1" class="btn btn-outline-primary btn-sm"
+                   title="La misma hora un día de la semana, hasta que se cancele">
+                    <i class="fas fa-repeat me-1"></i> Reserva fija
+                </a>
+                <a href="<?php echo APP_URL; ?>reservaForm/" class="btn btn-primary btn-sm">
+                    <i class="fas fa-plus me-1"></i> Nueva reserva
+                </a>
+            </div>
         <?php endif; ?>
     </div>
 
@@ -174,7 +249,17 @@ require_once __DIR__ . "/inc/layout-top.php";
                 de <strong><?php echo number_format($totalFilas, 0, ',', '.'); ?></strong> reservas
             <?php endif; ?>
         </span>
-        <?php if ($sinFiltrar): ?>
+        <?php if ($fijaVista): ?>
+            <span class="ms-auto">
+                <i class="fas fa-repeat me-1 text-primary" aria-hidden="true"></i>
+                Semanas de la reserva fija <strong><?php echo htmlspecialchars($fijaVista['fija_codigo'], ENT_QUOTES, 'UTF-8'); ?></strong>
+                (<?php echo htmlspecialchars($fijaVista['cliente_nombre'], ENT_QUOTES, 'UTF-8'); ?>, cada <?php
+                    echo htmlspecialchars(mb_strtolower($diasSemana[(int)$fijaVista['fija_dia']] ?? ''), ENT_QUOTES, 'UTF-8'); ?> de <?php
+                    echo substr($fijaVista['fija_horainicio'], 0, 5); ?> a <?php echo substr($fijaVista['fija_horafin'], 0, 5); ?><?php
+                    echo $fijaVista['fija_estado'] === 'X' ? ', cancelada' : ''; ?>)
+                · <a href="<?php echo APP_URL; ?>reservaList/">ver todas</a>
+            </span>
+        <?php elseif ($sinFiltrar): ?>
             <span class="ms-auto">
                 <?php /* Lo que dice es lo que hace: el filtro pone «desde» y no
                          «hasta», así que entran también las reservas por venir. */ ?>
@@ -215,7 +300,16 @@ require_once __DIR__ . "/inc/layout-top.php";
                     $cancelada = $r['reserva_estado'] === 'X';
                 ?>
                     <tr>
-                        <td><code><?php echo htmlspecialchars($r['reserva_codigo'], ENT_QUOTES, 'UTF-8'); ?></code></td>
+                        <td>
+                            <code><?php echo htmlspecialchars($r['reserva_codigo'], ENT_QUOTES, 'UTF-8'); ?></code>
+                            <?php if ($r['reserva_fijaid']): ?>
+                                <a href="<?php echo APP_URL; ?>reservaList/?fija=<?php echo (int)$r['reserva_fijaid']; ?>"
+                                   class="badge text-bg-primary text-decoration-none ar-marca-fija"
+                                   title="Semana de la reserva fija <?php echo htmlspecialchars((string)$r['fija_codigo'], ENT_QUOTES, 'UTF-8'); ?>">
+                                    <i class="fas fa-repeat" aria-hidden="true"></i>Fija
+                                </a>
+                            <?php endif; ?>
+                        </td>
                         <td>
                             <strong><?php echo htmlspecialchars($r['cliente_nombre'], ENT_QUOTES, 'UTF-8'); ?></strong>
                             <small class="d-block text-muted"><?php echo htmlspecialchars($r['cliente_identificacion'], ENT_QUOTES, 'UTF-8'); ?></small>
@@ -468,5 +562,84 @@ document.addEventListener('click', function (e) {
 });
 </script>
 <?php endif; ?>
+
+<?php if ($puedeEditar && $fijas): ?>
+<div class="modal fade" id="modalCancelarFija" tabindex="-1" aria-labelledby="cancelarFijaTitulo">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form class="FormularioAjax" method="POST" action="<?php echo APP_URL; ?>ajax/arenaAjax.php" autocomplete="off"
+                  data-confirmar="La hora dejará de estar apartada y se cancelarán las semanas sin pagos desde ese día.">
+                <input type="hidden" name="modulo_arena" value="cancelarReservaFija">
+                <input type="hidden" name="fija_id" id="cancelarFijaId" value="">
+
+                <div class="modal-header">
+                    <h5 class="modal-title" id="cancelarFijaTitulo">Cancelar reserva fija</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+
+                <div class="modal-body">
+                    <p class="mb-3"><strong id="cancelarFijaCodigo"></strong><br>
+                        <span class="text-body-secondary" id="cancelarFijaDetalle"></span></p>
+
+                    <div class="mb-3">
+                        <label for="cancelarFijaDesde" class="form-label">Cancelar desde <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="cancelarFijaDesde" name="fija_cancelar_desde" required
+                               min="<?php echo date('Y-m-d'); ?>" value="<?php echo date('Y-m-d'); ?>">
+                        <div class="form-text">
+                            Las semanas anteriores quedan como están, para cobrarlas. Desde ese día se cancelan
+                            las que no tienen pagos; las pagadas por adelantado siguen en pie y se le indicarán.
+                        </div>
+                    </div>
+
+                    <div class="mb-0">
+                        <label for="cancelarFijaMotivo" class="form-label">Motivo</label>
+                        <input type="text" class="form-control" id="cancelarFijaMotivo" name="fija_motivo" maxlength="250"
+                               placeholder="Opcional: lo pidió el cliente, cambio de horario…">
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Volver</button>
+                    <button type="submit" class="btn btn-danger"><i class="fas fa-ban me-1" aria-hidden="true"></i>Cancelar reserva fija</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('click', function (e) {
+    var b = e.target.closest('.js-cancelar-fija');
+    if (!b) { return; }
+    document.getElementById('cancelarFijaId').value = b.dataset.id;
+    document.getElementById('cancelarFijaCodigo').textContent = b.dataset.codigo;
+    document.getElementById('cancelarFijaDetalle').textContent = b.dataset.detalle;
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modalCancelarFija')).show();
+});
+</script>
+<?php endif; ?>
+
+<style>
+/* Reservas fijas: una tarjeta por serie; en el teléfono, una debajo de otra. */
+.ar-fijas__lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)); gap: .75rem; }
+.ar-fija {
+    display: grid; grid-template-columns: auto 1fr; gap: .25rem .75rem; align-items: start;
+    padding: .75rem; border: 1px solid var(--bs-border-color); border-radius: .5rem;
+}
+.ar-fija--activa { border-color: var(--bs-primary); box-shadow: 0 0 0 1px var(--bs-primary); }
+.ar-fija__cuando {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-width: 5.5rem; padding: .4rem .5rem; border-radius: .4rem;
+    background: var(--bs-primary-bg-subtle); color: var(--bs-primary-text-emphasis); line-height: 1.2;
+}
+.ar-fija__dia { font-weight: 700; }
+.ar-fija__hora { font-size: .85rem; white-space: nowrap; }
+.ar-fija__datos { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.ar-fija__datos > span { font-size: .875rem; color: var(--bs-secondary-color); }
+.ar-fija__estado { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.ar-fija__acciones { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: .5rem; margin-top: .25rem; }
+/* La marca «Fija» de cada semana, bajo su código. */
+.ar-marca-fija { display: inline-flex; align-items: center; gap: .3rem; margin-top: .25rem; white-space: nowrap; }
+</style>
 
 <?php require_once __DIR__ . "/inc/layout-bottom.php"; ?>

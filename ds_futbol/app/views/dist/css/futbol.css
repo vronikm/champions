@@ -264,6 +264,14 @@
         justify-content: center;
     }
     td.ds-ficha__acciones .ds-ficha__primario { flex: 1; }
+}
+
+/* En el teléfono «Ver ficha» no cabía junto a los otros cuatro botones y se
+   cortaba (Representantes, 2026-11-04): queda sólo el icono, con el texto
+   en el title y en el aria-label. */
+@media (max-width: 575.98px) {
+    td.ds-ficha__acciones .ds-ficha__texto { display: none; }
+    td.ds-ficha__acciones .ds-ficha__primario i { margin-right: 0 !important; }
 
     /* Sin datos: el mensaje de DataTables ocupa la ficha entera. */
     .ds-crud__tabla > tbody > tr > td.dt-empty { grid-column: 1 / -1; text-align: center; }

@@ -404,14 +404,16 @@ require_once __DIR__ . "/inc/layout-top.php";
             : '<i class="fas fa-calendar-times me-1"></i> No quedan horarios libres el ' +
               esc(fechaLarga(fecha.value).toLowerCase()) + '. Pruebe con otro día.');
 
-        /* Un grupo por franja: una reserva no puede saltar de una a otra. */
+        /* Un grupo por tramo de franjas seguidas (el servidor ya las une):
+           con un horario de 08–09, 09–10 … es una sola rejilla. Una pausa
+           sin franja separa dos tramos, y una reserva no la salta. */
         var html = '', actual = -1;
         bloques.forEach(function (b, i) {
             if (b.franja !== actual) {
                 if (actual !== -1) { html += '</div>'; }
                 actual = b.franja;
                 if (r.franjas.length > 1) {
-                    html += '<div class="ar-franja">Franja ' + esc(r.franjas[actual][0]) + ' – ' + esc(r.franjas[actual][1]) + '</div>';
+                    html += '<div class="ar-franja">De ' + esc(r.franjas[actual][0]) + ' a ' + esc(r.franjas[actual][1]) + '</div>';
                 }
                 html += '<div class="ar-bloques">';
             }
@@ -489,8 +491,19 @@ require_once __DIR__ . "/inc/layout-top.php";
         }
 
         var horas = (aMin(hasta.value) - aMin(desde.value)) / 60;
-        /* La misma regla que el servidor: la tarifa vigente a la hora de inicio. */
-        var tarifa = sel ? +bloques[sel.i].tarifa : (datos[inst.value] ? datos[inst.value].valorhora : 0);
+        /* La misma regla que el servidor: cada hora al valor de su franja.
+           Las horas seguidas con el mismo valor se cuentan juntas. */
+        var partes = [];
+        if (sel) {
+            for (var k = sel.i; k <= sel.j; k++) {
+                var h = (aMin(bloques[k].hasta) - aMin(bloques[k].desde)) / 60, v = +bloques[k].tarifa;
+                var u = partes[partes.length - 1];
+                if (u && Math.abs(u.v - v) < 0.005) { u.h += h; } else { partes.push({ h: h, v: v }); }
+            }
+        } else {
+            partes.push({ h: horas, v: datos[inst.value] ? +datos[inst.value].valorhora : 0 });
+        }
+        var importe = partes.reduce(function (s, p) { return s + p.h * p.v; }, 0);
         var fuera  = !sel;
 
         var semanal = repetirSi && repetirSi.checked;
@@ -510,8 +523,10 @@ require_once __DIR__ . "/inc/layout-top.php";
               (fuera ? '<br><small class="text-muted">Es el horario actual de la reserva. Toque un horario libre para cambiarlo.</small>' : '');
 
         caja.style.display = ''; pista.hidden = true;
-        total.textContent = '$' + (horas * tarifa).toFixed(2) + (semanal ? ' / semana' : '');
-        detalle.textContent = horas.toFixed(2).replace(/\.?0+$/, '') + ' h × $' + tarifa.toFixed(2) + ' por hora';
+        total.textContent = '$' + importe.toFixed(2) + (semanal ? ' / semana' : '');
+        detalle.textContent = partes.map(function (p) {
+            return p.h.toFixed(2).replace(/\.?0+$/, '') + ' h × $' + p.v.toFixed(2);
+        }).join(' + ') + (partes.length === 1 ? ' por hora' : '');
         if (textoGuardar && RESERVA === 0) { textoGuardar.textContent = semanal ? 'Reservar cada ' + nombreDia : 'Reservar'; }
         if (guardar) { guardar.disabled = false; guardar.title = ''; }
     }

@@ -144,6 +144,13 @@ class arenaController
                        (SELECT COUNT(1) FROM dsa_horario h
                          WHERE h.horario_instalacionid = i.instalacion_id
                            AND h.horario_estado = 'A') AS franjas,
+                       (SELECT COUNT(1) FROM dsa_horario h
+                         WHERE h.horario_instalacionid = i.instalacion_id
+                           AND h.horario_estado = 'A' AND h.horario_valorhora IS NOT NULL) AS franjas_valor,
+                       (SELECT MIN(h.horario_valorhora) FROM dsa_horario h
+                         WHERE h.horario_instalacionid = i.instalacion_id AND h.horario_estado = 'A') AS valor_min,
+                       (SELECT MAX(h.horario_valorhora) FROM dsa_horario h
+                         WHERE h.horario_instalacionid = i.instalacion_id AND h.horario_estado = 'A') AS valor_max,
                        (SELECT COUNT(1) FROM dsa_reserva r
                          WHERE r.reserva_instalacionid = i.instalacion_id
                            AND r.reserva_estado IN ('P','C')) AS reservas
@@ -488,6 +495,13 @@ class arenaController
         $hasta        = trim((string)($_POST['horario_hasta'] ?? ''));
         $dias         = $_POST['horario_dia'] ?? [];
 
+        /* Vacío = el valor de la instalación (NULL): si ese cambia en
+           Instalaciones, la franja lo sigue. */
+        $valor = $this->valorHoraDePost($_POST['horario_valorhora'] ?? '');
+        if ($valor === false) {
+            return $this->alerta('simple', 'Valor no válido', 'El valor por hora debe ser un número mayor o igual a cero.', 'error');
+        }
+
         if ($id > 0 && !puede_editar('horarioList')) {
             return $this->alerta('simple', 'Acceso denegado', 'Su rol no puede editar horarios.', 'error');
         }
@@ -541,16 +555,18 @@ class arenaController
             if ($id > 0) {
                 $this->escribir(
                     "UPDATE dsa_horario
-                        SET horario_dia = :d, horario_desde = :desde, horario_hasta = :hasta
-                      WHERE horario_id = :id",
-                    [':d' => $dia, ':desde' => $desde, ':hasta' => $hasta, ':id' => $id]
+                        SET horario_dia = :d, horario_desde = :desde, horario_hasta = :hasta,
+                            horario_valorhora = :v
+                      WHERE horario_id = :id AND horario_instalacionid = :i",
+                    [':d' => $dia, ':desde' => $desde, ':hasta' => $hasta, ':v' => $valor,
+                     ':id' => $id, ':i' => $instalacion]
                 );
             } else {
                 $this->escribir(
                     "INSERT INTO dsa_horario
-                        (horario_instalacionid, horario_dia, horario_desde, horario_hasta, horario_estado)
-                     VALUES (:i, :d, :desde, :hasta, 'A')",
-                    [':i' => $instalacion, ':d' => $dia, ':desde' => $desde, ':hasta' => $hasta]
+                        (horario_instalacionid, horario_dia, horario_desde, horario_hasta, horario_valorhora, horario_estado)
+                     VALUES (:i, :d, :desde, :hasta, :v, 'A')",
+                    [':i' => $instalacion, ':d' => $dia, ':desde' => $desde, ':hasta' => $hasta, ':v' => $valor]
                 );
             }
 
@@ -562,13 +578,100 @@ class arenaController
                 'Ya existe disponibilidad que se cruza con ese rango en: ' . implode(', ', $solapados) . '.', 'error');
         }
 
-        $texto = $guardados . ' franja(s) guardada(s).';
+        $texto = $id > 0 ? 'La franja quedó actualizada.'
+                         : ($guardados === 1 ? '1 franja guardada.' : $guardados . ' franjas guardadas.');
         if ($solapados) {
             $texto .= ' Se omitieron por solaparse: ' . implode(', ', $solapados) . '.';
         }
 
         return $this->alerta('recargar', 'Disponibilidad actualizada', $texto,
             $solapados ? 'warning' : 'success');
+    }
+
+    /**
+     * Valor por hora llegado de un formulario: null si viene vacío (se usa
+     * el de la instalación), false si no es un número >= 0.
+     *
+     * @return float|null|false
+     */
+    private function valorHoraDePost($v)
+    {
+        $v = trim(str_replace(',', '.', (string)$v));
+        if ($v === '') { return null; }
+        if (!is_numeric($v) || (float)$v < 0 || (float)$v > 99999999) { return false; }
+        return round((float)$v, 2);
+    }
+
+    /**
+     * Fija el valor por hora de varias franjas a la vez: las de los días
+     * marcados que caen completas entre «desde» y «hasta». Con
+     * horario_usar = 'general' vuelven al valor de la instalación.
+     */
+    public function guardarValorHorario(): string
+    {
+        if (!puede_editar('horarioList')) {
+            return $this->alerta('simple', 'Acceso denegado', 'Su rol no puede cambiar el valor de los horarios.', 'error');
+        }
+
+        $instalacion = (int)($_POST['horario_instalacionid'] ?? 0);
+        $desde       = trim((string)($_POST['horario_desde'] ?? ''));
+        $hasta       = trim((string)($_POST['horario_hasta'] ?? ''));
+        $general     = ($_POST['horario_usar'] ?? '') === 'general';
+        $dias        = array_values(array_unique(array_filter(
+            array_map('intval', (array)($_POST['horario_dia'] ?? [])), static fn ($d) => $d >= 1 && $d <= 7)));
+
+        $inst = $instalacion > 0 ? $this->instalacion($instalacion) : null;
+        if ($inst === null) {
+            return $this->alerta('simple', 'Instalación no válida', 'Seleccione una instalación.', 'error');
+        }
+        if (!$dias) {
+            return $this->alerta('simple', 'Sin días', 'Marque al menos un día de la semana.', 'error');
+        }
+        if (!preg_match('/^\d{2}:\d{2}$/', $desde) || !preg_match('/^\d{2}:\d{2}$/', $hasta) || $hasta <= $desde) {
+            return $this->alerta('simple', 'Horas no válidas', 'Indique desde qué hora y hasta qué hora; el fin debe ser posterior.', 'error');
+        }
+
+        $valor = null;
+        if (!$general) {
+            $valor = $this->valorHoraDePost($_POST['horario_valorhora'] ?? '');
+            if ($valor === null || $valor === false) {
+                return $this->alerta('simple', 'Valor no válido', 'Escriba el valor por hora (un número mayor o igual a cero).', 'error');
+            }
+        }
+
+        $marcas = [];
+        $params = [':i' => $instalacion, ':desde' => $desde, ':hasta' => $hasta, ':v' => $valor];
+        foreach ($dias as $k => $d) { $marcas[] = ':d' . $k; $params[':d' . $k] = $d; }
+
+        $n = (int)$this->escalar(
+            "SELECT COUNT(1) FROM dsa_horario
+              WHERE horario_instalacionid = :i AND horario_estado = 'A'
+                AND horario_dia IN (" . implode(',', $marcas) . ")
+                AND horario_desde >= :desde AND horario_hasta <= :hasta",
+            array_diff_key($params, [':v' => 1]));
+
+        if ($n === 0) {
+            return $this->alerta('simple', 'Ninguna franja en ese rango',
+                'Esos días no tienen franjas completas entre ' . $desde . ' y ' . $hasta . '.', 'warning');
+        }
+
+        $ok = $this->escribir(
+            "UPDATE dsa_horario SET horario_valorhora = :v
+              WHERE horario_instalacionid = :i AND horario_estado = 'A'
+                AND horario_dia IN (" . implode(',', $marcas) . ")
+                AND horario_desde >= :desde AND horario_hasta <= :hasta", $params);
+
+        if ($ok < 0) {
+            return $this->alerta('simple', 'Error', 'No fue posible guardar el valor.', 'error');
+        }
+
+        $cuantas = $n === 1 ? '1 franja' : $n . ' franjas';
+        $texto = $general
+            ? "{$cuantas} vuelven al valor de la instalación (\$" . number_format((float)$inst['instalacion_valorhora'], 2) . ' por hora).'
+            : "{$cuantas} quedan a \$" . number_format($valor, 2) . ' por hora.';
+
+        return $this->alerta('recargar', 'Valor por hora actualizado',
+            $texto . ' Las reservas ya hechas conservan su valor.');
     }
 
     public function eliminarHorario(): string
@@ -588,12 +691,49 @@ class arenaController
 
     /*======================================================================
       Bloqueos: mantenimiento y otros cierres
+      ----------------------------------------------------------------------
+      Dos formas de bloquear:
+
+        Continuo        un solo periodo de fecha y hora («del lunes 10:00
+                        al miércoles 18:00»). Es una fila de dsa_bloqueo sin
+                        grupo; también son así los que crea League.
+        Días y franjas  una regla de dsa_bloqueo_grupo: fechas, días de la
+                        semana y franjas («del 6 al 11 nov, lun a vie,
+                        18:00–19:00»). Se materializa en una fila de
+                        dsa_bloqueo por día y tramo seguido de horas, de modo
+                        que la disponibilidad la lee como cualquier bloqueo.
       ====================================================================*/
 
+    /** Una regla no puede abarcar más de un año: son filas reales. */
+    const BLOQUEO_MAX_DIAS = 366;
+
+    /** El motivo con el que League marca los bloqueos de sus partidos. */
+    private function esBloqueoDeLiga(?string $motivo): bool
+    {
+        return strncmp((string)$motivo, 'League · partido #', strlen('League · partido #')) === 0;
+    }
+
+    /**
+     * Los bloqueos de la vista, uno por regla o por periodo continuo.
+     *
+     * «momento»: 1 en curso (ahora mismo hay una franja cerrada), 2 próximo,
+     * 3 terminado. Lo de hoy va arriba y lo pasado al final, del más
+     * reciente al más antiguo. «afectadas»: reservas vigentes que caen
+     * dentro y habría que reubicar.
+     */
     public function bloqueos(int $instalacionid = 0, bool $soloVigentes = true): array
     {
-        $sql = "SELECT b.*, i.instalacion_nombre, i.instalacion_codigo, s.sede_nombre
+        $sql = "SELECT b.*, g.*, i.instalacion_nombre, i.instalacion_codigo, s.sede_nombre,
+                       CASE WHEN b.bloqueo_fin < NOW() THEN 3
+                            WHEN b.bloqueo_inicio <= NOW() THEN 1
+                            ELSE 2 END AS momento,
+                       (SELECT COUNT(1) FROM dsa_reserva r
+                         WHERE r.reserva_instalacionid = b.bloqueo_instalacionid
+                           AND r.reserva_estado IN ('P','C')
+                           AND TIMESTAMP(r.reserva_fecha, r.reserva_horainicio) < b.bloqueo_fin
+                           AND TIMESTAMP(r.reserva_fecha, r.reserva_horafin)    > b.bloqueo_inicio) AS afectadas
                   FROM dsa_bloqueo b
+                  LEFT JOIN dsa_bloqueo_grupo g ON g.grupo_id = b.bloqueo_grupoid
                   JOIN dsa_instalacion i ON i.instalacion_id = b.bloqueo_instalacionid
                   LEFT JOIN general_sede s ON s.sede_id = i.instalacion_sedeid
                  WHERE b.bloqueo_estado = 'A'";
@@ -601,85 +741,346 @@ class arenaController
         $params = [];
         if ($instalacionid > 0) { $sql .= " AND b.bloqueo_instalacionid = :i"; $params[':i'] = $instalacionid; }
         if ($soloVigentes)      { $sql .= " AND b.bloqueo_fin >= NOW()"; }
-
         $sql .= " ORDER BY b.bloqueo_inicio";
 
-        return $this->filas($sql, $params);
+        $items = [];
+        foreach ($this->filas($sql, $params) as $f) {
+            $grupo = (int)($f['bloqueo_grupoid'] ?? 0);
+            $clave = $grupo > 0 ? 'g' . $grupo : 'b' . $f['bloqueo_id'];
+            $vigente = (int)$f['momento'] < 3;
+
+            if (!isset($items[$clave])) {
+                $items[$clave] = [
+                    'bloqueo_id'          => $grupo > 0 ? 0 : (int)$f['bloqueo_id'],
+                    'grupo_id'            => $grupo,
+                    'bloqueo_instalacionid' => (int)$f['bloqueo_instalacionid'],
+                    'bloqueo_tipo'        => $grupo > 0 ? $f['grupo_tipo'] : $f['bloqueo_tipo'],
+                    'bloqueo_motivo'      => $grupo > 0 ? $f['grupo_motivo'] : $f['bloqueo_motivo'],
+                    'bloqueo_inicio'      => $f['bloqueo_inicio'],
+                    'bloqueo_fin'         => $f['bloqueo_fin'],
+                    'fechadesde'          => $grupo > 0 ? $f['grupo_fechadesde'] : null,
+                    'fechahasta'          => $grupo > 0 ? $f['grupo_fechahasta'] : null,
+                    'dias'                => $grupo > 0 ? array_map('intval', array_filter(explode(',', $f['grupo_dias']))) : [],
+                    'franjas'             => $grupo > 0 ? array_values(array_filter(explode(',', $f['grupo_franjas']))) : [],
+                    'instalacion_nombre'  => $f['instalacion_nombre'],
+                    'instalacion_codigo'  => $f['instalacion_codigo'],
+                    'sede_nombre'         => $f['sede_nombre'],
+                    'momento'             => (int)$f['momento'],
+                    'afectadas'           => 0,
+                    'ocurrencias'         => 0,
+                    'proxima'             => null,
+                    'liga'                => $grupo === 0 && $this->esBloqueoDeLiga($f['bloqueo_motivo']),
+                ];
+            }
+
+            $it = &$items[$clave];
+            $it['momento']     = min($it['momento'], (int)$f['momento']);
+            $it['afectadas']  += (int)$f['afectadas'];
+            $it['ocurrencias']++;
+            $it['bloqueo_fin'] = max($it['bloqueo_fin'], $f['bloqueo_fin']);
+            if ($vigente && $it['proxima'] === null) {
+                $it['proxima'] = ['inicio' => $f['bloqueo_inicio'], 'fin' => $f['bloqueo_fin']];
+            }
+            unset($it);
+        }
+
+        /* Vigentes por su próxima franja; terminados, el último primero. */
+        $items = array_values($items);
+        usort($items, static function ($a, $b) {
+            $ta = $a['momento'] === 3; $tb = $b['momento'] === 3;
+            if ($ta !== $tb) { return $ta ? 1 : -1; }
+            if ($ta) { return strcmp($b['bloqueo_fin'], $a['bloqueo_fin']); }
+            return strcmp($a['proxima']['inicio'] ?? $a['bloqueo_inicio'], $b['proxima']['inicio'] ?? $b['bloqueo_inicio']);
+        });
+
+        return $items;
+    }
+
+    /**
+     * Las franjas que se pueden elegir al bloquear, por instalación: los
+     * bloques de BLOQUE_MINUTOS de su horario semanal (todos los días
+     * juntos), como en la agenda de reservas. Con un horario de 08:00 a
+     * 23:00 en una sola franja salen igualmente 08–09 … 22–23.
+     *
+     * @return array<int, array<int, array{0:string,1:string}>>
+     */
+    public function franjasParaBloqueo(): array
+    {
+        $aMin  = static fn (string $t): int => (int)substr($t, 0, 2) * 60 + (int)substr($t, 3, 2);
+        $aHora = static fn (int $m): string => sprintf('%02d:%02d', intdiv($m, 60), $m % 60);
+
+        $porInst = [];
+        foreach ($this->filas(
+            "SELECT h.horario_instalacionid, h.horario_desde, h.horario_hasta
+               FROM dsa_horario h
+               JOIN dsa_instalacion i ON i.instalacion_id = h.horario_instalacionid
+              WHERE h.horario_estado = 'A' AND i.instalacion_estado = 'A'") as $h) {
+            $desde = $aMin($h['horario_desde']);
+            $hasta = $aMin($h['horario_hasta']);
+            for ($t = $desde; $t < $hasta; $t += self::BLOQUE_MINUTOS) {
+                $e = min($t + self::BLOQUE_MINUTOS, $hasta);
+                $porInst[(int)$h['horario_instalacionid']][$aHora($t) . '-' . $aHora($e)] = [$aHora($t), $aHora($e)];
+            }
+        }
+
+        foreach ($porInst as &$bloques) {
+            ksort($bloques);
+            $bloques = array_values($bloques);
+        }
+        unset($bloques);
+
+        return $porInst;
+    }
+
+    /**
+     * Valida las franjas elegidas («HH:MM-HH:MM») y une las seguidas o
+     * solapadas en tramos: 18–19 y 19–20 bloquean 18:00–20:00 en una fila.
+     *
+     * @return array{0: string[], 1: array<int, array{0:int,1:int}>}|null
+     *         [franjas normalizadas, tramos en minutos] o null si alguna no vale
+     */
+    private function tramosDeFranjas(array $franjas): ?array
+    {
+        $validas = [];
+        foreach ($franjas as $f) {
+            if (!preg_match('/^(\d{2}):(\d{2})-(\d{2}):(\d{2})$/', (string)$f, $m)) { return null; }
+            $ini = (int)$m[1] * 60 + (int)$m[2];
+            $fin = (int)$m[3] * 60 + (int)$m[4];
+            if ((int)$m[2] > 59 || (int)$m[4] > 59 || $ini >= $fin || $fin > 1440) { return null; }
+            $validas[sprintf('%02d:%02d-%02d:%02d', $m[1], $m[2], $m[3], $m[4])] = [$ini, $fin];
+        }
+        ksort($validas);
+
+        $tramos = [];
+        foreach ($validas as [$ini, $fin]) {
+            $u = count($tramos) - 1;
+            if ($u >= 0 && $ini <= $tramos[$u][1]) {
+                $tramos[$u][1] = max($tramos[$u][1], $fin);
+            } else {
+                $tramos[] = [$ini, $fin];
+            }
+        }
+
+        return [array_keys($validas), $tramos];
     }
 
     public function guardarBloqueo(): string
     {
-        $id = (int)($_POST['bloqueo_id'] ?? 0);
+        $id    = (int)($_POST['bloqueo_id'] ?? 0);
+        $grupo = (int)($_POST['bloqueo_grupoid'] ?? 0);
+        $modo  = ($_POST['bloqueo_modo'] ?? 'C') === 'F' ? 'F' : 'C';
+        $edita = $id > 0 || $grupo > 0;
 
-        if ($id > 0 && !puede_editar('bloqueoList')) {
+        if ($edita && !puede_editar('bloqueoList')) {
             return $this->alerta('simple', 'Acceso denegado', 'Su rol no puede editar bloqueos.', 'error');
         }
-        if ($id === 0 && !puede_crear('bloqueoList')) {
+        if (!$edita && !puede_crear('bloqueoList')) {
             return $this->alerta('simple', 'Acceso denegado', 'Su rol no puede crear bloqueos.', 'error');
         }
 
         $instalacion = (int)($_POST['bloqueo_instalacionid'] ?? 0);
         $tipo        = in_array($_POST['bloqueo_tipo'] ?? 'M', ['M','E','O'], true) ? $_POST['bloqueo_tipo'] : 'M';
-        $inicio      = trim((string)($_POST['bloqueo_inicio'] ?? ''));
-        $fin         = trim((string)($_POST['bloqueo_fin'] ?? ''));
-        $motivo      = trim((string)($_POST['bloqueo_motivo'] ?? ''));
+        $motivo      = mb_substr(trim((string)($_POST['bloqueo_motivo'] ?? '')), 0, 150, 'UTF-8');
+
+        /* Lo que se edita tiene que seguir existiendo. */
+        if ($grupo > 0 && (int)$this->escalar(
+                "SELECT COUNT(1) FROM dsa_bloqueo_grupo WHERE grupo_id = :g", [':g' => $grupo]) === 0) {
+            return $this->alerta('simple', 'Bloqueo no encontrado', 'Ese bloqueo ya no existe; recargue la página.', 'error');
+        }
+        if ($id > 0) {
+            $actual = $this->filas(
+                "SELECT bloqueo_motivo, bloqueo_grupoid FROM dsa_bloqueo
+                  WHERE bloqueo_id = :id AND bloqueo_estado = 'A'", [':id' => $id]);
+            if (!$actual || (int)$actual[0]['bloqueo_grupoid'] > 0) {
+                return $this->alerta('simple', 'Bloqueo no encontrado', 'Ese bloqueo ya no existe; recargue la página.', 'error');
+            }
+            /* League guarda el id de su bloqueo en el partido: se cambia
+               reprogramando el partido, no aquí. */
+            if ($this->esBloqueoDeLiga($actual[0]['bloqueo_motivo'])) {
+                return $this->alerta('simple', 'Bloqueo de League',
+                    'Este bloqueo lo creó un partido de League; cámbielo reprogramando el partido.', 'warning');
+            }
+        }
 
         if ($instalacion <= 0 || $this->instalacion($instalacion) === null) {
             return $this->alerta('simple', 'Instalación no válida', 'Seleccione una instalación.', 'error');
         }
 
-        /* Los campos datetime-local llegan como "Y-m-dTH:i". */
-        $inicio = str_replace('T', ' ', $inicio);
-        $fin    = str_replace('T', ' ', $fin);
+        /* ---- Las filas que quedarán bloqueadas: [inicio, fin] ---- */
+        $filas = [];
+        $regla = null;
 
-        if ($inicio === '' || $fin === '') {
-            return $this->alerta('simple', 'Faltan fechas', 'Indique inicio y fin del bloqueo.', 'error');
-        }
-        if ($fin <= $inicio) {
-            return $this->alerta('simple', 'Rango no válido', 'El fin debe ser posterior al inicio.', 'error');
+        if ($modo === 'C') {
+            $inicio = trim((string)($_POST['bloqueo_inicio'] ?? ''));
+            $fin    = trim((string)($_POST['bloqueo_fin'] ?? ''));
+            if ($inicio === '' || $fin === '') {
+                return $this->alerta('simple', 'Faltan fechas', 'Indique inicio y fin del bloqueo.', 'error');
+            }
+
+            /* Los campos datetime-local llegan como "Y-m-dTH:i"; se normaliza
+               a "Y-m-d H:i:00" y se rechaza lo que no sea una fecha real. */
+            $normalizar = static function (string $v): ?string {
+                $d = \DateTime::createFromFormat('!Y-m-d\TH:i', $v)
+                  ?: \DateTime::createFromFormat('!Y-m-d H:i', $v)
+                  ?: \DateTime::createFromFormat('!Y-m-d H:i:s', $v);
+                return $d ? $d->format('Y-m-d H:i:00') : null;
+            };
+            $inicio = $normalizar($inicio);
+            $fin    = $normalizar($fin);
+
+            if ($inicio === null || $fin === null) {
+                return $this->alerta('simple', 'Fechas no válidas', 'Revise la fecha y hora de inicio y fin.', 'error');
+            }
+            if ($fin <= $inicio) {
+                return $this->alerta('simple', 'Rango no válido', 'El fin debe ser posterior al inicio.', 'error');
+            }
+            $filas[] = [$inicio, $fin];
+
+        } else {
+            $fDesde = \DateTime::createFromFormat('!Y-m-d', (string)($_POST['bloqueo_fechadesde'] ?? ''));
+            $fHasta = \DateTime::createFromFormat('!Y-m-d', (string)($_POST['bloqueo_fechahasta'] ?? ''));
+            if (!$fDesde || !$fHasta) {
+                return $this->alerta('simple', 'Fechas no válidas', 'Indique desde y hasta qué fecha se bloquea.', 'error');
+            }
+            if ($fHasta < $fDesde) {
+                return $this->alerta('simple', 'Rango no válido', 'La fecha final debe ser igual o posterior a la inicial.', 'error');
+            }
+            if ((int)$fDesde->diff($fHasta)->days + 1 > self::BLOQUEO_MAX_DIAS) {
+                return $this->alerta('simple', 'Rango demasiado largo', 'Un bloqueo por días y franjas abarca como máximo un año.', 'error');
+            }
+
+            $dias = array_values(array_unique(array_filter(
+                array_map('intval', (array)($_POST['bloqueo_dias'] ?? [])), static fn ($d) => $d >= 1 && $d <= 7)));
+            sort($dias);
+            if (!$dias) {
+                return $this->alerta('simple', 'Sin días', 'Marque al menos un día de la semana.', 'error');
+            }
+
+            $todoElDia = ($_POST['bloqueo_todoeldia'] ?? '') === 'S';
+            if ($todoElDia) {
+                $franjas = [];
+                $tramos  = [[0, 1440]];
+            } else {
+                $r = $this->tramosDeFranjas((array)($_POST['bloqueo_franjas'] ?? []));
+                if ($r === null) {
+                    return $this->alerta('simple', 'Franjas no válidas', 'Revise las franjas elegidas.', 'error');
+                }
+                [$franjas, $tramos] = $r;
+                if (!$tramos) {
+                    return $this->alerta('simple', 'Sin franjas', 'Elija al menos una franja o marque «Todo el día».', 'error');
+                }
+            }
+
+            for ($d = clone $fDesde; $d <= $fHasta; $d->modify('+1 day')) {
+                if (!in_array((int)$d->format('N'), $dias, true)) { continue; }
+                foreach ($tramos as [$ini, $fin]) {
+                    $base = strtotime($d->format('Y-m-d') . ' 00:00:00');
+                    $filas[] = [date('Y-m-d H:i:00', $base + $ini * 60), date('Y-m-d H:i:00', $base + $fin * 60)];
+                }
+            }
+            if (!$filas) {
+                return $this->alerta('simple', 'Ningún día en el rango',
+                    'Entre esas fechas no cae ninguno de los días marcados.', 'error');
+            }
+
+            $regla = [
+                ':desde'   => $fDesde->format('Y-m-d'),
+                ':hasta'   => $fHasta->format('Y-m-d'),
+                ':dias'    => implode(',', $dias),
+                ':franjas' => implode(',', $franjas),
+            ];
         }
 
         /* Un bloqueo sobre reservas ya aceptadas deja al cliente sin
            instalación: se avisa en lugar de romperlas en silencio. */
-        $enConflicto = (int)$this->escalar(
-            "SELECT COUNT(1) FROM dsa_reserva
-              WHERE reserva_instalacionid = :i
-                AND reserva_estado IN ('P','C')
-                AND TIMESTAMP(reserva_fecha, reserva_horainicio) < :fin
-                AND TIMESTAMP(reserva_fecha, reserva_horafin)    > :inicio",
-            [':i' => $instalacion, ':inicio' => $inicio, ':fin' => $fin]
-        );
-
-        $params = [':i' => $instalacion, ':t' => $tipo, ':ini' => $inicio, ':fin' => $fin,
-                   ':m' => $motivo !== '' ? $motivo : null,
-                   ':u' => (int)($_SESSION['usuarioid'] ?? 0) ?: null];
-
-        if ($id > 0) {
-            $params[':id'] = $id;
-            $n = $this->escribir(
-                "UPDATE dsa_bloqueo
-                    SET bloqueo_instalacionid = :i, bloqueo_tipo = :t,
-                        bloqueo_inicio = :ini, bloqueo_fin = :fin,
-                        bloqueo_motivo = :m, bloqueo_usuarioid = :u
-                  WHERE bloqueo_id = :id", $params);
-        } else {
-            $n = $this->escribir(
-                "INSERT INTO dsa_bloqueo
-                    (bloqueo_instalacionid, bloqueo_tipo, bloqueo_inicio, bloqueo_fin,
-                     bloqueo_motivo, bloqueo_usuarioid, bloqueo_estado)
-                 VALUES (:i, :t, :ini, :fin, :m, :u, 'A')", $params);
+        $reservas = $this->filas(
+            "SELECT TIMESTAMP(reserva_fecha, reserva_horainicio) AS ini,
+                    TIMESTAMP(reserva_fecha, reserva_horafin)    AS fin
+               FROM dsa_reserva
+              WHERE reserva_instalacionid = :i AND reserva_estado IN ('P','C')
+                AND TIMESTAMP(reserva_fecha, reserva_horainicio) < :hasta
+                AND TIMESTAMP(reserva_fecha, reserva_horafin)    > :desde",
+            [':i' => $instalacion, ':desde' => $filas[0][0], ':hasta' => end($filas)[1]]);
+        $enConflicto = 0;
+        foreach ($reservas as $r) {
+            foreach ($filas as [$ini, $fin]) {
+                if ($r['ini'] < $fin && $r['fin'] > $ini) { $enConflicto++; break; }
+            }
         }
 
-        if ($n < 0) {
+        $usuario = (int)($_SESSION['usuarioid'] ?? 0) ?: null;
+        $comun   = [':i' => $instalacion, ':t' => $tipo, ':m' => $motivo !== '' ? $motivo : null, ':u' => $usuario];
+
+        $con = $this->con();
+        if ($con === null) {
             return $this->alerta('simple', 'Error', 'No fue posible guardar el bloqueo.', 'error');
         }
 
-        $texto = 'El periodo quedó bloqueado y no se podrá reservar.';
-        if ($enConflicto > 0) {
-            $texto .= " Atención: hay {$enConflicto} reserva(s) vigente(s) dentro de ese periodo que deberá reubicar.";
+        try {
+            $con->beginTransaction();
+
+            /* Lo anterior se quita salvo que sea el mismo periodo continuo,
+               que se actualiza en su sitio y conserva su id. */
+            if ($grupo > 0) {
+                $con->prepare("DELETE FROM dsa_bloqueo_grupo WHERE grupo_id = :g")->execute([':g' => $grupo]);
+            } elseif ($id > 0 && $modo === 'F') {
+                $con->prepare("DELETE FROM dsa_bloqueo WHERE bloqueo_id = :id")->execute([':id' => $id]);
+            }
+
+            if ($modo === 'C' && $id > 0) {
+                $con->prepare(
+                    "UPDATE dsa_bloqueo
+                        SET bloqueo_instalacionid = :i, bloqueo_tipo = :t,
+                            bloqueo_inicio = :ini, bloqueo_fin = :fin,
+                            bloqueo_motivo = :m, bloqueo_usuarioid = :u
+                      WHERE bloqueo_id = :id")
+                    ->execute($comun + [':ini' => $filas[0][0], ':fin' => $filas[0][1], ':id' => $id]);
+            } else {
+                $grupoNuevo = null;
+                if ($modo === 'F') {
+                    $con->prepare(
+                        "INSERT INTO dsa_bloqueo_grupo
+                            (grupo_instalacionid, grupo_tipo, grupo_fechadesde, grupo_fechahasta,
+                             grupo_dias, grupo_franjas, grupo_motivo, grupo_usuarioid)
+                         VALUES (:i, :t, :desde, :hasta, :dias, :franjas, :m, :u)")
+                        ->execute($comun + $regla);
+                    $grupoNuevo = (int)$con->lastInsertId();
+                }
+
+                $ins = $con->prepare(
+                    "INSERT INTO dsa_bloqueo
+                        (bloqueo_instalacionid, bloqueo_grupoid, bloqueo_tipo, bloqueo_inicio, bloqueo_fin,
+                         bloqueo_motivo, bloqueo_usuarioid, bloqueo_estado)
+                     VALUES (:i, :g, :t, :ini, :fin, :m, :u, 'A')");
+                foreach ($filas as [$ini, $fin]) {
+                    $ins->execute($comun + [':g' => $grupoNuevo, ':ini' => $ini, ':fin' => $fin]);
+                }
+            }
+
+            $con->commit();
+        } catch (\Throwable $e) {
+            if ($con->inTransaction()) $con->rollBack();
+            return $this->alerta('simple', 'Error', 'No fue posible guardar el bloqueo.', 'error');
         }
 
-        return $this->alerta('recargar', 'Bloqueo registrado', $texto,
+        if ($modo === 'F') {
+            $nDias = count(array_unique(array_map(static fn ($f) => substr($f[0], 0, 10), $filas)));
+            $texto = ($nDias === 1 ? 'Quedó bloqueado 1 día' : "Quedaron bloqueados {$nDias} días")
+                   . ($todoElDia ? ' completos' : ' en las franjas elegidas') . '; no se podrán reservar.';
+            if ($todoElDia && $nDias === 1) { $texto = 'Quedó bloqueado 1 día completo; no se podrá reservar.'; }
+        } else {
+            $texto = 'El periodo quedó bloqueado y no se podrá reservar.';
+        }
+        if ($edita) {
+            $texto = 'Los cambios quedaron guardados. ' . $texto;
+        }
+        if ($enConflicto > 0) {
+            $texto .= $enConflicto === 1
+                ? ' Atención: hay 1 reserva vigente dentro que deberá reubicar.'
+                : " Atención: hay {$enConflicto} reservas vigentes dentro que deberá reubicar.";
+        }
+
+        return $this->alerta('recargar', $edita ? 'Bloqueo actualizado' : 'Bloqueo registrado', $texto,
             $enConflicto > 0 ? 'warning' : 'success');
     }
 
@@ -689,8 +1090,13 @@ class arenaController
             return $this->alerta('simple', 'Acceso denegado', 'Su rol no puede eliminar bloqueos.', 'error');
         }
 
-        $id = (int)($_POST['bloqueo_id'] ?? 0);
-        $n  = $this->escribir("DELETE FROM dsa_bloqueo WHERE bloqueo_id = :id", [':id' => $id]);
+        /* Una regla se borra entera: sus filas se van con ella (CASCADE). */
+        $grupo = (int)($_POST['bloqueo_grupoid'] ?? 0);
+        $id    = (int)($_POST['bloqueo_id'] ?? 0);
+
+        $n = $grupo > 0
+            ? $this->escribir("DELETE FROM dsa_bloqueo_grupo WHERE grupo_id = :g", [':g' => $grupo])
+            : $this->escribir("DELETE FROM dsa_bloqueo WHERE bloqueo_id = :id AND bloqueo_grupoid IS NULL", [':id' => $id]);
 
         return $n > 0
             ? $this->alerta('recargar', 'Bloqueo eliminado', 'La instalación vuelve a estar disponible en ese periodo.')
@@ -1090,6 +1496,107 @@ class arenaController
      * Tarifa por hora aplicable a una instalación en una fecha y hora.
      * Si hay una tarifa vigente para esa franja se usa; si no, la base.
      */
+    /** "HH:MM[:SS]" → minutos del día. */
+    private function aMinutos(string $t): int
+    {
+        $p = explode(':', $t);
+        return (int)$p[0] * 60 + (int)($p[1] ?? 0);
+    }
+
+    /**
+     * Las franjas de un día unidas en tramos cuando son seguidas o se
+     * solapan: con un horario de franjas de una hora (08–09, 09–10 …) el
+     * tramo es 08:00–23:00, y una reserva puede ocupar varias horas de él.
+     * Una pausa (12–14 sin franja) separa dos tramos.
+     *
+     * @return array<int, array{0:int,1:int}> [desde, hasta] en minutos
+     */
+    private function tramosDelDia(int $instalacionid, int $dia): array
+    {
+        $tramos = [];
+        foreach ($this->filas(
+            "SELECT horario_desde, horario_hasta FROM dsa_horario
+              WHERE horario_instalacionid = :i AND horario_dia = :d AND horario_estado = 'A'
+              ORDER BY horario_desde",
+            [':i' => $instalacionid, ':d' => $dia]) as $f) {
+            $a = $this->aMinutos($f['horario_desde']);
+            $b = $this->aMinutos($f['horario_hasta']);
+            $u = count($tramos) - 1;
+            if ($u >= 0 && $a <= $tramos[$u][1]) {
+                $tramos[$u][1] = max($tramos[$u][1], $b);
+            } else {
+                $tramos[] = [$a, $b];
+            }
+        }
+        return $tramos;
+    }
+
+    /**
+     * Importe de una reserva: cada parte se cobra al valor de la franja en
+     * la que cae (de 18:00 a 20:00 con la hora 19–20 a $35 y el resto a $25
+     * son $25 + $35). «valorhora» es el promedio, que es lo que se guarda
+     * en la reserva junto al total.
+     *
+     * @return array{total: float, valorhora: float, horas: float, sinTarifa: bool, partes: array}
+     */
+    public function importeReserva(int $instalacionid, string $fecha, string $inicio, string $fin): array
+    {
+        $aHora = static fn (int $m): string => sprintf('%02d:%02d', intdiv($m, 60), $m % 60);
+        $ini   = $this->aMinutos($inicio);
+        $finM  = $this->aMinutos($fin);
+        $dia   = (int)date('N', strtotime($fecha));
+
+        /* Se corta en los bordes de las franjas: dentro de una, un valor. */
+        $cortes = [$ini, $finM];
+        foreach ($this->filas(
+            "SELECT horario_desde, horario_hasta FROM dsa_horario
+              WHERE horario_instalacionid = :i AND horario_dia = :d AND horario_estado = 'A'",
+            [':i' => $instalacionid, ':d' => $dia]) as $f) {
+            foreach ([$this->aMinutos($f['horario_desde']), $this->aMinutos($f['horario_hasta'])] as $m) {
+                if ($m > $ini && $m < $finM) { $cortes[] = $m; }
+            }
+        }
+        $cortes = array_values(array_unique($cortes));
+        sort($cortes);
+
+        $total = 0.0; $sinTarifa = false; $partes = [];
+        for ($k = 0; $k < count($cortes) - 1; $k++) {
+            $horas = ($cortes[$k + 1] - $cortes[$k]) / 60;
+            $valor = $this->tarifaAplicable($instalacionid, $fecha, $aHora($cortes[$k]));
+            if ($valor <= 0) { $sinTarifa = true; }
+            $total += $horas * $valor;
+            $partes[] = ['desde' => $aHora($cortes[$k]), 'hasta' => $aHora($cortes[$k + 1]), 'horas' => $horas, 'valor' => $valor];
+        }
+
+        $horas = round(($finM - $ini) / 60, 2);
+        $total = round($total, 2);
+
+        return [
+            'total'     => $total,
+            'valorhora' => $horas > 0 ? round($total / $horas, 2) : 0.0,
+            'horas'     => $horas,
+            'sinTarifa' => $sinTarifa,
+            'partes'    => $partes,
+        ];
+    }
+
+    /** «2 h × $25.00 = $50.00», o «1 h × $25.00 + 1 h × $35.00 = $60.00» si cambia el valor. */
+    private function textoImporte(array $importe): string
+    {
+        $h = static fn (float $x): string => rtrim(rtrim(number_format($x, 2, '.', ''), '0'), '.') . ' h';
+
+        /* Partes seguidas con el mismo valor se cuentan juntas. */
+        $grupos = [];
+        foreach ($importe['partes'] as $p) {
+            $u = count($grupos) - 1;
+            if ($u >= 0 && abs($grupos[$u]['valor'] - $p['valor']) < 0.005) { $grupos[$u]['horas'] += $p['horas']; }
+            else { $grupos[] = ['horas' => $p['horas'], 'valor' => $p['valor']]; }
+        }
+
+        $suma = implode(' + ', array_map(static fn ($g) => $h($g['horas']) . ' × $' . number_format($g['valor'], 2), $grupos));
+        return $suma . ' = $' . number_format($importe['total'], 2);
+    }
+
     public function tarifaAplicable(int $instalacionid, string $fecha, string $hora): float
     {
         $dia = (int)date('N', strtotime($fecha));
@@ -1110,6 +1617,21 @@ class arenaController
 
         if ($especial) {
             return (float)$especial[0]['tarifa_valorhora'];
+        }
+
+        /* El valor propio de la franja del horario que contiene esa hora
+           (horarioList). Sin valor propio, el de la instalación. */
+        $franja = $this->filas(
+            "SELECT horario_valorhora FROM dsa_horario
+              WHERE horario_instalacionid = :i AND horario_dia = :d AND horario_estado = 'A'
+                AND horario_desde <= :h AND horario_hasta > :h2
+                AND horario_valorhora IS NOT NULL
+              ORDER BY horario_desde DESC LIMIT 1",
+            [':i' => $instalacionid, ':d' => $dia, ':h' => $hora, ':h2' => $hora]
+        );
+
+        if ($franja) {
+            return (float)$franja[0]['horario_valorhora'];
         }
 
         return (float)$this->escalar(
@@ -1141,16 +1663,16 @@ class arenaController
         $dia     = (int)date('N', strtotime($fecha));
         $nombres = $this->dias();
 
-        /* 1. Dentro del horario semanal */
-        $cabe = (int)$this->escalar(
-            "SELECT COUNT(1) FROM dsa_horario
-              WHERE horario_instalacionid = :i AND horario_dia = :d
-                AND horario_estado = 'A'
-                AND horario_desde <= :ini AND horario_hasta >= :fin",
-            [':i' => $instalacionid, ':d' => $dia, ':ini' => $inicio, ':fin' => $fin]
-        );
+        /* 1. Dentro del horario semanal: en un tramo de franjas seguidas
+              (08–09, 09–10 … cuentan como 08:00–23:00). */
+        $ini  = $this->aMinutos($inicio);
+        $finM = $this->aMinutos($fin);
+        $cabe = false;
+        foreach ($this->tramosDelDia($instalacionid, $dia) as $t) {
+            if ($t[0] <= $ini && $t[1] >= $finM) { $cabe = true; break; }
+        }
 
-        if ($cabe === 0) {
+        if (!$cabe) {
             return ['ok' => false,
                     'motivo' => 'Fuera del horario de atención: el ' . strtolower($nombres[$dia]) .
                                 ' no hay una franja que cubra ' . $inicio . '–' . $fin . '.'];
@@ -1286,10 +1808,19 @@ class arenaController
         $hoy   = date('Y-m-d');
         $ahora = $fecha === $hoy ? (int)date('G') * 60 + (int)date('i') : null;
 
+        /* Las franjas seguidas forman un tramo: el formulario las pinta en
+           una sola rejilla y deja elegir varias horas dentro del tramo. */
+        $tramos = $this->tramosDelDia($instalacionid, $dia);
+        $tramoDe = static function (int $m) use ($tramos): int {
+            foreach ($tramos as $n => $t) { if ($m >= $t[0] && $m < $t[1]) { return $n; } }
+            return 0;
+        };
+
         $bloques = [];
-        foreach ($franjas as $k => $f) {
+        foreach ($franjas as $f) {
             $desde = $aMin($f['horario_desde']);
             $hasta = $aMin($f['horario_hasta']);
+            $k     = $tramoDe($desde);
             for ($t = $desde; $t < $hasta; $t += self::BLOQUE_MINUTOS) {
                 $e = min($t + self::BLOQUE_MINUTOS, $hasta);
                 $estado = 'libre'; $detalle = '';
@@ -1321,7 +1852,7 @@ class arenaController
             'ok'        => true,
             'dia'       => $dia,
             'diaNombre' => $nombres[$dia],
-            'franjas'   => array_map(static fn ($f) => [substr($f['horario_desde'], 0, 5), substr($f['horario_hasta'], 0, 5)], $franjas),
+            'franjas'   => array_map(static fn ($t) => [$aHora($t[0]), $aHora($t[1])], $tramos),
             'bloques'   => $bloques,
             'libres'    => count(array_filter($bloques, static fn ($b) => $b['estado'] === 'libre')),
         ];
@@ -1579,10 +2110,12 @@ class arenaController
         /* El importe se congela al reservar: un cambio posterior de tarifa
            no altera lo ya pactado con el cliente. */
         $horas     = round((strtotime($fin) - strtotime($inicio)) / 3600, 2);
-        $valorhora = $this->tarifaAplicable($instalacion, $fecha, $inicio);
-        $total     = round($horas * $valorhora, 2);
+        /* Cada hora al valor de su franja (horarioList). */
+        $importe   = $this->importeReserva($instalacion, $fecha, $inicio, $fin);
+        $valorhora = $importe['valorhora'];
+        $total     = $importe['total'];
 
-        if ($total <= 0) {
+        if ($total <= 0 || $importe['sinTarifa']) {
             return $this->alerta('simple', 'Tarifa no definida',
                 'La instalación no tiene tarifa por hora. Configúrela antes de reservar.', 'error');
         }
@@ -1647,8 +2180,7 @@ class arenaController
 
         return $n > 0
             ? $this->alerta('redireccionar', 'Reserva creada',
-                "{$codigo} · {$horas} h × \$" . number_format($valorhora, 2) .
-                " = \$" . number_format($total, 2) . ". Registre el abono desde el detalle.",
+                "{$codigo} · " . $this->textoImporte($importe) . ". Registre el abono desde el detalle.",
                 'success', APP_URL . 'reservaList/')
             : $this->alerta('simple', 'Error', 'No fue posible crear la reserva.', 'error');
     }
@@ -1890,7 +2422,8 @@ class arenaController
                 '. Cámbielas de horario o cancélelas, o elija otra hora.', 'error');
         }
 
-        if ($this->tarifaAplicable($instalacion, $fecha, $inicio) <= 0) {
+        $importe = $this->importeReserva($instalacion, $fecha, $inicio, $fin);
+        if ($importe['total'] <= 0 || $importe['sinTarifa']) {
             return $this->alerta('simple', 'Tarifa no definida',
                 'La instalación no tiene tarifa por hora. Configúrela antes de reservar.', 'error');
         }
@@ -1989,19 +2522,20 @@ class arenaController
                     if ($ya === 0) {
                         $disp = $this->verificarDisponibilidad((int)$f['fija_instalacionid'], $fecha,
                                                                $inicio, $fin, 0, $fijaId);
-                        $valorhora = $this->tarifaAplicable((int)$f['fija_instalacionid'], $fecha, $inicio);
-                        $horas     = round((strtotime($fin) - strtotime($inicio)) / 3600, 2);
+                        $importe   = $this->importeReserva((int)$f['fija_instalacionid'], $fecha, $inicio, $fin);
+                        $valorhora = $importe['valorhora'];
+                        $horas     = $importe['horas'];
 
                         if (!$disp['ok']) {
                             $resultado['omitidas'][$fecha] = $disp['motivo'];
-                        } elseif ($valorhora <= 0) {
+                        } elseif ($importe['total'] <= 0 || $importe['sinTarifa']) {
                             $resultado['omitidas'][$fecha] = 'Sin tarifa por hora.';
                         } else {
                             $insertar->execute([
                                 ':cod' => $this->siguienteCodigo(), ':c' => (int)$f['fija_clienteid'],
                                 ':i' => (int)$f['fija_instalacionid'], ':s' => (int)$f['fija_sedeid'],
                                 ':fj' => $fijaId, ':f' => $fecha, ':ini' => $inicio, ':fin' => $fin,
-                                ':h' => $horas, ':v' => $valorhora, ':t' => round($horas * $valorhora, 2),
+                                ':h' => $horas, ':v' => $valorhora, ':t' => $importe['total'],
                                 ':o' => $f['fija_observacion'],
                                 ':u' => (int)($_SESSION['usuarioid'] ?? 0) ?: null,
                             ]);

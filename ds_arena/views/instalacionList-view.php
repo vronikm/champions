@@ -120,6 +120,13 @@ require_once __DIR__ . "/inc/layout-top.php";
                         <td class="text-end">
                             <strong>$<?php echo number_format((float)$i['instalacion_valorhora'], 2); ?></strong>
                             <small class="d-block text-muted">por hora</small>
+                            <?php if ((int)$i['franjas_valor'] > 0): ?>
+                                <?php /* Algunas franjas del horario tienen su propio valor. */ ?>
+                                <a class="d-block small text-nowrap" href="<?php echo APP_URL; ?>horarioList/?instalacion=<?php echo (int)$i['instalacion_id']; ?>"
+                                   title="<?php echo (int)$i['franjas_valor']; ?> franja(s) con valor propio">
+                                    <i class="fas fa-tags me-1"></i>varía por horario
+                                </a>
+                            <?php endif; ?>
                         </td>
                         <td>
                             <?php if ((int)$i['franjas'] > 0): ?>

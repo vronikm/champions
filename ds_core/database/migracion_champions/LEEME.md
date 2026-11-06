@@ -14,7 +14,7 @@ MYSQL=/ruta/a/mysql MYSQL_OPTS="-u USUARIO -pCLAVE" \
   ds_core/database/migracion_champions/aplicar_migracion.sh BASE
 ```
 
-Aplica los 83 archivos en el orden correcto y se detiene en el primer error.
+Aplica los 85 archivos en el orden correcto y se detiene en el primer error.
 Antes de empezar comprueba que `BASE` sea una copia de SoccerEasy **sin migrar**:
 si ya tiene `facturas_electronicas`, no aplica nada, porque varias migraciones no
 se pueden repetir.
@@ -116,6 +116,13 @@ en desarrollo y llevar el resultado a producción con un volcado (ver más abajo
     el mismo día de la semana a la misma hora hasta que se cancela. Las
     próximas semanas quedan como reservas normales y la serie aparta la
     franja más allá. Repetible.
+23. `082_arena_bloqueo_franjas.sql`: bloqueos de Arena por días de la semana
+    y franjas (`dsa_bloqueo_grupo` y `dsa_bloqueo.bloqueo_grupoid`): «del 6 al
+    11 de noviembre, de lunes a viernes, de 18:00 a 19:00». Cada día y tramo
+    es un bloqueo normal ligado a su regla. Repetible.
+24. `083_arena_horario_valor.sql`: valor por hora propio de cada franja del
+    horario (`dsa_horario.horario_valorhora`). Vacío = el de la instalación;
+    al reservar se usa el de la franja si lo tiene. Repetible.
 
 ```bash
 mysql -u USUARIO -p --default-character-set=utf8mb4 BASE < ARCHIVO.sql

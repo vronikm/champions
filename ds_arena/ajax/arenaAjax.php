@@ -99,6 +99,7 @@ switch ($_POST['modulo_arena']) {
 
     case 'guardarHorario':      echo $insArena->guardarHorario();      break;
     case 'eliminarHorario':     echo $insArena->eliminarHorario();     break;
+    case 'guardarValorHorario': echo $insArena->guardarValorHorario(); break;
 
     case 'guardarBloqueo':      echo $insArena->guardarBloqueo();      break;
     case 'eliminarBloqueo':     echo $insArena->eliminarBloqueo();     break;

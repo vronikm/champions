@@ -1,10 +1,11 @@
 <?php
 /*
-| Pantalla de acceso a DigiSports Basketball
+| Pantalla de acceso a DigiSports
 |--------------------------------------------------------------------------
-| Comparte lenguaje visual con el Hub: carga digisports.css (los tokens del
-| ecosistema) y encima login.css. Entrar y llegar al Hub tienen que
-| sentirse como la misma aplicacion.
+| La entrada es de la plataforma: logo y colores de DigiSports (azul y
+| verde, en login.css). La escuela conserva su escudo en la tarjeta del
+| formulario. Carga digisports.css (superficies, texto, radios) y encima
+| login.css.
 |
 | EL POST SE PROCESA ANTES DE IMPRIMIR NADA. No es un detalle de estilo:
 | estaba al final del archivo, y como output_buffering son 4096 bytes y la
@@ -36,6 +37,7 @@ unset($_SESSION['login_aviso']);
    object-fit: cover para que esos margenes no encojan el escudo. */
 $icono  = ds_recurso('ds_core/assets/img/icon_cz98px.png');
 $logo   = ds_recurso('ds_core/assets/img/logo.png');
+$logo_DS= ds_recurso('ds_core/assets/img/DigiSports.png');
 $vendor = APP_URL . 'app/views/dist/';
 
 /* Fotografia de fondo. Vive en ds_core/assets porque es del ecosistema, no
@@ -108,19 +110,25 @@ $funciones = [
 
         <span class="dsl-hero__trama" aria-hidden="true"></span>
 
-        <div class="dsl-marca">
-            <img src="<?php echo $logo; ?>" alt="" class="dsl-marca__logo">
-            <p class="dsl-marca__texto">
-                <?php echo DS_HUB_NAME; ?>
-                <span class="dsl-marca__modulo">Tecnología que impulsa tu deporte</span>
-            </p>
+        <?php /* El logo ya trae dibujados el nombre y el lema, así que no se
+                 repiten en texto. Va sin placa, con un halo claro detrás
+                 (ver .dsl-ds en login.css). */ ?>
+        <div class="dsl-ds">
+            <img src="<?php echo $logo_DS; ?>" class="dsl-ds__logo"
+                 alt="<?php echo DS_HUB_NAME; ?> · Tecnología que impulsa tu deporte">
         </div>
 
         <div class="dsl-hero__mensaje">
-            <h1 class="dsl-hero__titulo">Bienvenido</h1>
+            <span class="dsl-hero__etiqueta">
+                <i class="fas fa-futbol" aria-hidden="true"></i>
+                Tecnología que impulsa tu deporte
+            </span>
+            <h1 class="dsl-hero__titulo">
+                Bienvenido a<br><span class="dsl-degradado"><?php echo DS_HUB_NAME; ?></span>
+            </h1>
             <div class="dsl-hero__regla"></div>
             <p class="dsl-hero__texto">
-                Inicia sesión para gestionar tu club desde
+                Gestiona tu club deportivo desde
                 <b>un solo lugar</b>.
             </p>
         </div>
@@ -188,7 +196,7 @@ $funciones = [
                     echo htmlspecialchars($nombreEscuela, ENT_QUOTES, 'UTF-8'); ?></h2>
             <?php endif; ?>
 
-            <div class="dsl-card__regla"></div>
+            <p class="dsl-card__ayuda">Ingresa con el usuario y la contraseña de tu cuenta.</p>
 
             <form method="POST" action="" id="formLogin">
 
@@ -247,12 +255,6 @@ $funciones = [
                     <i class="fas fa-arrow-right" aria-hidden="true"></i>
                 </button>
             </form>
-
-            <div class="dsl-pie__sep"></div>
-
-            <p class="dsl-pie">
-                ¿Problemas para entrar? <strong>Contacta al administrador.</strong><br>
-            </p>
         </div>
     </section>
 </div>
@@ -301,7 +303,7 @@ Swal.fire({
     icon:  'error',
     title: 'No se pudo iniciar sesión',
     text:  <?php echo json_encode($avisoLogin, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
-    confirmButtonColor: '#ff7900'
+    confirmButtonColor: '#2b9fd4'
 }).then(function () {
     var u = document.getElementById('login_usuario');
     if (u) { u.focus(); }

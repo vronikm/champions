@@ -624,6 +624,17 @@
 				$config['webservices'] = array_replace_recursive($config['webservices'] ?? [], sri_webservices());
 			}
 
+			// 5. Establecimiento y punto de emisión: los del punto asignado a
+			//    este módulo en Core › Puntos de emisión, que es donde se
+			//    definen (con su numeración por ambiente). Los campos de
+			//    facturas_electronicas_config quedan sólo como respaldo si el
+			//    módulo aún no tiene punto: emitir lo impide igualmente.
+			$config['punto_modulo'] = function_exists('facturacion_punto_de') ? facturacion_punto_de(DS_MODULO) : [];
+			if(!empty($config['punto_modulo'])){
+				$config['emisor']['codigo_establecimiento'] = (string)$config['punto_modulo']['punto_establecimiento'];
+				$config['emisor']['punto_emision'] = (string)$config['punto_modulo']['punto_codigo'];
+			}
+
 			return $config;
 		}
 
@@ -1158,19 +1169,16 @@
 			$formasPago = $config['formas_pago'] ?? [];
 			$ambiente = in_array((string)($_POST['ambiente'] ?? '1'), ['1', '2'], true) ? (string)$_POST['ambiente'] : '1';
 			$ruc = preg_replace('/\D+/', '', (string)($_POST['ruc'] ?? ''));
-			$establecimiento = str_pad(substr(preg_replace('/\D+/', '', (string)($_POST['codigo_establecimiento'] ?? '')), 0, 3), 3, '0', STR_PAD_LEFT);
-			$puntoEmision = str_pad(substr(preg_replace('/\D+/', '', (string)($_POST['punto_emision'] ?? '')), 0, 3), 3, '0', STR_PAD_LEFT);
+			/* Establecimiento y punto ya no se editan aquí: se definen en
+			   Core › Puntos de emisión (sriConfig() los toma de allí). Se
+			   guardan en la configuración sólo como copia de respaldo. */
+			$establecimiento = str_pad((string)($config['emisor']['codigo_establecimiento'] ?? '001'), 3, '0', STR_PAD_LEFT);
+			$puntoEmision = str_pad((string)($config['emisor']['punto_emision'] ?? '001'), 3, '0', STR_PAD_LEFT);
 			$iva = (string)($_POST['iva_tarifa_default'] ?? '0');
 			$formaPago = (string)($_POST['forma_pago_default'] ?? '20');
 			$obligado = strtoupper((string)($_POST['obligado_contabilidad'] ?? 'NO')) === 'SI' ? 'SI' : 'NO';
-			$secuencialInicio = max(1, min(999999999, (int)($_POST['secuencial_inicio'] ?? 1)));
-
 			if(strlen($ruc) !== 13 || substr($ruc, -3) === '000'){
 				return $this->respuestaJson('simple', 'RUC no valido', 'El RUC del emisor debe tener 13 digitos y terminar con un codigo de establecimiento valido.', 'error');
-			}
-
-			if($establecimiento === '000' || $puntoEmision === '000'){
-				return $this->respuestaJson('simple', 'Establecimiento no valido', 'El establecimiento y punto de emision deben tener tres digitos y no pueden ser 000.', 'error');
 			}
 
 			if(!in_array($iva, ['0', '12', '14', '15'], true)){
@@ -1259,7 +1267,9 @@
 				'iva_tarifa_default' => (float)$local['iva_tarifa_default'],
 				'forma_pago_default' => $local['forma_pago_default'],
 				'valores_incluyen_iva' => !empty($config['valores_incluyen_iva']) ? 1 : 0,
-				'secuencial_inicio' => $secuencialInicio,
+				/* Columna heredada: la numeración ya no sale de aquí sino del
+				   contador por ambiente. Se conserva el valor que tenía. */
+				'secuencial_inicio' => max(1, (int)($config['secuencial_inicio'] ?? 1)),
 				'ruc' => $em['ruc'],
 				'razon_social' => $em['razon_social'],
 				'nombre_comercial' => $em['nombre_comercial'],
@@ -1865,16 +1875,23 @@
 			return 'El SRI indica que el secuencial '.$numero.' ya fue registrado. No se debe reenviar la misma clave de acceso; consulte la factura y, si no esta autorizada, genere una nueva factura con el siguiente secuencial.';
 		}
 
-		private function reservarSecuencialFactura(\PDO $conexion, $tipoComprobante, $establecimiento, $puntoEmision, $inicio = 1){
-			$inicio = max(1, (int)$inicio);
-			$insert = $conexion->prepare("INSERT IGNORE INTO facturas_electronicas_secuenciales (tipo_comprobante, establecimiento, punto_emision, secuencial_actual) VALUES (:tipo, :estab, :pto, 0)");
-			$insert->execute([':tipo'=>$tipoComprobante, ':estab'=>$establecimiento, ':pto'=>$puntoEmision]);
-			$maxStmt = $conexion->prepare("SELECT COALESCE(MAX(CAST(secuencial AS UNSIGNED)), 0) AS max_secuencial FROM facturas_electronicas WHERE tipo_comprobante = :tipo AND establecimiento = :estab AND punto_emision = :pto");
-			$maxStmt->execute([':tipo'=>$tipoComprobante, ':estab'=>$establecimiento, ':pto'=>$puntoEmision]);
+		/**
+		 * Reserva el siguiente secuencial de la terna EN EL AMBIENTE dado:
+		 * pruebas y producción llevan contadores separados (migración
+		 * 084_secuencial_por_ambiente). El número de partida lo fija
+		 * Core › Puntos de emisión (un «Siguiente secuencial» por ambiente),
+		 * que escribe directamente en el contador.
+		 */
+		private function reservarSecuencialFactura(\PDO $conexion, $tipoComprobante, $establecimiento, $puntoEmision, $ambiente = '1'){
+			$ambiente = (string)$ambiente === '2' ? '2' : '1';
+			$insert = $conexion->prepare("INSERT IGNORE INTO facturas_electronicas_secuenciales (tipo_comprobante, establecimiento, punto_emision, ambiente, secuencial_actual) VALUES (:tipo, :estab, :pto, :amb, 0)");
+			$insert->execute([':tipo'=>$tipoComprobante, ':estab'=>$establecimiento, ':pto'=>$puntoEmision, ':amb'=>$ambiente]);
+			$maxStmt = $conexion->prepare("SELECT COALESCE(MAX(CAST(secuencial AS UNSIGNED)), 0) AS max_secuencial FROM facturas_electronicas WHERE tipo_comprobante = :tipo AND establecimiento = :estab AND punto_emision = :pto AND ambiente = :amb");
+			$maxStmt->execute([':tipo'=>$tipoComprobante, ':estab'=>$establecimiento, ':pto'=>$puntoEmision, ':amb'=>$ambiente]);
 			$maxUsado = (int)($maxStmt->fetchColumn() ?: 0);
-			$inicioSeguro = max($inicio, $maxUsado + 1);
-			$update = $conexion->prepare("UPDATE facturas_electronicas_secuenciales SET secuencial_actual = LAST_INSERT_ID(GREATEST(secuencial_actual + 1, CAST(:inicio AS UNSIGNED))) WHERE tipo_comprobante = :tipo AND establecimiento = :estab AND punto_emision = :pto");
-			$update->execute([':tipo'=>$tipoComprobante, ':estab'=>$establecimiento, ':pto'=>$puntoEmision, ':inicio'=>$inicioSeguro]);
+			$inicioSeguro = $maxUsado + 1;
+			$update = $conexion->prepare("UPDATE facturas_electronicas_secuenciales SET secuencial_actual = LAST_INSERT_ID(GREATEST(secuencial_actual + 1, CAST(:inicio AS UNSIGNED))) WHERE tipo_comprobante = :tipo AND establecimiento = :estab AND punto_emision = :pto AND ambiente = :amb");
+			$update->execute([':tipo'=>$tipoComprobante, ':estab'=>$establecimiento, ':pto'=>$puntoEmision, ':amb'=>$ambiente, ':inicio'=>$inicioSeguro]);
 			$secuencial = (int)$conexion->lastInsertId();
 			if($secuencial <= 0){ throw new \RuntimeException('No fue posible reservar el secuencial de la factura.'); }
 			return str_pad((string)$secuencial, 9, '0', STR_PAD_LEFT);
@@ -3000,6 +3017,16 @@
 			if(empty($pagosIds)){ return $this->respuestaJson('simple', 'Seleccione pagos', 'Seleccione al menos un pago pendiente para generar la factura.', 'warning'); }
 			$ruc = preg_replace('/\D+/', '', (string)($emisor['ruc'] ?? ''));
 			if(strlen($ruc) !== 13){ return $this->respuestaJson('simple', 'RUC emisor no valido', 'Configure un RUC de 13 digitos en config/sri.php o en las variables SENDERO_SRI_*.', 'error'); }
+			/* El número sale del punto de emisión del módulo (Core › Puntos de
+			   emisión). Sin punto, o con el punto inactivo, no se factura: se
+			   emitiría fuera de la numeración declarada. */
+			$puntoModulo = $config['punto_modulo'] ?? [];
+			if(empty($puntoModulo)){
+				return $this->respuestaJson('simple', 'Sin punto de emisión', 'Este módulo no tiene punto de emisión asignado. Asígnelo en Core › Puntos de emisión antes de facturar.', 'warning');
+			}
+			if(($puntoModulo['punto_estado'] ?? '') !== 'A'){
+				return $this->respuestaJson('simple', 'Punto de emisión inactivo', 'El punto '.$puntoModulo['punto_establecimiento'].'-'.$puntoModulo['punto_codigo'].' está inactivo. Actívelo en Core › Puntos de emisión antes de facturar.', 'warning');
+			}
 			$conexion = $this->conectar();
 			try{
 				$conexion->beginTransaction();
@@ -3012,7 +3039,7 @@
 				$tipoComprobante = '01';
 				$establecimiento = str_pad((string)($emisor['codigo_establecimiento'] ?? '001'), 3, '0', STR_PAD_LEFT);
 				$puntoEmision = str_pad((string)($emisor['punto_emision'] ?? '001'), 3, '0', STR_PAD_LEFT);
-				$secuencial = $this->reservarSecuencialFactura($conexion, $tipoComprobante, $establecimiento, $puntoEmision, (int)($config['secuencial_inicio'] ?? 1));
+				$secuencial = $this->reservarSecuencialFactura($conexion, $tipoComprobante, $establecimiento, $puntoEmision, (string)($config['ambiente'] ?? '1'));
 				$codigoNumerico = $service->generarCodigoNumerico();
 				$fechaEmision = date('Y-m-d');
 				$claveAcceso = $service->generarClaveAcceso(date('dmY'), $tipoComprobante, $ruc, (string)($config['ambiente'] ?? '1'), $establecimiento.$puntoEmision, $secuencial, $codigoNumerico, (string)($config['tipo_emision'] ?? '1'));

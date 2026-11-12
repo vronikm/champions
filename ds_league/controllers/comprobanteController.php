@@ -265,7 +265,9 @@ class comprobanteController extends finanzaController
         $punto = facturacion_punto_de('league');
 
         try {
-            $secuencial = facturacion_reservar_secuencial('league', '01');
+            /* Con el mismo ambiente con el que se arma la clave de acceso:
+               pruebas y producción numeran por separado. */
+            $secuencial = facturacion_reservar_secuencial('league', '01', (string)$cfg['ambiente']);
         } catch (\Throwable $e) {
             return $this->respuesta('simple', 'No se pudo reservar el número',
                 $e->getMessage(), 'error');

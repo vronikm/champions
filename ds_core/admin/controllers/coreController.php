@@ -2356,19 +2356,39 @@ class coreController
         /* Se cuenta desde la vista consolidada y no desde una tabla
            concreta: es lo que permite ver que un punto ya fue usado,
            venga el comprobante del módulo que venga. */
-        return $this->filas(
+        $puntos = $this->filas(
             "SELECT P.*,
-                    COALESCE(S.secuencial_actual, 0) AS contador,
                     (SELECT COUNT(*) FROM v_comprobante_emitido V
                       WHERE V.establecimiento = P.punto_establecimiento
-                        AND V.punto_emision   = P.punto_codigo) AS emitidos
+                        AND V.punto_emision   = P.punto_codigo) AS emitidos,
+                    (SELECT COUNT(*) FROM v_comprobante_emitido V
+                      WHERE V.establecimiento = P.punto_establecimiento
+                        AND V.punto_emision   = P.punto_codigo
+                        AND SUBSTRING(V.clave_acceso, 24, 1) = '1') AS emitidos_1,
+                    (SELECT COUNT(*) FROM v_comprobante_emitido V
+                      WHERE V.establecimiento = P.punto_establecimiento
+                        AND V.punto_emision   = P.punto_codigo
+                        AND SUBSTRING(V.clave_acceso, 24, 1) = '2') AS emitidos_2
                FROM facturas_electronicas_punto_emision P
-               LEFT JOIN facturas_electronicas_secuenciales S
-                      ON S.establecimiento   = P.punto_establecimiento
-                     AND S.punto_emision     = P.punto_codigo
-                     AND S.tipo_comprobante  = '01'
               ORDER BY P.punto_establecimiento, P.punto_codigo"
         );
+
+        /* El contador va por ambiente (migración 084_secuencial_por_ambiente):
+           un JOIN directo devolvería cada punto dos veces. Se calcula el
+           próximo número de cada ambiente con la misma regla que la reserva. */
+        foreach ($puntos as &$p) {
+            foreach (['1', '2'] as $amb) {
+                $p['ultimo_' . $amb] = facturacion_ultimo_emitido('01', $p['punto_establecimiento'], $p['punto_codigo'], $amb);
+                $sig = facturacion_siguiente_secuencial('01', $p['punto_establecimiento'], $p['punto_codigo'], $amb);
+                if ($amb === '2') {
+                    $sig = max($sig, (int)$p['punto_secuencialinicio']);   /* el «desde» sólo cuenta en producción */
+                }
+                $p['siguiente_' . $amb] = $sig;
+            }
+        }
+        unset($p);
+
+        return $puntos;
     }
 
     /** Módulos del ecosistema que todavía no tienen punto asignado. */
@@ -2407,7 +2427,15 @@ class coreController
         $modulo  = strtolower(trim((string)($_POST['punto_modulo'] ?? '')));
         $estab   = trim((string)($_POST['punto_establecimiento'] ?? ''));
         $codigo  = trim((string)($_POST['punto_codigo'] ?? ''));
-        $inicio  = (int)($_POST['punto_secuencialinicio'] ?? 1);
+        /* Siguiente secuencial de cada ambiente ('2' producción, '1'
+           pruebas). Producción es además el inicio de la serie del punto
+           (punto_secuencialinicio). Se acepta todavía el campo viejo por si
+           llega de una pantalla en caché. */
+        $siguiente = [
+            '2' => (int)($_POST['punto_siguiente_2'] ?? ($_POST['punto_secuencialinicio'] ?? 1)),
+            '1' => (int)($_POST['punto_siguiente_1'] ?? 1),
+        ];
+        $inicio  = $siguiente['2'];
         $desc    = trim((string)($_POST['punto_descripcion'] ?? ''));
         $estado  = ($_POST['punto_estado'] ?? 'I') === 'A' ? 'A' : 'I';
 
@@ -2423,9 +2451,11 @@ class coreController
             return $this->alerta('simple', 'Punto de emisión no válido',
                 'El punto de emisión son tres dígitos, por ejemplo 002.', 'error');
         }
-        if ($inicio < 1 || $inicio > 999999999) {
-            return $this->alerta('simple', 'Secuencial no válido',
-                'El número inicial debe estar entre 1 y 999999999.', 'error');
+        foreach ($siguiente as $v) {
+            if ($v < 1 || $v > 999999999) {
+                return $this->alerta('simple', 'Secuencial no válido',
+                    'El siguiente secuencial debe estar entre 1 y 999999999.', 'error');
+            }
         }
 
         /*----------  El módulo tiene que existir  ----------*/
@@ -2440,17 +2470,15 @@ class coreController
            impide dejar el punto apuntando a un secuencial ya usado: eso se
            descubriría al emitir, con el documento a medio hacer. Se
            comprueba aquí, que es donde el aviso todavía sirve. */
-        $emitido = (int)$this->escalar(
-            "SELECT COALESCE(MAX(CAST(secuencial AS UNSIGNED)), 0)
-               FROM v_comprobante_emitido
-              WHERE establecimiento = :e AND punto_emision = :p",
-            [':e' => $estab, ':p' => $codigo]
-        );
-
-        if ($emitido > 0 && $inicio <= $emitido) {
-            return $this->alerta('simple', 'Numeración ya utilizada',
-                "Desde {$estab}-{$codigo} ya se emitió hasta el número {$emitido}. "
-                . 'El número inicial debe ser mayor.', 'error');
+        /* Cada ambiente contra lo emitido EN ÉL: el SRI lleva registros
+           separados, y en pruebas se puede reiniciar sin tocar producción. */
+        foreach (['2' => 'producción', '1' => 'pruebas'] as $amb => $nombreAmb) {
+            $emitido = facturacion_ultimo_emitido('01', $estab, $codigo, $amb);
+            if ($emitido > 0 && $siguiente[$amb] <= $emitido) {
+                return $this->alerta('simple', 'Numeración ya utilizada',
+                    "Desde {$estab}-{$codigo} ya se emitió en {$nombreAmb} hasta el número {$emitido}. "
+                    . 'El siguiente secuencial de ' . $nombreAmb . ' debe ser ' . ($emitido + 1) . ' o mayor.', 'error');
+            }
         }
 
         /*----------  Escritura  ----------*/
@@ -2484,9 +2512,20 @@ class coreController
                 ':d' => $desc,   ':s' => $estado, ':u' => usuario_actual_id() ?: null,
             ]);
 
+            /* El contador de cada ambiente: es lo que lee la reserva del
+               número al emitir (ds_core/inc/facturacion.php y Fútbol). */
+            foreach ($siguiente as $amb => $v) {
+                $error = facturacion_fijar_siguiente('01', $estab, $codigo, (string)$amb, $v);
+                if ($error !== '') {
+                    return $this->alerta('simple', 'Secuencial no guardado',
+                        "El punto {$estab}-{$codigo} se guardó, pero el secuencial no: {$error}", 'warning');
+                }
+            }
+
             $accion = $id > 0 ? 'actualizó' : 'creó';
             return $this->alerta('recargar', 'Punto de emisión guardado',
-                "Se {$accion} el punto {$estab}-{$codigo} para el módulo {$modulo}.", 'success');
+                "Se {$accion} el punto {$estab}-{$codigo} para el módulo {$modulo}. "
+                . "Siguiente secuencial: producción {$siguiente['2']}, pruebas {$siguiente['1']}.", 'success');
 
         } catch (\PDOException $e) {
             /* Hay dos claves únicas en la tabla, y decir cuál se violó es

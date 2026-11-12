@@ -32,6 +32,7 @@ $insCore = new coreController();
 $puntos      = $insCore->puntosEmision();
 $sinAsignar  = $insCore->modulosSinPunto();
 $cfg         = $insCore->configuracionSri();
+$ambienteCfg = (string)($cfg['ambiente'] ?? '1') === '2' ? '2' : '1';
 $modulos     = ds_modulos();
 
 $tituloVista = 'Puntos de emisión';
@@ -67,7 +68,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                             <tr>
                                 <th>Módulo</th>
                                 <th>Punto</th>
-                                <th class="text-end">Desde</th>
+                                <th class="text-end">Próximo número</th>
                                 <th class="text-end">Emitidos</th>
                                 <th>Estado</th>
                                 <th class="ds-tabla-acciones"></th>
@@ -92,12 +93,20 @@ require_once __DIR__ . "/inc/layout-top.php";
                                 <td class="text-monospace">
                                     <?php echo $h($p['punto_establecimiento'] . '-' . $p['punto_codigo']); ?>
                                 </td>
-                                <td class="text-end"><?php echo (int)$p['punto_secuencialinicio']; ?></td>
+                                <td class="text-end text-nowrap">
+                                    <?php /* Un contador por ambiente; se resalta el que está en uso. */
+                                          foreach (['2' => 'Producción', '1' => 'Pruebas'] as $amb => $nomAmb):
+                                              $enUso = $ambienteCfg === $amb; ?>
+                                        <div class="<?php echo $enUso ? 'fw-bold' : 'text-muted small'; ?>">
+                                            <?php echo $nomAmb; ?>:
+                                            <span class="text-monospace"><?php echo (int)$p['siguiente_' . $amb]; ?></span>
+                                            <?php if ($enUso): ?><span class="badge text-bg-<?php echo $amb === '2' ? 'danger' : 'info'; ?> ms-1">en uso</span><?php endif; ?>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </td>
                                 <td class="text-end">
                                     <?php echo (int)$p['emitidos']; ?>
-                                    <?php if ((int)$p['contador'] > 0): ?>
-                                        <br><small class="text-muted">contador: <?php echo (int)$p['contador']; ?></small>
-                                    <?php endif; ?>
+                                    <br><small class="text-muted" title="Producción / Pruebas"><?php echo (int)$p['emitidos_2']; ?> prod. · <?php echo (int)$p['emitidos_1']; ?> pruebas</small>
                                 </td>
                                 <td>
                                     <span class="badge text-bg-<?php echo $activo ? 'success' : 'secondary'; ?>">
@@ -112,7 +121,10 @@ require_once __DIR__ . "/inc/layout-top.php";
                                                 'modulo' => $p['punto_modulo'],
                                                 'estab'  => $p['punto_establecimiento'],
                                                 'codigo' => $p['punto_codigo'],
-                                                'inicio' => (int)$p['punto_secuencialinicio'],
+                                                'sig2'   => (int)$p['siguiente_2'],
+                                                'sig1'   => (int)$p['siguiente_1'],
+                                                'min2'   => (int)$p['ultimo_2'] + 1,
+                                                'min1'   => (int)$p['ultimo_1'] + 1,
                                                 'desc'   => $p['punto_descripcion'],
                                                 'estado' => $p['punto_estado'],
                                                 'emitidos' => (int)$p['emitidos'],
@@ -130,6 +142,8 @@ require_once __DIR__ . "/inc/layout-top.php";
                 <strong>Emitidos</strong> cuenta los comprobantes de todos los módulos que
                 salieron de ese punto. Si aparece un número donde no debería haberlo, dos
                 módulos comparten punto y hay que separarlos antes de seguir emitiendo.
+                <br><strong>Próximo número</strong>: pruebas y producción numeran por separado.
+                Se cambia editando el punto: cada ambiente tiene su propio contador.
             </div>
         </div>
 
@@ -188,13 +202,30 @@ require_once __DIR__ . "/inc/layout-top.php";
                         </div>
                     </div>
 
-                    <div class="mb-3">
-                        <label for="punto_secuencialinicio">Numerar desde</label>
-                        <input type="number" name="punto_secuencialinicio" id="punto_secuencialinicio"
-                               class="form-control" min="1" max="999999999" value="1" required>
-                        <small class="form-text text-muted">
-                            Para continuar una serie que venía de otro sistema, indique el
-                            siguiente número libre.
+                    <?php /* Siguiente secuencial por ambiente: el SRI lleva registros
+                             separados para pruebas y producción, y el sistema un contador
+                             para cada uno. Aquí se define el número de la próxima factura. */ ?>
+                    <div class="row g-2">
+                        <div class="mb-3 col-6">
+                            <label for="punto_siguiente_2">
+                                Siguiente secuencial
+                                <span class="badge text-bg-danger ms-1">Producción</span>
+                            </label>
+                            <input type="number" name="punto_siguiente_2" id="punto_siguiente_2"
+                                   class="form-control text-monospace" min="1" max="999999999" value="1" required>
+                        </div>
+                        <div class="mb-3 col-6">
+                            <label for="punto_siguiente_1">
+                                Siguiente secuencial
+                                <span class="badge text-bg-info ms-1">Pruebas</span>
+                            </label>
+                            <input type="number" name="punto_siguiente_1" id="punto_siguiente_1"
+                                   class="form-control text-monospace" min="1" max="999999999" value="1" required>
+                        </div>
+                        <small class="form-text text-muted mt-0 mb-3">
+                            Número que llevará la próxima factura en cada ambiente. Para continuar una
+                            serie que venía de otro sistema, indique el siguiente número libre. No puede
+                            ser menor ni igual a uno ya emitido en ese ambiente.
                         </small>
                     </div>
 
@@ -230,7 +261,7 @@ require_once __DIR__ . "/inc/layout-top.php";
 
     var campos = {
         id: 'punto_id', modulo: 'punto_modulo', estab: 'punto_establecimiento',
-        codigo: 'punto_codigo', inicio: 'punto_secuencialinicio',
+        codigo: 'punto_codigo', sig2: 'punto_siguiente_2', sig1: 'punto_siguiente_1',
         desc: 'punto_descripcion', estado: 'punto_estado'
     };
 
@@ -249,8 +280,12 @@ require_once __DIR__ . "/inc/layout-top.php";
 
             /* Si el punto ya emitió, el número inicial no puede bajar de ahí.
                El servidor lo rechaza igualmente; esto sólo evita el viaje. */
-            var inicio = document.getElementById('punto_secuencialinicio');
-            if (inicio && d.emitidos > 0) { inicio.min = d.inicio; }
+            /* Ningún ambiente puede volver a un número ya emitido en él.
+               El servidor lo rechaza igualmente; esto sólo evita el viaje. */
+            ['1', '2'].forEach(function (a) {
+                var campo = document.getElementById('punto_siguiente_' + a);
+                if (campo) { campo.min = d['min' + a] || 1; }
+            });
 
             form.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
@@ -264,8 +299,10 @@ require_once __DIR__ . "/inc/layout-top.php";
             document.getElementById('punto_id').value = '0';
             document.getElementById('tituloFormPunto').innerHTML =
                 '<i class="fas fa-plus me-2"></i>Nuevo punto de emisión';
-            var inicio = document.getElementById('punto_secuencialinicio');
-            if (inicio) { inicio.min = 1; }
+            ['1', '2'].forEach(function (a) {
+                var campo = document.getElementById('punto_siguiente_' + a);
+                if (campo) { campo.min = 1; }
+            });
         }, 0);
     });
 })();

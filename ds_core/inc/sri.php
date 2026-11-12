@@ -223,7 +223,13 @@ if (!function_exists('sri_disponible')) {
     {
         $ws = [];
         foreach (sri_ambientes() as $clave => $a) {
-            $ws[$clave === '2' ? 'produccion' : 'pruebas'] = [
+            /* (string): PHP convierte las claves '1' y '2' en enteros, y la
+               comparación estricta con '2' nunca se cumplía. Las dos filas
+               caían en 'pruebas' y la de producción —la segunda— pisaba a
+               la primera: en ambiente de pruebas se enviaba a cel.sri.gob.ec
+               y el SRI devolvía el error 35 («El ambiente de la solicitud
+               PRUEBAS no coincide con el de ejecución PRODUCCIÓN»). */
+            $ws[(string)$clave === '2' ? 'produccion' : 'pruebas'] = [
                 'recepcion'             => $a['url_recepcion'],
                 'autorizacion'          => $a['url_autorizacion'],
                 'timeout_conexion'      => $a['timeout_conexion'],

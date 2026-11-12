@@ -32,6 +32,14 @@ $formasPago = $insCore->formasPagoSri();
 $ambientes  = sri_ambientes();               // ds_core/inc/sri.php
 $ambientesSri = sri_ambientes_por_defecto();
 
+/* El punto de emisión y su numeración viven en Core › Puntos de emisión
+   (ds_core/inc/facturacion.php). Aquí sólo se muestran, para referencia. */
+$puntoFutbol = facturacion_punto_de('basketball');   /* clave del módulo Fútbol en ds_core/modulos.php */
+$ambienteCfg = (string)$cfg['ambiente'] === '2' ? '2' : '1';
+$siguienteFutbol = $puntoFutbol
+    ? facturacion_siguiente_secuencial('01', $puntoFutbol['punto_establecimiento'], $puntoFutbol['punto_codigo'], $ambienteCfg)
+    : 0;
+
 $tituloVista = 'Facturación electrónica';
 $vistaActual = 'facturacionConfigSri';
 
@@ -179,25 +187,22 @@ $hayConfig      = !empty($cfg['id']);
                         </div>
                     </div>
 
-                    <div class="row g-2">
-                        <div class="mb-3 col-md-4">
-                            <label for="codigo_establecimiento">Establecimiento</label>
-                            <input type="text" class="form-control" id="codigo_establecimiento"
-                                   name="codigo_establecimiento" maxlength="3"
-                                   value="<?php echo $h($cfg['codigo_establecimiento']); ?>">
-                        </div>
-                        <div class="mb-3 col-md-4">
-                            <label for="punto_emision">Punto de emisión</label>
-                            <input type="text" class="form-control" id="punto_emision" name="punto_emision" maxlength="3"
-                                   value="<?php echo $h($cfg['punto_emision']); ?>">
-                        </div>
-                        <div class="mb-3 col-md-4">
-                            <label for="secuencial_inicio">Siguiente secuencial</label>
-                            <input type="number" min="1" max="999999999" step="1" class="form-control"
-                                   id="secuencial_inicio" name="secuencial_inicio"
-                                   value="<?php echo (int)$cfg['secuencial_inicio']; ?>">
-                            <small class="text-muted">Número que llevará la próxima factura.</small>
-                        </div>
+                    <?php /* Establecimiento, punto de emisión y secuencial NO se editan
+                             aquí: se definen en Core › Puntos de emisión, por módulo y
+                             con un contador por ambiente. Se muestran para referencia. */ ?>
+                    <div class="alert alert-light border d-flex flex-wrap align-items-center gap-2 py-2 mb-3">
+                        <i class="fas fa-hashtag text-muted" aria-hidden="true"></i>
+                        <?php if ($puntoFutbol): ?>
+                            <span>Fútbol factura desde el punto
+                                <strong class="text-monospace"><?php echo $h($puntoFutbol['punto_establecimiento'] . '-' . $puntoFutbol['punto_codigo']); ?></strong>.
+                                Próxima factura en <?php echo $ambienteCfg === '2' ? 'producción' : 'pruebas'; ?>:
+                                <strong class="text-monospace"><?php echo (int)$siguienteFutbol; ?></strong>.</span>
+                        <?php else: ?>
+                            <span class="text-warning">Fútbol todavía no tiene punto de emisión asignado: no puede facturar.</span>
+                        <?php endif; ?>
+                        <a class="btn btn-sm btn-secondary ms-auto" href="<?php echo APP_URL; ?>puntoEmisionList/">
+                            <i class="fas fa-pen me-1" aria-hidden="true"></i>Punto y secuencial
+                        </a>
                     </div>
 
                     <div class="row g-2">

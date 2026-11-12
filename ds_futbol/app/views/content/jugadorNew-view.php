@@ -43,7 +43,7 @@
 	$puedeAgregar = puede('crear', 'torneoList');
 	$puedePagar   = $puedeAgregar && puede('crear', 'pagosList');
 	$valorEquipo  = $equipo['equipo_valorinscripcion'] !== null ? number_format((float)$equipo['equipo_valorinscripcion'], 2, '.', '') : '';
-	$posiciones   = $insJugador->listarCatalogoPosicion();
+	$posiciones   = $insJugador->catalogoPosicionesEquipo();
 	$tipos        = $insJugador->listarCatalogoTipo();
 	$formas       = $puedePagar ? $insJugador->opcionesFormaPagoCobro() : [];
 	$urlEquipos   = APP_URL . 'equipoList/' . (int)$equipo_torneoid . '/';
@@ -154,12 +154,15 @@ CSS;
 							</thead>
 							<tbody>
 							<?php foreach ($alumnos as $a):
-								$anio = substr((string)$a['alumno_fechanacimiento'], 0, 4); ?>
+								$anio = substr((string)$a['alumno_fechanacimiento'], 0, 4);
+								/* La posición preferida de su ficha, si la tiene («No definido» no está en la lista). */
+								$preferida = (string)$a['alumno_posicionid'];
+								$preferida = isset($posiciones[$preferida]) ? $preferida : ''; ?>
 								<tr data-alumno="<?php echo (int)$a['alumno_id']; ?>" data-nombre="<?php echo $h($a['nombre']); ?>"
 								    data-repre="<?php echo $h($a['representante']); ?>" data-correo="<?php echo $h(filter_var(trim((string)$a['repre_correo']), FILTER_VALIDATE_EMAIL) ?: ''); ?>">
-									<td class="ds-ficha__principal" data-search="<?php echo $h($a['nombre'] . ' ' . $a['alumno_identificacion'] . ' ' . $anio . ' ' . $a['sede_nombre']); ?>">
+									<td class="ds-ficha__principal" data-search="<?php echo $h($a['nombre'] . ' ' . $a['alumno_identificacion'] . ' ' . $anio . ' ' . $a['sede_nombre'] . ($preferida !== '' ? ' ' . $posiciones[$preferida] : '')); ?>">
 										<div class="ds-ficha__nombre"><?php echo $h($a['nombre']); ?></div>
-										<div class="ds-ficha__meta"><?php echo $h($a['alumno_identificacion']); ?> · <?php echo $h($anio); ?> · <?php echo $h($a['sede_nombre']); ?></div>
+										<div class="ds-ficha__meta"><?php echo $h($a['alumno_identificacion']); ?> · <?php echo $h($anio); ?> · <?php echo $h($a['sede_nombre']); ?><?php if ($preferida !== ''): ?> · <i class="fas fa-futbol" aria-hidden="true"></i> <?php echo $h($posiciones[$preferida]); ?><?php endif; ?></div>
 									</td>
 									<td class="ds-ficha__estado" data-p="pago">
 										<?php if ($a['pago_id']): ?>
@@ -172,8 +175,14 @@ CSS;
 									</td>
 									<td class="ds-ficha__dato">
 										<div class="ds-jug__selects">
-											<?php /* «Sin definir» primero: si no se elige, se guarda vacío y así se muestra. */ ?>
-											<select class="form-select form-select-sm" data-c="posicion" aria-label="Posición de juego"><option value="" selected>Sin definir</option><?php echo $posiciones; ?></select>
+											<?php /* «Sin definir» primero: si no se elige, se guarda vacío y así se muestra.
+											         Viene elegida la posición preferida del alumno; se puede cambiar para este equipo. */ ?>
+											<select class="form-select form-select-sm" data-c="posicion" aria-label="Posición de juego">
+												<option value=""<?php echo $preferida === '' ? ' selected' : ''; ?>>Sin definir</option>
+												<?php foreach ($posiciones as $valor => $texto): ?>
+													<option value="<?php echo $h($valor); ?>"<?php echo $preferida === (string)$valor ? ' selected' : ''; ?>><?php echo $h($texto); ?></option>
+												<?php endforeach; ?>
+											</select>
 											<select class="form-select form-select-sm" data-c="tipo" aria-label="Tipo"><option value="" selected>Sin definir</option><?php echo $tipos; ?></select>
 										</div>
 									</td>

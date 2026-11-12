@@ -24,7 +24,16 @@
 
 	$categoria = $alumno_anio === '' ? 0 : (int)$alumno_anio;
 
-	$filas = $insAlumno->listarAlumnos($alumno_identificacion, $alumno_apellidopaterno, $alumno_primernombre, $alumno_anio, $alumno_sedeid, $alumno_estado);
+	/* Posición de juego (catálogo posicion_juego): vacío = todas. */
+	$posiciones = $insAlumno->catalogoPosiciones();
+	$alumno_posicion = isset($posiciones[$campo('alumno_posicionid')]) ? $campo('alumno_posicionid') : '';
+
+	$porPosicion = [];
+	$filas = $insAlumno->listarAlumnos($alumno_identificacion, $alumno_apellidopaterno, $alumno_primernombre, $alumno_anio, $alumno_sedeid, $alumno_estado, $alumno_posicion, $porPosicion);
+
+	/* Resumen: de más a menos alumnos, «No definido» al final. */
+	$clavePos = static fn($c) => [(string)$c === alumnoController::POSICION_NO_DEFINIDA, -$porPosicion[$c]['total'], $porPosicion[$c]['texto']];
+	uksort($porPosicion, static fn($a, $b) => $clavePos($a) <=> $clavePos($b));
 	$total = substr_count($filas, '<tr>');
 
 	$h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
@@ -106,6 +115,15 @@
 									<?php echo $opcionesSede; ?>
 								</select>
 							</div>
+							<div class="col-12 col-sm-6 col-lg-4 col-xl">
+								<label for="alumno_posicionid" class="form-label">Posición</label>
+								<select class="form-select" id="alumno_posicionid" name="alumno_posicionid">
+									<option value="" <?php echo $alumno_posicion === '' ? 'selected' : ''; ?>>Todas</option>
+									<?php foreach ($posiciones as $valor => $texto): ?>
+										<option value="<?php echo $h($valor); ?>" <?php echo $alumno_posicion === $valor ? 'selected' : ''; ?>><?php echo $h($texto); ?></option>
+									<?php endforeach; ?>
+								</select>
+							</div>
 							<div class="col-12 col-sm-6 col-lg-4 col-xl-auto d-flex align-items-end">
 								<div class="w-100">
 									<?php echo ds_boton_buscar(); ?>
@@ -133,12 +151,28 @@
 						</div>
 					</div>
 					<div class="card-body">
+						<?php if ($porPosicion): ?>
+						<?php /* Cuántos alumnos del resultado hay en cada posición. Pulsar
+						         una filtra por ella; pulsar la elegida vuelve a «Todas». */ ?>
+						<div class="ds-alumnos__posiciones d-flex flex-wrap align-items-center gap-2 mb-3" role="group" aria-label="Alumnos por posición de juego">
+							<span class="text-body-secondary small"><i class="fas fa-futbol me-1" aria-hidden="true"></i>Por posición:</span>
+							<?php foreach ($porPosicion as $codigo => $p):
+								$elegida = $alumno_posicion === (string)$codigo; ?>
+								<button type="button" class="btn btn-sm <?php echo $elegida ? 'btn-primary' : 'btn-outline-secondary'; ?> js-posicion"
+								        data-posicion="<?php echo $elegida ? '' : $h($codigo); ?>" aria-pressed="<?php echo $elegida ? 'true' : 'false'; ?>"
+								        title="<?php echo $elegida ? 'Ver todas las posiciones' : 'Ver solo ' . $h($p['texto']); ?>">
+									<?php echo $h($p['texto']); ?><span class="badge <?php echo $elegida ? 'text-bg-light' : 'text-bg-secondary'; ?> ms-1"><?php echo (int)$p['total']; ?></span>
+								</button>
+							<?php endforeach; ?>
+						</div>
+						<?php endif; ?>
 						<table id="example1" class="table table-hover align-middle ds-crud__tabla" style="width:100%">
 							<thead>
 								<tr>
 									<th>Alumno</th>
 									<th>Nacimiento</th>
 									<th class="ds-col-opcional">Sede</th>
+									<th>Posición</th>
 									<th>Estado</th>
 									<th class="text-end"><span class="visually-hidden">Acciones</span></th>
 								</tr>
@@ -199,7 +233,7 @@
 			order: [[0, 'asc']],               /* por apellido (data-order) */
 			columnDefs: [
 				{ targets: 1, type: 'string' },  /* data-order: fecha ISO */
-				{ targets: 4, orderable: false, searchable: false }
+				{ targets: 5, orderable: false, searchable: false }
 			],
 			layout: {
 				topStart: 'pageLength',
@@ -214,7 +248,7 @@
 				infoFiltered: "(de _MAX_)",
 				lengthMenu: "Mostrar _MENU_",
 				search: "",
-				searchPlaceholder: "Filtrar por nombre, cédula o sede…",
+				searchPlaceholder: "Filtrar por nombre, cédula, sede o posición…",
 				zeroRecords: "Ningún alumno coincide con el filtro",
 				paginate: { next: "Siguiente", previous: "Anterior" },
 				aria: {
@@ -225,6 +259,16 @@
 		});
 		tabla.on('length', function (e, s, nuevo) {
 			try { localStorage.setItem(CLAVE, String(nuevo)); } catch (err) {}
+		});
+
+		/* Resumen por posición: filtra con el mismo formulario de búsqueda,
+		   así se conservan sede, año y estado. */
+		document.querySelectorAll('.js-posicion').forEach(function (b) {
+			b.addEventListener('click', function () {
+				var sel = document.getElementById('alumno_posicionid');
+				sel.value = b.dataset.posicion || '';
+				sel.form.requestSubmit();
+			});
 		});
 
 		/* Delegado en el documento: DataTables rehace las filas al paginar. */

@@ -192,6 +192,12 @@
 													<span id="ingreso_texto" class="input-group-text ds-editar__calculo" aria-live="polite">--</span>
 												</div>
 											</div>
+											<div class="col-12 col-sm-6 col-xl-3">
+												<label class="form-label" for="alumno_posicionid">Posición de juego</label>
+												<select class="form-select" id="alumno_posicionid" name="alumno_posicionid">
+													<?php echo $insAlumno->listarOptionPosicion($al['alumno_posicionid']); ?>
+												</select>
+											</div>
 											<div class="col-12 col-sm-6 col-xl-2">
 												<label class="form-label" for="alumno_numcamiseta">Camiseta</label>
 												<input type="text" class="form-control" id="alumno_numcamiseta" name="alumno_numcamiseta" value="<?php echo (int)$al['alumno_numcamiseta'] > 0 ? (int)$al['alumno_numcamiseta'] : ''; ?>" inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="Sin asignar">

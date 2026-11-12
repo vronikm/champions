@@ -14,7 +14,7 @@ MYSQL=/ruta/a/mysql MYSQL_OPTS="-u USUARIO -pCLAVE" \
   ds_core/database/migracion_champions/aplicar_migracion.sh BASE
 ```
 
-Aplica los 85 archivos en el orden correcto y se detiene en el primer error.
+Aplica los 87 archivos en el orden correcto y se detiene en el primer error.
 Antes de empezar comprueba que `BASE` sea una copia de SoccerEasy **sin migrar**:
 si ya tiene `facturas_electronicas`, no aplica nada, porque varias migraciones no
 se pueden repetir.
@@ -123,6 +123,14 @@ en desarrollo y llevar el resultado a producción con un volcado (ver más abajo
 24. `083_arena_horario_valor.sql`: valor por hora propio de cada franja del
     horario (`dsa_horario.horario_valorhora`). Vacío = el de la instalación;
     al reservar se usa el de la franja si lo tiene. Repetible.
+25. `084_secuencial_por_ambiente.sql`: pruebas y producción numeran por
+    separado (`facturas_electronicas_secuenciales.ambiente`), y el ambiente
+    entra en la clave única del número de Fútbol y League. El siguiente
+    secuencial de cada ambiente se define en Core › Puntos de emisión. Repetible.
+26. `085_posicion_juego_alumno.sql`: posición de juego preferida del alumno
+    (catálogo `posicion_juego`). Los alumnos sin posición o con un código
+    fuera del catálogo quedan en «No definido» (`3ND`), que pasa a ser el valor
+    por defecto de `alumno_posicionid`. Repetible.
 
 ```bash
 mysql -u USUARIO -p --default-character-set=utf8mb4 BASE < ARCHIVO.sql

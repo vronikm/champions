@@ -22,7 +22,7 @@
 			$alumno_fechaingreso		= $this->limpiarCadena($_POST['alumno_fechaingreso']);
 			$alumno_sedeid 				= $this->limpiarCadena($_POST['alumno_sedeid']);
 			$alumno_nombrecorto 		= ""; //$this->limpiarCadena($_POST['alumno_nombrecorto']);
-			$alumno_posicionid			= ""; //$this->limpiarCadena($_POST['alumno_posicionid']);					
+			$alumno_posicionid			= $this->posicionDeJuego($_POST['alumno_posicionid'] ?? '');
 			$alumno_numcamiseta 		= $_POST['alumno_numcamiseta'];
 			$alumno_estado 				= "A";
 			$alumno_genero 				= "";
@@ -625,10 +625,16 @@
 		| La búsqueda por identificación, apellido y nombre se combina con O,
 		| como antes; el año, la sede y el estado, con Y.
 		*/
-		public function listarAlumnos($identificacion, $apellidopaterno, $primernombre, $anio, $sede, $estado = 'A'){
+		/*
+		| $posicion filtra por la posición de juego (código del catálogo).
+		| $porPosicion devuelve cuántos alumnos del resultado hay en cada una
+		| ([codigo => ['texto' => …, 'total' => n]]), para el resumen del listado.
+		*/
+		public function listarAlumnos($identificacion, $apellidopaterno, $primernombre, $anio, $sede, $estado = 'A', $posicion = '', ?array &$porPosicion = null){
 			$condiciones = [];
 			$busqueda = [];
 			$parametros = [];
+			$porPosicion = [];
 
 			if ($identificacion != "") {
 				$busqueda[] = "A.alumno_identificacion LIKE :ident";
@@ -653,14 +659,24 @@
 				$parametros[':anioFin'] = $anio . '-12-31';
 			}
 
+			if (preg_match('/^[A-Z0-9]{3}$/', (string)$posicion)) {
+				$condiciones[] = "A.alumno_posicionid = :posicion";
+				$parametros[':posicion'] = $posicion;
+			}
+
 			$condiciones[] = $this->condicionSede('A.alumno_sedeid', $sede, $parametros);
 			$condiciones[] = $this->condicionEstadoAlumno('A.alumno_estado', $estado);
 
 			$datos = $this->ejecutarConsulta("SELECT A.alumno_id, A.alumno_identificacion, A.alumno_primernombre, A.alumno_segundonombre,
 						A.alumno_apellidopaterno, A.alumno_apellidomaterno, A.alumno_fechanacimiento, A.alumno_estado,
+						A.alumno_posicionid, PJ.catalogo_descripcion AS posicion,
 						S.sede_nombre, TIMESTAMPDIFF(YEAR, A.alumno_fechanacimiento, CURDATE()) AS EDAD
 					FROM sujeto_alumno A
 					LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
+					LEFT JOIN (general_tabla_catalogo PJ
+					           INNER JOIN general_tabla PJT ON PJT.tabla_id = PJ.catalogo_tablaid
+					                                       AND PJT.tabla_nombre = 'posicion_juego')
+					       ON PJ.catalogo_valor = A.alumno_posicionid
 					WHERE " . implode(" AND ", $condiciones) . "
 					ORDER BY A.alumno_apellidopaterno, A.alumno_apellidomaterno, A.alumno_primernombre", $parametros)->fetchAll();
 
@@ -685,6 +701,15 @@
 				$inicial = mb_strtoupper(mb_substr(html_entity_decode((string)$al['alumno_primernombre']), 0, 1) . mb_substr(html_entity_decode((string)$al['alumno_apellidopaterno']), 0, 1));
 				$fnac    = (string)$al['alumno_fechanacimiento'];
 				$nacio   = ($fnac !== '' && !str_starts_with($fnac, '0000')) ? date('d/m/Y', strtotime($fnac)) : '';
+
+				/* Sin posición o con una que ya no está en el catálogo: «No definido». */
+				$posCodigo = $al['posicion'] !== null ? (string)$al['alumno_posicionid'] : self::POSICION_NO_DEFINIDA;
+				$posTexto  = $al['posicion'] !== null ? (string)$al['posicion'] : 'No definido';
+				$porPosicion[$posCodigo] ??= ['texto' => $posTexto, 'total' => 0];
+				$porPosicion[$posCodigo]['total']++;
+				$posCelda = $posCodigo === self::POSICION_NO_DEFINIDA
+					? '<span class="text-body-secondary">'.$h($posTexto).'</span>'
+					: $h($posTexto);
 
 				$botones = '<a href="'.APP_URL.'alumnoProfile/'.$id.'/" class="btn btn-primary btn-sm ds-ficha__primario"><i class="fas fa-id-card me-1" aria-hidden="true"></i>Ver ficha</a>';
 				if ($puedeEditar) {
@@ -715,6 +740,7 @@
 						<td class="ds-ficha__dato ds-ficha__nowrap" data-etiqueta="Nacimiento" data-order="'.$h($fnac).'">'
 							.($nacio !== '' ? $nacio.' · <strong>'.(int)$al['EDAD'].' años</strong>' : '<span class="text-body-secondary">—</span>').'</td>
 						<td class="ds-ficha__dato ds-col-opcional" data-etiqueta="Sede">'.$h($al['sede_nombre'] ?? '').'</td>
+						<td class="ds-ficha__dato" data-etiqueta="Posición">'.$posCelda.'</td>
 						<td class="ds-ficha__estado" data-order="'.($activo ? 'A' : 'I').'"><span class="badge '.($activo ? 'text-bg-success' : 'text-bg-secondary').'">'.($activo ? 'Activo' : 'Inactivo').'</span></td>
 						<td class="ds-tabla-acciones ds-ficha__acciones"><div class="ds-ficha__botones">'.$botones.'</div></td>
 					</tr>';
@@ -740,6 +766,64 @@
 				}
 			}
 			return $option;
+		}
+
+		/*----------  Posición de juego preferida (catálogo posicion_juego)  ----------*/
+		/*
+		| Sirve para el trabajo diferenciado y para armar equipos y horarios.
+		| Quien aún no la tiene queda en «No definido» (3ND), nunca vacío: así
+		| un listado por posición cuenta a todos los alumnos (migración 085).
+		*/
+		public const POSICION_NO_DEFINIDA = '3ND';
+
+		/* Opciones del catálogo: «No definido» primero y el resto por nombre.
+		   La guardada sale aunque esté inactiva, para no cambiarla en silencio. */
+		public function listarOptionPosicion($seleccionada = ''){
+			$seleccionada = (string)$seleccionada !== '' ? (string)$seleccionada : self::POSICION_NO_DEFINIDA;
+			$datos = $this->ejecutarConsulta("SELECT C.catalogo_valor, C.catalogo_descripcion
+								FROM general_tabla_catalogo C
+								INNER JOIN general_tabla T ON T.tabla_id = C.catalogo_tablaid
+								WHERE T.tabla_nombre = 'posicion_juego'
+								  AND (C.catalogo_estado = 'A' OR C.catalogo_valor = :sel)
+								ORDER BY C.catalogo_valor = :nd DESC, C.catalogo_descripcion",
+								[':sel' => $seleccionada, ':nd' => self::POSICION_NO_DEFINIDA])->fetchAll();
+			$option = '';
+			foreach ($datos as $rows) {
+				$valor = htmlspecialchars($rows['catalogo_valor'], ENT_QUOTES, 'UTF-8');
+				$texto = htmlspecialchars($rows['catalogo_descripcion'], ENT_QUOTES, 'UTF-8');
+				$option .= '<option value="' . $valor . '"' . ($rows['catalogo_valor'] === $seleccionada ? ' selected' : '') . '>' . $texto . '</option>';
+			}
+			return $option;
+		}
+
+		/* Para el filtro del listado: las activas y las inactivas que algún
+		   alumno aún tiene ([codigo => descripcion]), «No definido» primero. */
+		public function catalogoPosiciones(): array {
+			return $this->ejecutarConsulta("SELECT C.catalogo_valor, C.catalogo_descripcion
+								FROM general_tabla_catalogo C
+								INNER JOIN general_tabla T ON T.tabla_id = C.catalogo_tablaid
+								WHERE T.tabla_nombre = 'posicion_juego'
+								  AND (C.catalogo_estado = 'A'
+								       OR EXISTS (SELECT 1 FROM sujeto_alumno A WHERE A.alumno_posicionid = C.catalogo_valor))
+								ORDER BY C.catalogo_valor = :nd DESC, C.catalogo_descripcion",
+								[':nd' => self::POSICION_NO_DEFINIDA])->fetchAll(\PDO::FETCH_KEY_PAIR);
+		}
+
+		/* El código recibido si es del catálogo y está activo (o es el que ya
+		   tenía el alumno); si no, «No definido». */
+		private function posicionDeJuego($codigo, string $actual = ''): string {
+			$codigo = substr(preg_replace('/[^A-Z0-9]/', '', strtoupper((string)$codigo)), 0, 3);
+			if ($codigo === '') {
+				return self::POSICION_NO_DEFINIDA;
+			}
+			$existe = $this->ejecutarConsulta("SELECT 1
+								FROM general_tabla_catalogo C
+								INNER JOIN general_tabla T ON T.tabla_id = C.catalogo_tablaid
+								WHERE T.tabla_nombre = 'posicion_juego'
+								  AND C.catalogo_valor = :cod
+								  AND (C.catalogo_estado = 'A' OR C.catalogo_valor = :actual)
+								LIMIT 1", [':cod' => $codigo, ':actual' => $actual])->fetchColumn();
+			return $existe ? $codigo : self::POSICION_NO_DEFINIDA;
 		}
 
 		/*----------  Obtener la nacionalidad guardada  ----------*/
@@ -951,6 +1035,9 @@
 				$alumno_fechaingreso		= $this->limpiarCadena($_POST['alumno_fechaingreso'] ?? "");
 				$alumno_sedeid 				= $this->limpiarCadena($_POST['alumno_sedeid'] ?? "");				
 				$alumno_numcamiseta 		= intval($_POST['alumno_numcamiseta'] ?? 0);
+				/* La que ya tenía vale aunque hoy esté inactiva en el catálogo:
+				   guardar el resto de la ficha no debe cambiarla sin que nadie lo pida. */
+				$alumno_posicionid			= $this->posicionDeJuego($_POST['alumno_posicionid'] ?? '', (string)$datos['alumno_posicionid']);
 				$alumno_genero 				= $_POST['alumno_genero'] ?? "";
 				$alumno_hermanos 			= $_POST['alumno_hermanos'] ?? "";
 				
@@ -966,6 +1053,7 @@
 				
 				$alumno_datos_reg=[
 					["campo_nombre"=>"alumno_sedeid","campo_marcador"=>":Sedeid","campo_valor"=>$alumno_sedeid],
+					["campo_nombre"=>"alumno_posicionid","campo_marcador"=>":Posicionid","campo_valor"=>$alumno_posicionid],
 					["campo_nombre"=>"alumno_nacionalidadid","campo_marcador"=>":Nacionalidadid","campo_valor"=>$alumno_nacionalidadid],
 					["campo_nombre"=>"alumno_tipoidentificacion","campo_marcador"=>":Tipoidentificacion","campo_valor"=>$alumno_tipoidentificacion],
 					["campo_nombre"=>"alumno_identificacion","campo_marcador"=>":Identificacion","campo_valor"=>$alumno_identificacion],				
@@ -1662,11 +1750,13 @@
 			$alumno = $this->ejecutarConsulta("SELECT A.*, S.sede_nombre,
 						TI.catalogo_descripcion AS tipo_identificacion,
 						NA.catalogo_descripcion AS nacionalidad,
+						PJ.catalogo_descripcion AS posicion_juego,
 						(SELECT COUNT(*) FROM alumno_pago WHERE pago_alumnoid = A.alumno_id AND pago_estado = 'P') AS pagos_pendientes
 					FROM sujeto_alumno A
 					LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
 					" . $catalogo('TI', 'tipo_documento', 'A.alumno_tipoidentificacion') . "
 					" . $catalogo('NA', 'nacionalidad', 'A.alumno_nacionalidadid') . "
+					" . $catalogo('PJ', 'posicion_juego', 'A.alumno_posicionid') . "
 					WHERE A.alumno_id = :alumno", $p)->fetch();
 			if (!$alumno) {
 				return null;

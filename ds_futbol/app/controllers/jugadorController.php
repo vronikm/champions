@@ -313,6 +313,19 @@
 			}
 			return $option;
 		}
+		/*
+		| Posiciones para asignar en el equipo ([codigo => descripcion]), sin
+		| «No definido»: aquí eso es la opción «Sin definir» (vacío). Cada fila
+		| sale ya con la posición preferida del alumno (su ficha).
+		*/
+		public function catalogoPosicionesEquipo(): array
+		{
+			return $this->ejecutarConsulta("SELECT C.catalogo_valor, C.catalogo_descripcion
+				  FROM general_tabla_catalogo C
+				  JOIN general_tabla T ON T.tabla_id = C.catalogo_tablaid
+				 WHERE T.tabla_nombre = 'posicion_juego' AND C.catalogo_estado = 'A' AND C.catalogo_valor <> '3ND'
+				 ORDER BY C.catalogo_descripcion")->fetchAll(\PDO::FETCH_KEY_PAIR);
+		}
         public function listarCatalogoTipo(){
 			$option="";
 
@@ -485,7 +498,7 @@
 				$par[':sede'] = (int)$f['sede'];
 			}
 			return $this->ejecutarConsulta(
-				"SELECT a.alumno_id, a.alumno_identificacion, a.alumno_fechanacimiento, s.sede_nombre,
+				"SELECT a.alumno_id, a.alumno_identificacion, a.alumno_fechanacimiento, s.sede_nombre, a.alumno_posicionid,
 				        CONCAT_WS(' ', a.alumno_primernombre, a.alumno_segundonombre, a.alumno_apellidopaterno, a.alumno_apellidomaterno) AS nombre,
 				        CONCAT_WS(' ', r.repre_primernombre, r.repre_apellidopaterno) AS representante, r.repre_correo,
 				        (SELECT p.pago_id FROM alumno_pago p

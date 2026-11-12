@@ -142,6 +142,7 @@
 									<div><dt>Sede</dt><dd><?php echo $ver($al['sede_nombre']); ?></dd></div>
 									<div><dt>Categoría</dt><dd><?php echo $nacimiento ? $nacimiento->format('Y') : $vacio; ?></dd></div>
 									<div><dt>Edad</dt><dd><?php echo $nacimiento ? $h($tiempo($nacimiento)) : $vacio; ?></dd></div>
+									<div><dt>Posición</dt><dd><?php echo $ver($al['posicion_juego'] ?: 'No definido'); ?></dd></div>
 									<div><dt>Camiseta</dt><dd><?php echo (int)$al['alumno_numcamiseta'] > 0 ? $h($al['alumno_numcamiseta']) : $vacio; ?></dd></div>
 									<div><dt>Ingreso</dt><dd><?php echo $ingreso ? $ingreso->format('d/m/Y') : $vacio; ?></dd></div>
 									<div><dt>En la escuela</dt><dd><?php echo $ingreso && $tiempo($ingreso) !== '' ? $h($tiempo($ingreso)) : $vacio; ?></dd></div>

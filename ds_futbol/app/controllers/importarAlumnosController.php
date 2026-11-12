@@ -239,7 +239,7 @@
 						 alumno_apellidopaterno, alumno_apellidomaterno, alumno_nombrecorto, alumno_direccion,
 						 alumno_fechanacimiento, alumno_fechaingreso, alumno_genero, alumno_hermanos, alumno_estado,
 						 alumno_imagen, alumno_numcamiseta)
-						VALUES (:sede, '', 'ECU', :repid, 'CED', :ci, :n1, :n2, :a1, :a2, '', :dir,
+						VALUES (:sede, '3ND', 'ECU', :repid, 'CED', :ci, :n1, :n2, :a1, :a2, '', :dir,
 								:fnac, :fing, '', 'N', 'A', '', 0)");
 
 					$insA->bindParam(':sede', $payload['sede_id'], \PDO::PARAM_INT);

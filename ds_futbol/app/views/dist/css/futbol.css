@@ -913,6 +913,94 @@
 .ds-alumnos__herramientas { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
 .ds-crud__lista .dt-length select { min-height: 2.25rem; }
 
+/* =========================================================================
+   Barra superior del listado de alumnos: «Mostrar N», resúmenes y filtro.
+   -------------------------------------------------------------------------
+   DataTables mete «Mostrar» y la barra (#alumnosBarra) en la celda de la
+   izquierda y el filtro en la de la derecha. Dejadas a su aire, con el menú
+   lateral abierto (tarjeta de ~1080 px) se partían donde cayera: «Mostrar»
+   solo, los grupos apretados debajo y el filtro suelto en una tercera
+   línea.
+
+   Ahora, en pantalla ancha, las celdas y la barra se aplanan (display:
+   contents) y sus piezas se ordenan en DOS líneas fijas:
+
+     1. Mostrar · Horario (con / sin) ··························· Filtrar
+     2. Por posición: una franja propia, a todo lo ancho
+
+   En tableta y teléfono, todo apilado y centrado (más abajo).
+   ========================================================================= */
+.ds-alumnos__barra { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
+.ds-alumnos__grupo { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+.ds-alumnos__grupo-titulo {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    margin-right: .25rem;
+    font-size: .8rem;
+    font-weight: 600;
+    color: var(--bs-secondary-color);
+    white-space: nowrap;
+}
+.ds-alumnos__grupo .btn { white-space: nowrap; }
+
+@media (min-width: 992px) {
+    #alumnos-resultado .dt-container > .row:has(.ds-alumnos__barra) {
+        --bs-gutter-x: 0;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: .75rem 1.25rem;
+        margin: 0 0 1rem;
+    }
+    /* !important: la celda trae la utilidad d-md-flex de Bootstrap, que
+       fija display: flex !important. */
+    #alumnos-resultado .row:has(.ds-alumnos__barra) > .dt-layout-start,
+    #alumnos-resultado .ds-alumnos__barra { display: contents !important; }
+
+    /* Línea 1 */
+    #alumnos-resultado .row:has(.ds-alumnos__barra) .dt-length { order: 1; }
+    #alumnos-resultado .ds-alumnos__grupo:not(.ds-alumnos__posiciones) {
+        order: 2;
+        padding-left: 1.25rem;
+        border-left: 1px solid var(--bs-border-color);
+    }
+    #alumnos-resultado .row:has(.ds-alumnos__barra) > .dt-layout-end {
+        order: 3;
+        flex: 0 1 18rem;
+        width: auto;
+        max-width: none;
+        margin-left: auto !important;
+        padding: 0;
+    }
+    #alumnos-resultado .row:has(.ds-alumnos__barra) .dt-search { width: 100%; }
+    #alumnos-resultado .row:has(.ds-alumnos__barra) .dt-search input { width: 100% !important; min-width: 0; margin-left: 0 !important; }
+
+    /* Línea 2: las posiciones, en su franja. */
+    #alumnos-resultado .ds-alumnos__posiciones {
+        order: 4;
+        flex: 1 1 100%;
+        padding: .5rem .75rem;
+        border-radius: var(--ds-radius-sm, .5rem);
+        background: var(--bs-tertiary-bg);
+        border: 1px solid var(--bs-border-color-translucent);
+    }
+}
+
+@media (max-width: 991.98px) {
+    /* Tableta y teléfono: «Mostrar», y debajo cada grupo en su línea,
+       centrados, con el filete arriba; el filtro, a todo lo ancho. */
+    .ds-crud__lista .dt-layout-start:has(.ds-alumnos__barra) { display: flex; flex-direction: column; align-items: center; gap: .5rem; }
+    .ds-alumnos__barra { flex-direction: column; width: 100%; gap: .5rem; }
+    .ds-alumnos__grupo { justify-content: center; padding: .5rem 0 0; border-top: 1px solid var(--bs-border-color); width: 100%; }
+    .ds-alumnos__grupo-titulo { width: 100%; justify-content: center; margin: 0 0 .1rem; }
+    /* El renderizador de Bootstrap marca las celdas col-md-auto (la fila
+       es .row y las celdas .dt-layout-start / .dt-layout-end, sin
+       .dt-layout-cell): en tableta el filtro quedaba estrecho al lado. */
+    #alumnos-resultado .dt-container > .row > :is(.dt-layout-start, .dt-layout-end) { flex: 1 1 100%; max-width: 100%; width: 100%; margin-left: 0 !important; }
+    #alumnos-resultado .dt-container > .row > .dt-layout-end { margin-top: .5rem; }
+}
+
 /* Columna «Horario». Con horario: su nombre, enlace a la lista de ese
    horario, del color del texto (es un dato, no una llamada de atención).
    Sin horario: insignia de aviso con los tokens «warning» de Bootstrap,

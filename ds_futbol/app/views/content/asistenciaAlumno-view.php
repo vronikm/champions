@@ -129,7 +129,7 @@
 
 					<div class="d-flex flex-wrap gap-2 mb-3">
 						<input type="search" class="form-control ds-toma__buscar" id="toma-buscar" placeholder="Buscar alumno…" aria-label="Buscar alumno">
-						<button type="button" class="btn btn-success" id="toma-todos"><i class="fas fa-check-double me-1" aria-hidden="true"></i>Presentes los que faltan</button>
+						<button type="button" class="btn btn-success" id="toma-todos" title="Marca como presentes a los alumnos que aún no tienen asistencia"><i class="fas fa-check-double me-1" aria-hidden="true"></i>Todos presentes</button>
 					</div>
 
 					<!-- =================== La lista =================== -->

@@ -196,8 +196,6 @@ $funciones = [
                     echo htmlspecialchars($nombreEscuela, ENT_QUOTES, 'UTF-8'); ?></h2>
             <?php endif; ?>
 
-            <p class="dsl-card__ayuda">Ingresa con el usuario y la contraseña de tu cuenta.</p>
-
             <form method="POST" action="" id="formLogin">
 
                 <?php

@@ -312,6 +312,13 @@
     margin: 0 auto 28px;
 }
 
+/* Sin la indicación («Ingresa con el usuario…», retirada el 2026-11-16) el
+   formulario va justo debajo del escudo o del nombre: el mismo respiro de
+   24 px que dejaba ese párrafo. Sólo cuando el formulario los sigue
+   directamente; la verificación en dos pasos conserva su indicación. */
+.dsl-card__marca + form  { margin-top: 4px; }   /* 20 + 4  */
+.dsl-card__titulo + form { margin-top: 14px; }  /* 10 + 14 */
+
 /* --- Indicacion bajo el escudo de la escuela --- */
 
 .dsl-card__ayuda {

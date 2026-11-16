@@ -432,6 +432,89 @@ if (!function_exists('ds_organizacion')) {
         $pdf->SetXY($x, $y + $mitad);
         $pdf->Cell($ancho, $mitad, $linea2, 0, 0, 'L');
     }
+
+    /**
+     * Cabecera de los recibos de pago (FPDF, página de 210 x 130 mm):
+     * recuadro 10–200 x 10–50 con el logo a la izquierda, el nombre de la
+     * organización, la dirección, el celular y el correo de la sede a su
+     * derecha, y la fecha de emisión en día / mes / año al lado.
+     *
+     * La de antes centraba el nombre en una celda de 290 mm (se salía de la
+     * página) y la dirección en otra que pasaba por debajo del logo. Aquí
+     * cada texto tiene su columna y se encaja en ella (letra menor o dos
+     * líneas) en vez de desbordarla.
+     *
+     * $sede con sede_id, sede_direccion, sede_telefono y sede_email (UTF-8).
+     * $fecha, cualquier fecha que entienda strtotime().
+     */
+    function ds_recibo_cabecera(object $pdf, array $sede, string $fecha): void
+    {
+        $cp = static fn(string $t): string => mb_convert_encoding($t, 'Windows-1252', 'UTF-8');
+        $sedeid = (int)($sede['sede_id'] ?? 0);
+
+        $pdf->SetDrawColor(0, 0, 0);
+        $pdf->SetTextColor(0, 0, 0);
+        $pdf->SetLineWidth(0.1);
+        $pdf->Rect(10, 10, 190, 40, 'D');
+
+        /* Logo: columna izquierda, 14–50 mm. */
+        ds_logo_dibujar($pdf, $sedeid, 14, 12, 36, 36);
+
+        /* Nombre de la organización: a la derecha del logo, 56–196 mm. */
+        $xt = 56; $wt = 140;
+        ds_pdf_texto_encajado($pdf, $cp(ds_nombre_organizacion_may($sedeid)), $xt, 13, $wt, 10, 'B', 12, 8);
+        $pdf->SetDrawColor(190, 190, 190);
+        $pdf->Line($xt, 24, $xt + $wt, 24);
+        $pdf->SetDrawColor(0, 0, 0);
+
+        /* Datos de contacto: 56–136 mm, para no pisar la fecha. */
+        $wc = 80;
+        /* [etiqueta, valor, ¿puede ir en dos líneas?] — sólo la dirección. */
+        $filas = [
+            ['Dirección:', (string)($sede['sede_direccion'] ?? ''), true],
+            ['Celular:',   (string)($sede['sede_telefono'] ?? ''),  false],
+            ['Correo:',    (string)($sede['sede_email'] ?? ''),     false],
+        ];
+        $y = 26;
+        foreach ($filas as [$etiqueta, $valor, $dosLineas]) {
+            $valor = $cp(trim($valor));
+            if ($valor === '') { continue; }
+            $pdf->SetFont('Arial', 'B', 8);
+            $we = $pdf->GetStringWidth($cp($etiqueta)) + 1.5;
+            $wv = $wc - $we;
+            /* Dos líneas sólo si ni con la letra mínima cabe en una: así la
+               etiqueta siempre queda a la altura de la primera línea. */
+            $pdf->SetFont('Arial', '', 7);
+            $alto = ($dosLineas && $pdf->GetStringWidth($valor) > $wv) ? 9 : 5.5;
+
+            /* La etiqueta, a la altura de la primera línea del valor. */
+            $pdf->SetFont('Arial', 'B', 8);
+            $pdf->SetXY($xt, $y);
+            $pdf->Cell($we, $alto > 5.5 ? $alto / 2 : $alto, $cp($etiqueta), 0, 0, 'L');
+            ds_pdf_texto_encajado($pdf, $valor, $xt + $we, $y, $wv, $alto, '', 8, 7);
+            $y += $alto;
+        }
+
+        /* Fecha de emisión: 142–196 mm, tres columnas de 18 mm. */
+        $ts = strtotime($fecha) ?: time();
+        $xf = 142; $wf = 18;
+        $pdf->SetFont('Arial', 'B', 7);
+        $pdf->SetXY($xf, 26);
+        $pdf->Cell($wf * 3, 4, $cp('Fecha de emisión'), 0, 0, 'C');
+
+        $pdf->SetFillColor(238, 238, 238);
+        $pdf->SetFont('Arial', '', 6);
+        foreach (['DÍA', 'MES', 'AÑO'] as $i => $col) {
+            $pdf->SetXY($xf + $i * $wf, 31);
+            $pdf->Cell($wf, 4, $cp($col), 1, 0, 'C', true);
+        }
+        $pdf->SetFont('Arial', 'B', 11);
+        foreach ([date('d', $ts), date('m', $ts), date('Y', $ts)] as $i => $valor) {
+            $pdf->SetXY($xf + $i * $wf, 35);
+            $pdf->Cell($wf, 10, $valor, 1, 0, 'C');
+        }
+        $pdf->SetFillColor(255, 255, 255);
+    }
 }
 
 if (!function_exists('ds_pie_pdf_texto')) {

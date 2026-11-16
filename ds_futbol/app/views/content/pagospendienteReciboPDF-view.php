@@ -38,9 +38,11 @@
 	}
 
 	$sede=$insAlumno->informacionSede($datos["alumno_sedeid"]);
-	if($sede->rowCount()==1){
-		$sede=$sede->fetch(); 
-        }
+	/* Sin la sede, $sede seguía siendo el PDOStatement y leerlo como array era un error fatal. */
+	$sede = $sede->rowCount() == 1 ? $sede->fetch() : [
+		'sede_id' => (int)$datos['alumno_sedeid'], 'sede_nombre' => (string)($datos['sede_nombre'] ?? ''),
+		'sede_direccion' => '', 'sede_telefono' => '', 'sede_email' => '',
+	];
 
 	$data="Recibo ".$datos["transaccion_recibo"]. "\n".$datos["transaccion_fecharegistro"]. " | ".$recibo_hora."\n".$sede['sede_nombre']."\n".$sede["sede_telefono"]."\n".$sede["sede_email"];
 
@@ -58,29 +60,8 @@
 
         // logo : 80 de largo por 55 de alto
         //,,ancho,
-    ds_logo_dibujar($pdf, (int)$sede["sede_id"], 52, 10, 28, 28);   /* a su proporción, sin estirar */
-        $pdf->SetLineWidth(0.1); $pdf->Rect(10, 10, 190, 40, "D"); $x=15; $y=13;
-
-        $pdf->SetXY( $x, $y ); $pdf->SetFont( "Arial", "B", 11 ); $pdf->Cell( 260, 8, ds_nombre_organizacion_may($sede["sede_id"]), 0, 0, 'C'); $y+=5;
-        $pdf->SetXY( $x, $y ); $pdf->SetFont( "Arial", "B", 11 ); $pdf->Cell( 260, 8, $nombre_sede, 0, 0, 'C'); $y+=17;
-
-        $pdf->SetXY( $x, $y); $pdf->SetFont( "Arial", "", 9 ); $pdf->Cell(100, 8, mb_convert_encoding("Dirección: ".$sede["sede_direccion"], 'ISO-8859-1', 'UTF-8'), 0, 0, 'C'); $y+=5;
-        $pdf->SetXY( $x, $y); $pdf->SetFont( "Arial", "", 9 ); $pdf->Cell(100, 8, mb_convert_encoding("Celular: ".$sede["sede_telefono"], 'ISO-8859-1', 'UTF-8'), 0, 0, 'C');
-
-        $pdf->SetLineWidth(0.1); $pdf->Rect(130, 35, 60, 10, "D");
-        $pdf->Line(130, 38, 190, 38);
-        $pdf->SetXY( 130, 32.5); $pdf->SetFont( "Arial", "", 7 ); $pdf->Cell( 19, 2, mb_convert_encoding("Fecha de emisión", 'ISO-8859-1', 'UTF-8'), 0, 0, 'C');
-        $pdf->SetXY( 130, 32.5); $pdf->SetFont( "Arial", "", 5 ); $pdf->Cell( 20, 8, "DIA", 0, 0, 'C');
-        $pdf->SetXY( 150, 32.5); $pdf->SetFont( "Arial", "", 5 ); $pdf->Cell( 20, 8, "MES", 0, 0, 'C');
-        $pdf->SetXY( 170, 32.5); $pdf->SetFont( "Arial", "", 5 ); $pdf->Cell( 20, 8, mb_convert_encoding("AÑO", 'ISO-8859-1', 'UTF-8'), 0, 0, 'C');
-
-        //FECHA VARIABLE
-        $pdf->SetXY( 130, 38); $pdf->SetFont( "Arial", "", 9 ); $pdf->Cell( 20, 8, date('d', strtotime($datos['transaccion_fecharegistro'])), 0, 0, 'C');
-        $pdf->SetXY( 150, 38); $pdf->SetFont( "Arial", "", 9 ); $pdf->Cell( 20, 8,date('m', strtotime($datos['transaccion_fecharegistro'])), 0, 0, 'C');
-        $pdf->SetXY( 170, 38); $pdf->SetFont( "Arial", "", 9 ); $pdf->Cell( 20, 8, date('Y', strtotime($datos['transaccion_fecharegistro'])), 0, 0, 'C');
-
-        $pdf->Line(150, 35, 150, 45);
-        $pdf->Line(170, 35, 170, 45);
+    /* Cabecera común de los recibos (logo, organización, contacto y fecha): ds_core/inc/organizacion.php */
+    ds_recibo_cabecera($pdf, $sede, (string)$datos['transaccion_fecharegistro']);
 
         $pdf->SetLineWidth(0.1); $pdf->Rect(10, 51, 190, 70, "D");
         //margen, alto izquierdo de separacion de lenea, ancho de la fila de lado a lado, alto derecho de separacion de lenea
@@ -96,10 +77,10 @@
         $pdf->SetXY( 175, 52 ); $pdf->SetFont( "Arial", "B", 11 ); $pdf->Cell( 20, 8, $datos['transaccion_recibo'], 0, 0, 'R');
 
         $pdf->SetXY( 15, 62 ); $pdf->SetFont( "Arial", "B", 10 ); $pdf->Cell( 20, 4, "Recibo de:", 0, 0, 'L');
-        $pdf->SetXY( 46, 62 ); $pdf->SetFont( "Arial", "", 10 ); $pdf->Cell( 20, 4, mb_convert_encoding($datos['alumno_primernombre']." ".$datos['alumno_segundonombre']." ".$datos['alumno_apellidopaterno']." ".$datos['alumno_apellidomaterno']." (".date('Y', strtotime($datos['alumno_fechanacimiento'])).")", 'ISO-8859-1', 'UTF-8'), 0, 0, 'L');
+        ds_pdf_texto_encajado($pdf, mb_convert_encoding($datos['alumno_primernombre']." ".$datos['alumno_segundonombre']." ".$datos['alumno_apellidopaterno']." ".$datos['alumno_apellidomaterno']." (".date('Y', strtotime($datos['alumno_fechanacimiento'])).")", 'ISO-8859-1', 'UTF-8'), 46, 60.5, 152, 6.5);
 
         $pdf->SetXY( 15, 71 ); $pdf->SetFont( "Arial", "B", 10 ); $pdf->Cell( 20, 0, "La cantidad de:", 0, 0, 'L');
-        $pdf->SetXY( 46, 71 ); $pdf->SetFont( "Arial", "", 10 ); $pdf->Cell( 20, 0, mb_convert_encoding(ucfirst($insAlumno->textoLetras($datos['transaccion_valor'])), 'ISO-8859-1', 'UTF-8'), 0, 0, 'L');
+        ds_pdf_texto_encajado($pdf, mb_convert_encoding(ucfirst($insAlumno->textoLetras($datos['transaccion_valor'])), 'ISO-8859-1', 'UTF-8'), 46, 67.5, 152, 6.5);
 
         $pdf->SetXY( 15, 80 ); $pdf->SetFont( "Arial", "B", 10 ); $pdf->Cell( 20, -3, "Por concepto de:", 0, 0, 'L');
         /* «Por concepto de»: el rubro, el torneo y el período, y el detalle tras una coma,
@@ -109,7 +90,7 @@
         ds_pdf_texto_encajado($pdf, mb_convert_encoding($concepto . ($detalle !== '' ? ', ' . $detalle : ''), 'ISO-8859-1', 'UTF-8'), 46, 74.5, 152, 6.5);
        
         $pdf->SetXY( 15, 89 ); $pdf->SetFont( "Arial", "B", 10 ); $pdf->Cell( 20, -7, "Forma de pago:", 0, 0, 'L');
-        $pdf->SetXY( 46, 89 ); $pdf->SetFont( "Arial", "", 10 ); $pdf->Cell( 20, -7, mb_convert_encoding($datos['FORMAPAGO'], 'ISO-8859-1', 'UTF-8'), 0, 0, 'L');
+        ds_pdf_texto_encajado($pdf, mb_convert_encoding($datos['FORMAPAGO'], 'ISO-8859-1', 'UTF-8'), 46, 81.5, 152, 6.5);
  
         //Seccion de totales y firmas
         //ubicacion horizontal, ubicacion vertical, ancho, alto bajo

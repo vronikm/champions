@@ -1340,17 +1340,21 @@
 			return $tabla;			
 		}
 
+		/* Una sola fila por horario, con todas sus franjas: «15:30 - 16:30 /
+		   16:00 - 17:00 - Categorías SUB4…». Antes devolvía una fila por franja
+		   y un horario con dos (el 18 de Pedro Larrea: cuatro días a una hora
+		   y uno a otra) daba dos filas; la vista esperaba una y dejaba el
+		   título sin definir («Undefined variable $horario_nombre»). */
 		public function buscarHorario($horario_id){
-			$consulta_datos="SELECT AH.horario_id, CONCAT(HORA.hora_inicio, ' - ', HORA.hora_fin, ' - ', AH.horario_detalle) AS HORARIO
+			$consulta_datos="SELECT AH.horario_id,
+									CONCAT(GROUP_CONCAT(DISTINCT CONCAT(TIME_FORMAT(H.hora_inicio, '%H:%i'), ' - ', TIME_FORMAT(H.hora_fin, '%H:%i'))
+									                    ORDER BY H.hora_inicio SEPARATOR ' / '),
+									       ' - ', AH.horario_detalle) AS HORARIO
 								FROM asistencia_horario AH
-									INNER JOIN( 
-										SELECT detalle_horarioid, detalle_horaid, H.hora_inicio, H.hora_fin
-										FROM asistencia_horario_detalle D
-										INNER JOIN asistencia_hora H on H.hora_id = D.detalle_horaid
-										GROUP BY detalle_horarioid, detalle_horaid, H.hora_inicio, H.hora_fin
-									)HORA ON HORA.detalle_horarioid = AH.horario_id
-
-								WHERE AH.horario_estado = 'A' AND AH.horario_id = :horario";
+									INNER JOIN asistencia_horario_detalle D ON D.detalle_horarioid = AH.horario_id
+									INNER JOIN asistencia_hora H ON H.hora_id = D.detalle_horaid
+								WHERE AH.horario_estado = 'A' AND AH.horario_id = :horario
+								GROUP BY AH.horario_id, AH.horario_detalle";
 
 			$datos = $this->ejecutarConsulta($consulta_datos, [':horario' => (int)$horario_id]);		
 			return $datos;

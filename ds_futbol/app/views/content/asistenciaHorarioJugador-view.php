@@ -6,29 +6,33 @@
 	$sede_id = (($url[2] ?? "") != "") ? $url[2] : 0;
 	$vista = (($url[3] ?? "") != "") ? $url[3]."/" : "";
 
-	$url = ($vista != "") ? 'asistenciaHorarioLista/'.$horario_id : 'asistenciaListHorario';
+	/* A dónde vuelve «Regresar». En otra variable: antes se guardaba en $url,
+	   que es la ruta del enrutador, y el menú lateral (que lee $url[0] para
+	   marcar la opción activa) recibía la letra «a» y no marcaba nada. */
+	$urlRegresar = ($vista != "") ? 'asistenciaHorarioLista/'.$horario_id : 'asistenciaListHorario';
+
+	/* Valores por defecto: si la sede o el horario no se encuentran, el
+	   título se queda sin ese dato en lugar de dar «Undefined variable». */
+	$sede_nombre    = '';
+	$horario_nombre = '';
 
 	if($sede_id != 0){
-		$sede=$insAsignar->BuscarSede($sede_id);		
+		$sede=$insAsignar->BuscarSede($sede_id);
 		if($sede->rowCount()==1){
-			$sede				=	$sede->fetch();				
-			$sede_nombre		= 	$sede['sede_nombre'];	
+			$sede_nombre = (string)$sede->fetch()['sede_nombre'];
 		}
-	}else{
-		$sede_nombre 	= '';
 	}
-	
+
 	$modulo_asistencia	= '';
 
 	if($horario_id != 0){
-		$nombreHorario=$insAsignar->buscarHorario($horario_id);		
-		if($nombreHorario->rowCount()==1){
-			$nombreHorario		=	$nombreHorario->fetch();				
-			$horario_nombre		= 	$nombreHorario['HORARIO'];					
+		$nombreHorario=$insAsignar->buscarHorario($horario_id);
+		if($fila = $nombreHorario->fetch()){
+			$horario_nombre = (string)$fila['HORARIO'];
 		}
-	}else{
-		$horario_nombre 	= '';
-	}	
+	}
+
+	$tituloHorario = implode(' | ', array_filter([$sede_nombre, $horario_nombre], 'strlen'));
 ?>
 
 
@@ -60,7 +64,7 @@
 					<div class="container-fluid">
 						<div class="row mb-2">
 							<div class="col-sm-6">
-								<h5 class="m-0"><?php echo "$sede_nombre | $horario_nombre"; ?></h5>
+								<h5 class="m-0"><?php echo htmlspecialchars($tituloHorario !== '' ? $tituloHorario : 'Asignación de horario', ENT_QUOTES, 'UTF-8'); ?></h5>
 
 							</div><!-- /.col -->
 							<div class="col-sm-6">
@@ -110,7 +114,7 @@
 								<!--a href="<?php echo APP_URL.'asistenciaListHorario/'; ?>" class="btn btn-dark btn-sm">Regresar</a>	
 								<button class="btn btn-dark btn-back btn-sm" onclick="cerrarPestana()">Regresar</button-->	
 								<a href="#" class="btn btn-dark btn-sm" onclick="document.getElementById('form-regresar').submit(); return false;">Regresar</a>								
-								<form id="form-regresar" action="<?php echo APP_URL.$url."/" ?>" method="POST" autocomplete="off" enctype="multipart/form-data">	
+								<form id="form-regresar" action="<?php echo APP_URL.$urlRegresar."/" ?>" method="POST" autocomplete="off" enctype="multipart/form-data">	
 									<input type="hidden" name="horario_sedeid" value="<?php echo $sede_id; ?>">
 								</form>												
 							</div>	

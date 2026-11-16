@@ -1,34 +1,33 @@
 /* =========================================================================
-   Caballito Zeballos — Formulario público de inscripción
+   DigiSports — Formulario público de inscripción
    =========================================================================
 
    DE DÓNDE SALEN ESTOS COLORES
 
-   Del escudo, y de ningún otro sitio. El azul #012144 es el fondo del
-   escudo, el naranja #FC6702 es el arco que lo rodea, y el blanco #FDFDFD
-   es el caballo y la palabra. Nada más.
+   De la marca DigiSports, los mismos de la pantalla de acceso
+   (ds_core/assets/css/login.css): el marino #06102A de fondo, el verde
+   #A2CC38 del botón «Ingresar» como acento y el filete azul #2B9FD4 →
+   verde #9BC73B del logo. La escuela aparece con su escudo y su nombre.
 
-   Antes esta hoja se titulaba «AF Pedro Larrea» y traía el granate #a52121
-   de otro club: se copió el módulo entero de aquel proyecto y los colores
-   vinieron dentro. Lo primero que veía un representante al abrir el enlace
-   era una pantalla que no se parecía a la escuela.
+   Antes llevaba el amarillo #ffd60a de Champions sobre azul, y antes el
+   naranja y el azul de otros clubes: se copiaba el módulo de un proyecto
+   a otro y los colores venían dentro.
 
 
-   EL NARANJA NO PUEDE LLEVAR TEXTO BLANCO
+   EL VERDE NO PUEDE IR COMO LETRA SOBRE BLANCO
 
-   Medido: #FC6702 sobre blanco da 2,96 de contraste, y blanco sobre
-   #FC6702 da lo mismo. WCAG pide 4,5 para texto. En cambio el naranja
-   SOBRE EL AZUL da 5,45, y el blanco sobre el azul da 16,1.
+   Medido: #A2CC38 sobre blanco da 1,9 de contraste; WCAG pide 4,5 para
+   texto. En cambio el verde SOBRE EL MARINO da 10,1, y el marino sobre el
+   verde, lo mismo.
 
-   De ahí el reparto, que además es el del escudo:
+   De ahí el reparto, que es el de la pantalla de acceso:
 
-     · el azul es el fondo y lleva texto blanco;
-     · el naranja es el ACENTO —aros, subrayados, el paso activo, el foco—
-       y sólo lleva texto cuando el fondo es azul;
-     · nunca hay texto blanco sobre naranja.
+     · el marino es el fondo y lleva texto blanco (18,8);
+     · el verde es el ACENTO —aros, subrayados, el paso activo, el foco— y
+       la superficie del botón principal, con letra marina encima;
+     · como LETRA sobre blanco va el verde oscuro --cz-acento-texto (5,1).
 
-   Es una regla de contraste, no de gusto. Si algún día se pone un botón
-   naranja con letras blancas, deja de cumplir.
+   Es una regla de contraste, no de gusto.
 
 
    UN SOLO TEMA, A PROPÓSITO
@@ -41,13 +40,15 @@
    ========================================================================= */
 
 :root {
-    /* Escudo */
-    --cz-azul:        #0b1f5c;
-    --cz-azul-2:      #14307f;
-    --cz-azul-3:      #1d44a8;
-    --cz-naranja:     #ffd60a;   /* amarillo Champions: fondos, bordes y letra sobre azul */
-    --cz-naranja-2:   #a16207;   /* dorado oscuro: texto sobre blanco (4,9:1) */
-    --cz-blanco:      #fdfdfd;
+    /* Marca DigiSports */
+    --cz-azul:          #06102a;   /* marino: fondos con letra blanca */
+    --cz-azul-2:        #0a1f4a;
+    --cz-azul-3:        #123a74;   /* extremo claro del degradado; bordes y hover */
+    --cz-acento:        #a2cc38;   /* verde: superficies, bordes y letra sobre marino */
+    --cz-acento-hover:  #b5dc5c;   /* el botón se aclara al pasar, como en el acceso */
+    --cz-acento-texto:  #4a7a10;   /* verde oscuro: letra sobre blanco (5,1:1) */
+    --cz-filete:        linear-gradient(100deg, #2b9fd4 0%, #9bc73b 100%);
+    --cz-blanco:        #fdfdfd;
 
     /* Neutros con sesgo al azul del escudo: un gris puro se ve prestado */
     --cz-fondo:       #eef1f6;
@@ -63,8 +64,8 @@
     --cz-aviso:       #b26a00;
 
     --cz-radio:       12px;
-    --cz-sombra:      0 1px 2px rgba(1, 33, 68, .06), 0 8px 24px rgba(1, 33, 68, .07);
-    --cz-sombra-alta: 0 2px 4px rgba(1, 33, 68, .08), 0 16px 40px rgba(1, 33, 68, .12);
+    --cz-sombra:      0 1px 2px rgba(6, 16, 42, .06), 0 8px 24px rgba(6, 16, 42, .07);
+    --cz-sombra-alta: 0 2px 4px rgba(6, 16, 42, .08), 0 16px 40px rgba(6, 16, 42, .12);
 }
 
 * { box-sizing: border-box; }
@@ -84,14 +85,15 @@ main { flex: 1 0 auto; }
 /* ─────────────────────────────────────────────────────────────────────
    Cabecera
    ─────────────────────────────────────────────────────────────────────
-   El azul del escudo de fondo y una regla naranja debajo, que es el arco
-   del logo llevado a la interfaz. */
+   El marino de fondo y el filete azul → verde del logo debajo, como en
+   la pantalla de acceso. */
 .cz-header {
     background: linear-gradient(135deg, var(--cz-azul) 0%, var(--cz-azul-2) 55%, var(--cz-azul-3) 100%);
     color: var(--cz-blanco);
     padding: 1.15rem 0;
-    border-bottom: 4px solid var(--cz-naranja);
-    box-shadow: 0 6px 24px rgba(1, 33, 68, .18);
+    border-bottom: 4px solid transparent;
+    border-image: var(--cz-filete) 1;
+    box-shadow: 0 6px 24px rgba(6, 16, 42, .18);
 }
 
 .cz-header h1 {
@@ -108,9 +110,8 @@ main { flex: 1 0 auto; }
     align-items: center;
     gap: .35rem;
     margin-top: .3rem;
-    /* Naranja sobre azul: 5,45. El mismo texto en blanco sobre naranja no
-       cumpliría, así que el acento va en la LETRA y no en el fondo. */
-    color: var(--cz-naranja);
+    /* Verde sobre marino: 10,1. */
+    color: var(--cz-acento);
     font-size: .875rem;
     font-weight: 600;
 }
@@ -133,7 +134,7 @@ main { flex: 1 0 auto; }
     background: var(--cz-blanco);
     padding: 5px 8px;
     flex: 0 0 auto;
-    box-shadow: 0 0 0 2px rgba(255, 214, 10, .5);
+    box-shadow: 0 0 0 2px rgba(162, 204, 56, .5);
 }
 
 /* ─── Cuenta atrás del enlace ─────────────────────────────────────────
@@ -156,9 +157,9 @@ main { flex: 1 0 auto; }
 }
 
 .cz-timer--pronto {
-    background: rgba(255, 214, 10, .22);
-    border-color: var(--cz-naranja);
-    color: var(--cz-naranja);
+    background: rgba(162, 204, 56, .22);
+    border-color: var(--cz-acento);
+    color: var(--cz-acento);
 }
 
 .cz-timer--fin {
@@ -245,8 +246,8 @@ main { flex: 1 0 auto; }
     background: var(--cz-azul);
     border-color: var(--cz-azul);
     color: var(--cz-blanco);
-    /* El aro naranja alrededor del paso activo: es el arco del escudo. */
-    box-shadow: 0 0 0 4px rgba(255, 214, 10, .28);
+    /* El aro verde alrededor del paso activo: el acento de la marca. */
+    box-shadow: 0 0 0 4px rgba(162, 204, 56, .28);
 }
 
 /* Paso ya superado: disco relleno y un visto en lugar del número. El
@@ -289,7 +290,7 @@ main { flex: 1 0 auto; }
    Cabeceras claras con texto azul, no barras de color: en un formulario
    largo, tres franjas saturadas cansan y compiten con los campos, que es
    donde tiene que ir la atención. El color queda para el icono y para el
-   filete naranja de la izquierda. */
+   filete verde de la izquierda. */
 .cz-card {
     border: 1px solid var(--cz-borde-suave);
     border-radius: var(--cz-radio);
@@ -306,13 +307,13 @@ main { flex: 1 0 auto; }
     font-size: 1.02rem;
     border: 0;
     border-bottom: 1px solid var(--cz-borde-suave);
-    border-left: 4px solid var(--cz-naranja);
+    border-left: 4px solid var(--cz-acento);
     display: flex;
     align-items: center;
     gap: .6rem;
 }
 
-.cz-card .card-header i { color: var(--cz-naranja-2); }
+.cz-card .card-header i { color: var(--cz-acento-texto); }
 
 .cz-card .card-body { padding: 1.35rem; }
 
@@ -326,11 +327,11 @@ main { flex: 1 0 auto; }
     margin-bottom: .3rem;
 }
 
-/* El asterisco de obligatorio, en naranja sobre blanco, es un objeto
+/* El asterisco de obligatorio, en verde oscuro sobre blanco, es un objeto
    gráfico pequeño y no texto de lectura: se refuerza con el atributo
    title y con la leyenda de arriba del formulario. */
 .form-label .cz-req {
-    color: var(--cz-naranja-2);
+    color: var(--cz-acento-texto);
     font-weight: 700;
     margin-left: .15rem;
 }
@@ -350,7 +351,7 @@ main { flex: 1 0 auto; }
 .form-control:focus,
 .form-select:focus {
     border-color: var(--cz-azul-3);
-    box-shadow: 0 0 0 3px rgba(255, 214, 10, .28);
+    box-shadow: 0 0 0 3px rgba(162, 204, 56, .28);
     outline: none;
 }
 
@@ -359,7 +360,7 @@ main { flex: 1 0 auto; }
 .btn:focus-visible,
 .cz-pasos .nav-link:focus-visible,
 a:focus-visible {
-    outline: 3px solid var(--cz-naranja);
+    outline: 3px solid var(--cz-acento);
     outline-offset: 2px;
     box-shadow: none;
 }
@@ -387,7 +388,7 @@ a:focus-visible {
     margin-bottom: 1rem;
 }
 
-.cz-leyenda .cz-req { color: var(--cz-naranja-2); font-weight: 700; }
+.cz-leyenda .cz-req { color: var(--cz-acento-texto); font-weight: 700; }
 
 /* ─────────────────────────────────────────────────────────────────────
    Foto del alumno
@@ -407,8 +408,8 @@ a:focus-visible {
 }
 
 .foto-preview-container:hover {
-    border-color: var(--cz-naranja);
-    background: #fff7f1;
+    border-color: var(--cz-acento);
+    background: #f4f9e8;
 }
 
 .foto-preview-container img {
@@ -425,25 +426,25 @@ a:focus-visible {
 /* ─────────────────────────────────────────────────────────────────────
    Botones
    ─────────────────────────────────────────────────────────────────────
-   Azul con letra blanca: 16,1 de contraste. El naranja se reserva para el
-   aro de foco y el filete de las tarjetas, donde no lleva texto encima. */
+   Verde con letra marina, como «Ingresar» en la pantalla de acceso: 10,1
+   de contraste. */
 .btn-cz {
-    background: var(--cz-azul);
-    border: 1.5px solid var(--cz-azul);
-    color: var(--cz-blanco);
+    background: var(--cz-acento);
+    border: 1.5px solid var(--cz-acento);
+    color: var(--cz-azul);
     padding: .65rem 1.6rem;
     border-radius: 9px;
     font-weight: 600;
     transition: background .2s, border-color .2s, transform .12s, box-shadow .2s;
-    box-shadow: 0 2px 8px rgba(1, 33, 68, .18);
+    box-shadow: 0 2px 8px rgba(6, 16, 42, .18);
 }
 
 .btn-cz:hover:not(:disabled) {
-    background: var(--cz-azul-3);
-    border-color: var(--cz-azul-3);
-    color: var(--cz-blanco);
+    background: var(--cz-acento-hover);
+    border-color: var(--cz-acento-hover);
+    color: var(--cz-azul);
     transform: translateY(-1px);
-    box-shadow: 0 6px 18px rgba(1, 33, 68, .26);
+    box-shadow: 0 6px 18px rgba(6, 16, 42, .26);
 }
 
 .btn-cz:disabled { opacity: .5; transform: none; cursor: not-allowed; }
@@ -453,11 +454,13 @@ a:focus-visible {
 .btn-cz-enviar {
     background: var(--cz-ok);
     border-color: var(--cz-ok);
+    color: #fff;   /* blanco sobre el verde de estado: 4,7 (el marino daría 4,0) */
 }
 
 .btn-cz-enviar:hover:not(:disabled) {
     background: #126b48;
     border-color: #126b48;
+    color: #fff;
 }
 
 /* Volver atrás no compite con avanzar. */
@@ -532,7 +535,7 @@ a:focus-visible {
 
 #seccion-autorizacion .form-check-input:focus {
     border-color: var(--cz-azul-3);
-    box-shadow: 0 0 0 3px rgba(255, 214, 10, .28);
+    box-shadow: 0 0 0 3px rgba(162, 204, 56, .28);
 }
 
 #seccion-autorizacion .form-check-label { cursor: pointer; user-select: none; }

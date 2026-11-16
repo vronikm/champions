@@ -9,6 +9,17 @@
 */
 
 /*
+| Acento del menú: el verde de DigiSports (el del botón de la pantalla de
+| acceso, ds_core/assets/css/login.css). core.css pinta el enlace activo
+| con --ds-acento y, sin él, caía en --ds-primary, el amarillo #ffd60a.
+| Texto azul marino de la marca encima: 10,1 de contraste.
+*/
+.ds-core {
+    --ds-acento: #a2cc38;
+    --ds-acento-texto: #06102a;
+}
+
+/*
 | Título de la página (la cabecera azul de contenido, junto al breadcrumb).
 |
 | Cada vista lo escribía con una etiqueta distinta: h1 (2,5rem) en el

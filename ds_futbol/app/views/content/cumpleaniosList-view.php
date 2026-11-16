@@ -93,7 +93,7 @@
 				<div class="row mb-2">
 					<div class="col-sm-6">
 						<h3 class="m-0" style="color:var(--cumple-acento);">
-							<i class="fas fa-birthday-cake" style="color:var(--cumple-amarillo);" aria-hidden="true"></i>
+							<i class="fas fa-birthday-cake" style="color:var(--cumple-verde);" aria-hidden="true"></i>
 							Cumpleaños
 						</h3>
 					</div>
@@ -126,7 +126,7 @@
 					|
 					| El <input type="date"> del navegador no deja marcar días: había
 					| que ir probando fecha a fecha para encontrar quién cumplía.
-					| Este calendario pinta en amarillo los días con cumpleaños y
+					| Este calendario pinta en verde los días con cumpleaños y
 					| dice cuántos son, así que se ve de un vistazo qué tarjetas
 					| hay que generar en el mes.
 					*/
@@ -223,7 +223,7 @@
 								<div class="alumno-card card">
 									<div class="card-header-azul">
 										<i class="fas fa-birthday-cake"
-										   style="position:absolute;top:14px;right:14px;color:rgba(255,224,1,.45);font-size:1.1rem;"
+										   style="position:absolute;top:14px;right:14px;color:rgba(162,204,56,.45);font-size:1.1rem;"
 							   aria-hidden="true"></i>
 									</div>
 									<div class="card-body-custom">

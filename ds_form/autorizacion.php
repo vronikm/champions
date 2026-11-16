@@ -132,7 +132,7 @@
         }
         .cz-aut__opcion .form-check-input { margin: .15rem 0 0; flex: none; width: 1.35rem; height: 1.35rem; }
         .cz-aut__opcion:has(.form-check-input:checked) { border-color: var(--cz-azul); background: #f2f5fc; }
-        .cz-aut__opcion:has(.form-check-input:focus-visible) { outline: 3px solid var(--cz-naranja); outline-offset: 2px; }
+        .cz-aut__opcion:has(.form-check-input:focus-visible) { outline: 3px solid var(--cz-acento); outline-offset: 2px; }
         .cz-aut__opcion small { display: block; font-weight: 400; color: var(--cz-texto-suave); }
         .cz-aut__enviar { width: 100%; padding: .9rem 1rem; font-size: 1.05rem; }
         @media (min-width: 576px) { .cz-aut__enviar { width: auto; } }

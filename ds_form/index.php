@@ -581,7 +581,7 @@ $logoUrl = ($logoOrg !== '' && is_file(DS_HUB_PATH . 'ds_core/assets/img/marca/'
                                     <div class="card-body">
                                         <h6 class="fw-bold mb-3" style="color: var(--cz-azul);">
                                             <i class="fas <?php echo $e['icono']; ?> me-1"
-                                               style="color: var(--cz-naranja);" aria-hidden="true"></i>
+                                               style="color: var(--cz-acento-texto);" aria-hidden="true"></i>
                                             <?php echo htmlspecialchars($bloque['titulo']); ?>
                                         </h6>
 

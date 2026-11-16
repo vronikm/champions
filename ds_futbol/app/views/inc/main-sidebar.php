@@ -6,7 +6,13 @@
     /* La marca lleva el nombre de la escuela (Core › Escuela), no el de la
        sede de la sesión ni el del módulo («DigiSports - Fútbol»). */
     $nombre = function_exists('ds_nombre_organizacion') ? ds_nombre_organizacion() : '';
-    $nombre = htmlspecialchars($nombre !== '' ? $nombre : APP_NAME, ENT_QUOTES, 'UTF-8');
+    $nombre = $nombre !== '' ? $nombre : APP_NAME;
+    /* En el rótulo, el nombre corto («Pedro Larrea»): el completo no cabe en
+       el ancho del menú y salía cortado por los dos lados. El completo queda
+       en el title y en el texto alternativo del escudo. */
+    $nombreCorto = function_exists('ds_nombre_corto_organizacion') ? ds_nombre_corto_organizacion() : '';
+    $nombreCorto = htmlspecialchars($nombreCorto !== '' ? $nombreCorto : $nombre, ENT_QUOTES, 'UTF-8');
+    $nombre      = htmlspecialchars($nombre, ENT_QUOTES, 'UTF-8');
     $session_rolid= $_SESSION['rol'];
     $usuario_login=$_SESSION['usuario'];
 
@@ -60,12 +66,12 @@
 <aside class="app-sidebar bg-body-secondary shadow ds-core__sidebar" data-bs-theme="dark">
     <div class="sidebar-brand">
     <!-- Brand Logo -->
-    <a href="#" class="brand-link">
+    <a href="<?php echo APP_URL; ?>dashboard/" class="brand-link" title="<?php echo $nombre; ?>">
       <?php /* Desde ds_core, no desde la copia del modulo: es el mismo archivo y
                asi hay uno solo para todo el ecosistema. Con ds_recurso() para que
                lleve version: sin ella, cambiar el logo puede tardar en verse. */ ?>
-      <img src="<?php echo ds_recurso('ds_core/assets/img/icon_cz98px.png'); ?>" alt="<?php echo APP_NAME; ?>" class="brand-image opacity-75 shadow">
-      <span class="brand-text fw-light"><?php echo $nombre; ?></span>
+      <img src="<?php echo ds_recurso('ds_core/assets/img/icon_cz98px.png'); ?>" alt="<?php echo $nombre; ?>" class="brand-image opacity-75 shadow">
+      <span class="brand-text ds-marca-texto"><?php echo $nombreCorto; ?></span>
     </a>
 
     </div>

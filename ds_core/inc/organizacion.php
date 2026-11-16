@@ -114,6 +114,44 @@ if (!function_exists('ds_organizacion')) {
         return $nombre !== '' ? $nombre . ', sede ' . $sede : 'Sede ' . $sede;
     }
 
+    /**
+     * Nombre corto de la escuela, para el rótulo del menú lateral, donde
+     * caben unos 20 caracteres: «ACADEMIA DE FUTBOL PEDRO LARREA» no cabía
+     * y salía cortado («CADEMIA DE FUTBOL PEDRO LA»).
+     *
+     * Quita el tipo de institución del principio (Academia / Escuela / Club
+     * [Deportivo | de Fútbol]) y, si el nombre está entero en mayúsculas, lo
+     * pasa a formato título. Un nombre sin ese prefijo queda como está:
+     *   ACADEMIA DE FUTBOL PEDRO LARREA -> Pedro Larrea
+     *   CLUB DEPORTIVO JORGE GUZMAN     -> Jorge Guzman
+     *   Sendero de Campeones            -> Sendero de Campeones
+     */
+    function ds_nombre_corto_organizacion(): string
+    {
+        $nombre = trim(preg_replace('/\s+/u', ' ', (string)ds_organizacion()['escuela_nombre']));
+        if ($nombre === '') {
+            return '';
+        }
+
+        $corto = trim(preg_replace(
+            '/^(academia|escuela|club)(\s+(deportiv[oa]|de\s+f[uú]tbol|de\s+futbol))?\s+/iu',
+            '',
+            $nombre
+        ));
+        if ($corto === '' || mb_strlen($corto, 'UTF-8') < 3) {
+            $corto = $nombre;
+        }
+
+        if ($corto === mb_strtoupper($corto, 'UTF-8')) {
+            $corto = mb_convert_case(mb_strtolower($corto, 'UTF-8'), MB_CASE_TITLE, 'UTF-8');
+            /* Las partículas, en minúscula: «Sendero De Campeones» -> «Sendero de Campeones». */
+            $corto = preg_replace_callback('/(?<=\s)(De|Del|La|Las|Los|Y|E)(?=\s)/u',
+                static fn ($m) => mb_strtolower($m[1], 'UTF-8'), $corto);
+        }
+
+        return $corto;
+    }
+
     /** Igual que el anterior, en mayúsculas, para encabezados de PDF. */
     function ds_nombre_organizacion_may(int $sedeid = 0): string
     {

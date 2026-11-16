@@ -122,10 +122,42 @@
    ayuda a seguir la rama con la vista, y como grafico le basta el 3:1 que ya
    se comprobo. */
 .ds-core .sidebar-menu .nav-item:has(> .nav-treeview) > .nav-link.active > i {
-    color: color-mix(in srgb, var(--ds-acento, var(--ds-primary)) 60%, #fff);
+    color: color-mix(in srgb, var(--ds-acento, var(--ds-primary)) 60%, #fff) !important;
+}
+
+/* El icono de la página abierta, del color de su texto.
+   Los iconos traen su color desde el menú de Core (text-info, text-warning…,
+   que core.css fuerza con !important para que se lean sobre el menú
+   oscuro). Sobre el fondo verde del elemento activo, el celeste o el
+   amarillo se perdían: el icono de «Alumnos» casi no se veía. En la página
+   abierta el icono toma el marino del texto (10,1 sobre el verde). La
+   flecha de las ramas y los numeritos (insignias) no se tocan. */
+.ds-core .sidebar-menu .nav-item:not(:has(> .nav-treeview)) > .nav-link.active > i:not(.nav-arrow),
+.ds-core .sidebar-menu .nav-item:not(:has(> .nav-treeview)) > .nav-link.active > p > i:not(.nav-arrow) {
+    color: var(--ds-acento-texto, #212529) !important;
 }
 
 .ds-core .sidebar-menu .nav-link i { width: 22px; text-align: center; }
+
+/* El rótulo de la marca: el nombre corto de la escuela (ds_nombre_corto_
+   organizacion), más legible en seminegrita. Si aun así no cabe, termina
+   en «…» en lugar de cortarse por los dos lados; el completo está en el
+   title del enlace. */
+.ds-core .sidebar-brand .brand-link { min-width: 0; max-width: 100%; }
+.ds-core .sidebar-brand .ds-marca-texto {
+    display: inline-block;
+    /* Ancho fijo y no en %: .brand-link se ajusta a su contenido y va
+       centrado, así que un porcentaje se medía contra sí mismo. 250 px del
+       menú, menos los márgenes y el escudo: unos 11,5rem para el texto. */
+    max-width: 11.5rem;
+    font-size: 1.1rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+    font-weight: 600;
+    letter-spacing: .01em;
+}
 
 /* ---------- Contenido ----------
    Aqui habia .ds-core .content-wrapper y .ds-core .content-header h1.

@@ -28,8 +28,13 @@
 	$posiciones = $insAlumno->catalogoPosiciones();
 	$alumno_posicion = isset($posiciones[$campo('alumno_posicionid')]) ? $campo('alumno_posicionid') : '';
 
+	/* Horario asignado: '' todos, 'S' con horario, 'N' sin horario. */
+	$HORARIOS = ['' => 'Todos', 'S' => 'Con horario', 'N' => 'Sin horario'];
+	$alumno_horario = isset($HORARIOS[$campo('alumno_horario')]) ? $campo('alumno_horario') : '';
+
 	$porPosicion = [];
-	$filas = $insAlumno->listarAlumnos($alumno_identificacion, $alumno_apellidopaterno, $alumno_primernombre, $alumno_anio, $alumno_sedeid, $alumno_estado, $alumno_posicion, $porPosicion);
+	$porHorario  = [];
+	$filas = $insAlumno->listarAlumnos($alumno_identificacion, $alumno_apellidopaterno, $alumno_primernombre, $alumno_anio, $alumno_sedeid, $alumno_estado, $alumno_posicion, $porPosicion, $alumno_horario, $porHorario);
 
 	/* Resumen: de más a menos alumnos, «No definido» al final. */
 	$clavePos = static fn($c) => [(string)$c === alumnoController::POSICION_NO_DEFINIDA, -$porPosicion[$c]['total'], $porPosicion[$c]['texto']];
@@ -124,6 +129,14 @@
 									<?php endforeach; ?>
 								</select>
 							</div>
+							<div class="col-12 col-sm-6 col-lg-4 col-xl">
+								<label for="alumno_horario" class="form-label">Horario</label>
+								<select class="form-select" id="alumno_horario" name="alumno_horario">
+									<?php foreach ($HORARIOS as $valor => $texto): ?>
+										<option value="<?php echo $valor; ?>" <?php echo $alumno_horario === $valor ? 'selected' : ''; ?>><?php echo $texto; ?></option>
+									<?php endforeach; ?>
+								</select>
+							</div>
 							<div class="col-12 col-sm-6 col-lg-4 col-xl-auto d-flex align-items-end">
 								<div class="w-100">
 									<?php echo ds_boton_buscar(); ?>
@@ -151,6 +164,25 @@
 						</div>
 					</div>
 					<div class="card-body">
+						<?php if ($porHorario['S'] + $porHorario['N'] > 0): ?>
+						<?php /* Con y sin horario, del resultado. Pulsar uno filtra por él;
+						         pulsar el elegido vuelve a «Todos». «Sin horario» se
+						         destaca cuando hay alguno: es lo que hay que resolver. */ ?>
+						<div class="d-flex flex-wrap align-items-center gap-2 mb-2" role="group" aria-label="Alumnos con y sin horario">
+							<span class="text-body-secondary small"><i class="far fa-clock me-1" aria-hidden="true"></i>Horario:</span>
+							<?php foreach (['S' => 'Con horario', 'N' => 'Sin horario'] as $codigo => $texto):
+								$elegido = $alumno_horario === $codigo;
+								$n       = (int)$porHorario[$codigo];
+								$clase   = $elegido ? 'btn-primary' : ($codigo === 'N' && $n > 0 ? 'btn-outline-warning ds-alumnos__chip-alerta' : 'btn-outline-secondary'); ?>
+								<button type="button" class="btn btn-sm <?php echo $clase; ?> js-horario"
+								        data-horario="<?php echo $elegido ? '' : $codigo; ?>" aria-pressed="<?php echo $elegido ? 'true' : 'false'; ?>"
+								        title="<?php echo $elegido ? 'Ver todos' : 'Ver solo ' . mb_strtolower($texto, 'UTF-8'); ?>" <?php echo $n === 0 && !$elegido ? 'disabled' : ''; ?>>
+									<?php if ($codigo === 'N'): ?><i class="fas fa-exclamation-triangle me-1" aria-hidden="true"></i><?php endif; ?>
+									<?php echo $texto; ?><span class="badge <?php echo $elegido ? 'text-bg-light' : 'text-bg-secondary'; ?> ms-1"><?php echo $n; ?></span>
+								</button>
+							<?php endforeach; ?>
+						</div>
+						<?php endif; ?>
 						<?php if ($porPosicion): ?>
 						<?php /* Cuántos alumnos del resultado hay en cada posición. Pulsar
 						         una filtra por ella; pulsar la elegida vuelve a «Todas». */ ?>
@@ -173,6 +205,7 @@
 									<th>Nacimiento</th>
 									<th class="ds-col-opcional">Sede</th>
 									<th>Posición</th>
+									<th>Horario</th>
 									<th>Estado</th>
 									<th class="text-end"><span class="visually-hidden">Acciones</span></th>
 								</tr>
@@ -233,7 +266,7 @@
 			order: [[0, 'asc']],               /* por apellido (data-order) */
 			columnDefs: [
 				{ targets: 1, type: 'string' },  /* data-order: fecha ISO */
-				{ targets: 5, orderable: false, searchable: false }
+				{ targets: 6, orderable: false, searchable: false }   /* acciones */
 			],
 			layout: {
 				topStart: 'pageLength',
@@ -248,7 +281,7 @@
 				infoFiltered: "(de _MAX_)",
 				lengthMenu: "Mostrar _MENU_",
 				search: "",
-				searchPlaceholder: "Filtrar por nombre, cédula, sede o posición…",
+				searchPlaceholder: "Filtrar por nombre, cédula, sede, posición u horario…",
 				zeroRecords: "Ningún alumno coincide con el filtro",
 				paginate: { next: "Siguiente", previous: "Anterior" },
 				aria: {
@@ -267,6 +300,15 @@
 			b.addEventListener('click', function () {
 				var sel = document.getElementById('alumno_posicionid');
 				sel.value = b.dataset.posicion || '';
+				sel.form.requestSubmit();
+			});
+		});
+
+		/* Resumen con / sin horario: igual que el de posición. */
+		document.querySelectorAll('.js-horario').forEach(function (b) {
+			b.addEventListener('click', function () {
+				var sel = document.getElementById('alumno_horario');
+				sel.value = b.dataset.horario || '';
 				sel.form.requestSubmit();
 			});
 		});

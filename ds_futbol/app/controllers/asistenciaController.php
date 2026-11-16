@@ -1320,24 +1320,30 @@
 			$datos = $this->ejecutarConsulta($consulta_datos, [':sede' => (int)$sede]);
 			$datos = $datos->fetchAll();
 
+			/* Como en ListaAlumnosHorario: la fila siempre, el botón según el
+			   permiso. Sin «crear», siPuede() vaciaba la fila entera y
+			   DataTables avisaba «Requested unknown parameter '0'». */
+			$e = static fn ($t) => htmlspecialchars(trim(preg_replace('/\s+/u', ' ', (string)$t)), ENT_QUOTES, 'UTF-8');
+			$puedeAsignar = puede('crear', 'asistencia');
 			foreach($datos as $rows){
-				$tabla.='					
+				$operaciones = $puedeAsignar
+					? '<form class="FormularioAjax d-inline" action="'.APP_URL.'app/ajax/asistenciaAjax.php" method="POST" autocomplete="off" data-recargar-directo>
+							<input type="hidden" name="alumno_id" value="'.(int)$rows['alumno_id'].'">
+							<input type="hidden" name="modulo_asistencia" value="asignar_alumno">
+							<input type="hidden" name="horario_id" value="'.(int)$horario_id.'">
+							<button type="submit" class="btn btn-actualizar btn-sm"><i class="fas fa-plus me-1" aria-hidden="true"></i>Agregar</button>
+						</form>'
+					: '<span class="text-body-secondary" title="Sin permiso para asignar alumnos al horario">—</span>';
+				$tabla.='
 					<tr>
-						'.$this->siPuede('crear','asistencia','<form class="FormularioAjax" action="'.APP_URL.'app/ajax/asistenciaAjax.php" method="POST" autocomplete="off" data-recargar-directo>
-						<td>'.$rows['sede_nombre'].'</td>
-						<td><input type="hidden" name="alumno_id" value="'.$rows['alumno_id'].'">'.$rows['alumno_identificacion'].'</td>
-						<td>'.$rows['alumno_primernombre'].' '.$rows['alumno_segundonombre'].' '.$rows['alumno_apellidopaterno'].' '.$rows['alumno_apellidomaterno'].'</td>
-						<td>'.$rows['alumno_fechanacimiento'].'</td>
-						<td>												
-							<input type="hidden" name="modulo_asistencia" value="asignar_alumno">	
-							<input type="hidden" name="horario_id" value="'.$horario_id.'">					
-							<button type="submit" class="btn float-end btn-actualizar btn-sm" style="margin-right: 5px;"><i class="fas fa-plus me-1"></i>Agregar</button>					
-						</td>
-						</form>').'
-					</tr>
-					';
+						<td>'.$e($rows['sede_nombre']).'</td>
+						<td>'.$e($rows['alumno_identificacion']).'</td>
+						<td>'.$e($rows['alumno_primernombre'].' '.$rows['alumno_segundonombre'].' '.$rows['alumno_apellidopaterno'].' '.$rows['alumno_apellidomaterno']).'</td>
+						<td>'.$e($rows['alumno_fechanacimiento']).'</td>
+						<td class="text-end">'.$operaciones.'</td>
+					</tr>';
 			}
-			return $tabla;			
+			return $tabla;
 		}
 
 		/* Una sola fila por horario, con todas sus franjas: «15:30 - 16:30 /
@@ -1434,21 +1440,34 @@
 			
 			$datos = $this->ejecutarConsulta($consulta_datos, [':horario' => (int)$horarioid]);
 			$datos = $datos->fetchAll();
+			/*
+			| La fila se dibuja siempre; sólo el botón depende del permiso.
+			|
+			| Antes siPuede('eliminar') envolvía la fila ENTERA (los datos y el
+			| botón): a un rol sin permiso de eliminar en Asistencia —Secretaria—
+			| le llegaban filas vacías, <tr></tr>, y DataTables avisaba
+			| «Requested unknown parameter '0' for row 0, column 0». Además el
+			| <form> iba entre <tr> y <td>, que no es HTML válido: ahora vive
+			| dentro de la celda de operaciones.
+			*/
+			$e = static fn ($t) => htmlspecialchars(trim(preg_replace('/\s+/u', ' ', (string)$t)), ENT_QUOTES, 'UTF-8');
+			$puedeEliminar = puede('eliminar', 'asistencia');
 			foreach($datos as $rows){
-				$tabla.='					
+				$operaciones = $puedeEliminar
+					? '<form class="FormularioAjax d-inline" action="'.APP_URL.'app/ajax/asistenciaAjax.php" method="POST" autocomplete="off">
+							<input type="hidden" name="asignahorario_alumnoid" value="'.(int)$rows['asignahorario_alumnoid'].'">
+							<input type="hidden" name="modulo_asistencia" value="eliminar_alumnolista">
+							<button type="submit" class="btn btn-danger btn-sm" title="Quitar del horario" aria-label="Quitar a '.$e($rows['NOMBRES'].' '.$rows['APELLIDOS']).' del horario"><i class="fas fa-trash" aria-hidden="true"></i></button>
+						</form>'
+					: '<span class="text-body-secondary" title="Sin permiso para quitar alumnos del horario">—</span>';
+				$tabla.='
 					<tr>
-						'.$this->siPuede('eliminar','asistencia','<form class="FormularioAjax" action="'.APP_URL.'app/ajax/asistenciaAjax.php" method="POST" autocomplete="off" >
-						<td><input type="hidden" name="asignahorario_alumnoid" value="'.$rows['asignahorario_alumnoid'].'">'.$rows['alumno_identificacion'].'</td>
-						<td>'.$rows['NOMBRES'].'</td>
-						<td>'.$rows['APELLIDOS'].'</td>
-						<td>'.$rows['CATEGORIA'].'</td>
-						<td>												
-							<input type="hidden" name="modulo_asistencia" value="eliminar_alumnolista">												
-							<button type="submit" class="btn float-end btn-danger btn-sm" style="margin-right: 5px;" title="Eliminar" aria-label="Eliminar"><i class="fas fa-trash"></i></button>					
-						</td>
-						</form>').'
-					</tr>
-					';
+						<td>'.$e($rows['alumno_identificacion']).'</td>
+						<td>'.$e($rows['NOMBRES']).'</td>
+						<td>'.$e($rows['APELLIDOS']).'</td>
+						<td>'.$e($rows['CATEGORIA']).'</td>
+						<td class="text-end">'.$operaciones.'</td>
+					</tr>';
 			}
 			return $tabla;			
 		}

@@ -630,11 +630,18 @@
 		| $porPosicion devuelve cuántos alumnos del resultado hay en cada una
 		| ([codigo => ['texto' => …, 'total' => n]]), para el resumen del listado.
 		*/
-		public function listarAlumnos($identificacion, $apellidopaterno, $primernombre, $anio, $sede, $estado = 'A', $posicion = '', ?array &$porPosicion = null){
+		/*
+		| $horario: '' todos, 'S' con horario asignado, 'N' sin horario.
+		| $porHorario devuelve cuántos del resultado tienen y no tienen horario
+		| (antes de aplicar ese filtro, para que el resumen muestre las dos cifras).
+		| Cuenta sólo los horarios activos: uno inactivo no da clase.
+		*/
+		public function listarAlumnos($identificacion, $apellidopaterno, $primernombre, $anio, $sede, $estado = 'A', $posicion = '', ?array &$porPosicion = null, $horario = '', ?array &$porHorario = null){
 			$condiciones = [];
 			$busqueda = [];
 			$parametros = [];
 			$porPosicion = [];
+			$porHorario = ['S' => 0, 'N' => 0];
 
 			if ($identificacion != "") {
 				$busqueda[] = "A.alumno_identificacion LIKE :ident";
@@ -670,9 +677,18 @@
 			$datos = $this->ejecutarConsulta("SELECT A.alumno_id, A.alumno_identificacion, A.alumno_primernombre, A.alumno_segundonombre,
 						A.alumno_apellidopaterno, A.alumno_apellidomaterno, A.alumno_fechanacimiento, A.alumno_estado,
 						A.alumno_posicionid, PJ.catalogo_descripcion AS posicion,
-						S.sede_nombre, TIMESTAMPDIFF(YEAR, A.alumno_fechanacimiento, CURDATE()) AS EDAD
+						S.sede_nombre, TIMESTAMPDIFF(YEAR, A.alumno_fechanacimiento, CURDATE()) AS EDAD,
+						HA.horario_id, HA.horario_nombre, HA.horario_detalle
 					FROM sujeto_alumno A
 					LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
+					/* El horario activo asignado (asistenciaHorarioJugador). Uno por
+					   alumno: la asignación sólo ofrece a los que no tienen ninguno;
+					   si alguna vez hubiera dos, se toma el primero. */
+					LEFT JOIN (SELECT G.asignahorario_alumnoid AS alumnoid, MIN(H.horario_id) AS horario_id
+					           FROM asistencia_asignahorario G
+					           INNER JOIN asistencia_horario H ON H.horario_id = G.asignahorario_horarioid AND H.horario_estado = 'A'
+					           GROUP BY G.asignahorario_alumnoid) GA ON GA.alumnoid = A.alumno_id
+					LEFT JOIN asistencia_horario HA ON HA.horario_id = GA.horario_id
 					LEFT JOIN (general_tabla_catalogo PJ
 					           INNER JOIN general_tabla PJT ON PJT.tabla_id = PJ.catalogo_tablaid
 					                                       AND PJT.tabla_nombre = 'posicion_juego')
@@ -694,6 +710,13 @@
 
 			$tabla = "";
 			foreach ($datos as $al) {
+				/* Con / sin horario: se cuenta antes de filtrar por ello, para que
+				   el resumen diga siempre las dos cifras del resultado. */
+				$conHorario = $al['horario_id'] !== null;
+				$porHorario[$conHorario ? 'S' : 'N']++;
+				if (($horario === 'S' && !$conHorario) || ($horario === 'N' && $conHorario)) {
+					continue;
+				}
 				$id      = (int)$al['alumno_id'];
 				$activo  = $al['alumno_estado'] === 'A';
 				$nombre  = $junta($al['alumno_primernombre'], $al['alumno_segundonombre'], $al['alumno_apellidopaterno'], $al['alumno_apellidomaterno']);
@@ -710,6 +733,12 @@
 				$posCelda = $posCodigo === self::POSICION_NO_DEFINIDA
 					? '<span class="text-body-secondary">'.$h($posTexto).'</span>'
 					: $h($posTexto);
+
+				/* Horario: el nombre, que lleva a su lista de alumnos; o un aviso
+				   «Sin horario», que lleva a asignarlo desde los horarios. */
+				$horCelda = $conHorario
+					? '<a href="'.APP_URL.'asistenciaHorarioLista/'.(int)$al['horario_id'].'/" class="ds-alumnos__horario" title="'.$h($al['horario_detalle']).'"><i class="far fa-clock" aria-hidden="true"></i> '.$h($al['horario_nombre']).'</a>'
+					: '<a href="'.APP_URL.'asistenciaListHorario/" class="badge ds-alumnos__sin-horario" title="Asignarle un horario desde la lista de horarios"><i class="fas fa-exclamation-triangle" aria-hidden="true"></i> Sin horario</a>';
 
 				$botones = '<a href="'.APP_URL.'alumnoProfile/'.$id.'/" class="btn btn-primary btn-sm ds-ficha__primario"><i class="fas fa-id-card me-1" aria-hidden="true"></i>Ver ficha</a>';
 				if ($puedeEditar) {
@@ -741,6 +770,7 @@
 							.($nacio !== '' ? $nacio.' · <strong>'.(int)$al['EDAD'].' años</strong>' : '<span class="text-body-secondary">—</span>').'</td>
 						<td class="ds-ficha__dato ds-col-opcional" data-etiqueta="Sede">'.$h($al['sede_nombre'] ?? '').'</td>
 						<td class="ds-ficha__dato" data-etiqueta="Posición">'.$posCelda.'</td>
+						<td class="ds-ficha__dato" data-etiqueta="Horario" data-order="'.($conHorario ? '1 '.$h($al['horario_nombre']) : '0').'" data-search="'.($conHorario ? $h($al['horario_nombre']) : 'Sin horario').'">'.$horCelda.'</td>
 						<td class="ds-ficha__estado" data-order="'.($activo ? 'A' : 'I').'"><span class="badge '.($activo ? 'text-bg-success' : 'text-bg-secondary').'">'.($activo ? 'Activo' : 'Inactivo').'</span></td>
 						<td class="ds-tabla-acciones ds-ficha__acciones"><div class="ds-ficha__botones">'.$botones.'</div></td>
 					</tr>';

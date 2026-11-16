@@ -912,6 +912,44 @@
 .ds-alumnos__inicial { font-weight: 700; font-size: .85rem; color: var(--bs-emphasis-color); }
 .ds-alumnos__herramientas { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
 .ds-crud__lista .dt-length select { min-height: 2.25rem; }
+
+/* Columna «Horario». Con horario: su nombre, enlace a la lista de ese
+   horario, del color del texto (es un dato, no una llamada de atención).
+   Sin horario: insignia de aviso con los tokens «warning» de Bootstrap,
+   que cambian solos con el tema (texto 5,7 en claro y 9,5 en oscuro). */
+.ds-alumnos__horario {
+    color: var(--bs-body-color);
+    text-decoration: none;
+    white-space: nowrap;
+}
+.ds-alumnos__horario i { color: var(--bs-secondary-color); margin-right: .15rem; }
+.ds-alumnos__horario:hover,
+.ds-alumnos__horario:focus-visible { text-decoration: underline; }
+.ds-alumnos__sin-horario {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .35em .6em;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+    color: var(--bs-warning-text-emphasis);
+    background: var(--bs-warning-bg-subtle);
+    border: 1px solid var(--bs-warning-border-subtle);
+}
+.ds-alumnos__sin-horario:hover,
+.ds-alumnos__sin-horario:focus-visible { color: var(--bs-warning-text-emphasis); filter: brightness(.97); text-decoration: underline; }
+/* El botón «Sin horario» del resumen, cuando hay alguno: texto de aviso
+   legible (el btn-outline-warning de Bootstrap escribe en amarillo puro,
+   1,6 de contraste sobre blanco). */
+.ds-alumnos__chip-alerta {
+    --bs-btn-color: var(--bs-warning-text-emphasis);
+    --bs-btn-border-color: var(--bs-warning-border-subtle);
+    --bs-btn-bg: var(--bs-warning-bg-subtle);
+    --bs-btn-hover-color: var(--bs-warning-text-emphasis);
+    --bs-btn-hover-bg: var(--bs-warning-bg-subtle);
+    --bs-btn-hover-border-color: var(--bs-warning-text-emphasis);
+}
 @media (max-width: 575.98px) {
     .ds-alumnos__herramientas { width: 100%; }
     .ds-alumnos__herramientas .btn:not(.btn-tool) { flex: 1 1 auto; min-height: 2.75rem; display: inline-flex; align-items: center; justify-content: center; }

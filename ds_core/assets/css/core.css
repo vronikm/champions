@@ -886,6 +886,120 @@ td.ds-tabla-acciones .ds-hueco {
     .ds-recibo-qr svg { max-width: 100%; height: auto; }
 }
 
+/* =========================================================================
+   Recibo de pago en pantalla (pagosRecibo, pagospendienteRecibo)
+   =========================================================================
+   Replica la hoja del PDF: cabecera con logo, organización, contacto y
+   fecha; filas etiqueta / valor; montos y QR al pie. Es un documento, así
+   que la hoja es blanca también en el tema oscuro (como un PDF abierto):
+   los colores van fijos dentro de .ds-recibo y no heredan los del tema. */
+.ds-recibo-acciones {
+    max-width: 900px; margin: 0 auto .75rem;
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem;
+}
+.ds-recibo-acciones__grupo { display: flex; flex-wrap: wrap; gap: .5rem; }
+
+.ds-recibo {
+    --rec-borde: #c5cad1; --rec-suave: #f1f3f5; --rec-tenue: #6c757d;
+    color-scheme: light;
+    max-width: 900px; margin: 0 auto 1.5rem; padding: 1.25rem;
+    background: #fff; color: #212529;
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .08), 0 8px 24px rgba(0, 0, 0, .06);
+    font-size: .95rem;
+}
+.ds-recibo dl, .ds-recibo dd { margin: 0; }
+
+/* Cabecera */
+.ds-recibo__cab {
+    display: grid; grid-template-columns: 130px minmax(0, 1fr) auto; align-items: center; gap: 1rem 1.25rem;
+    padding: 1rem; border: 1px solid var(--rec-borde); border-radius: 6px;
+}
+.ds-recibo__logo img { display: block; width: 100%; max-width: 130px; height: auto; margin: 0 auto; }
+.ds-recibo__nombre {
+    margin: 0 0 .5rem; padding-bottom: .5rem; border-bottom: 1px solid var(--rec-borde);
+    font-size: 1.15rem; font-weight: 700; letter-spacing: .02em; line-height: 1.3; color: inherit;
+    overflow-wrap: anywhere;
+}
+.ds-recibo__contacto { font-size: .85rem; }
+.ds-recibo__contacto div { margin: .15rem 0; }
+.ds-recibo__contacto dt, .ds-recibo__contacto dd { display: inline; }
+.ds-recibo__contacto dt { font-weight: 700; }
+.ds-recibo__contacto dd { overflow-wrap: anywhere; }
+
+.ds-recibo__fecha { align-self: end; text-align: center; }
+.ds-recibo__fecha-titulo { display: block; margin-bottom: .25rem; font-size: .75rem; font-weight: 700; }
+.ds-recibo__fecha table { border-collapse: collapse; margin: 0 auto; }
+.ds-recibo__fecha th, .ds-recibo__fecha td { min-width: 3.5rem; border: 1px solid var(--rec-borde); text-align: center; }
+.ds-recibo__fecha th {
+    padding: .15rem .5rem; background: var(--rec-suave); color: #495057;
+    font-size: .65rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
+}
+.ds-recibo__fecha td { padding: .35rem .5rem; font-size: 1.1rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* Cuerpo */
+.ds-recibo__cuerpo { margin-top: .5rem; border: 1px solid var(--rec-borde); border-radius: 6px; overflow: hidden; }
+.ds-recibo__fila {
+    display: grid; grid-template-columns: 10rem minmax(0, 1fr); align-items: baseline; gap: .15rem 1rem;
+    padding: .6rem 1rem; border-bottom: 1px solid var(--rec-borde);
+    overflow-wrap: anywhere;
+}
+.ds-recibo__etq { font-weight: 700; }
+.ds-recibo__nota { color: var(--rec-tenue); }
+
+.ds-recibo__fila--total {
+    display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem 1.5rem;
+    background: var(--rec-suave);
+}
+.ds-recibo__par { display: flex; align-items: baseline; gap: 1rem; }
+.ds-recibo__fila--total .ds-recibo__etq { text-transform: uppercase; letter-spacing: .04em; }
+.ds-recibo__fila--total .ds-recibo__par:first-child .ds-recibo__etq { flex: 0 0 10rem; }
+.ds-recibo__importe { font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ds-recibo__numero { font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: .03em; }
+
+/* Pie: montos y QR */
+.ds-recibo__pie { display: grid; grid-template-columns: 1fr 1fr; }
+.ds-recibo__montos { padding: .75rem 1rem; border-right: 1px solid var(--rec-borde); }
+.ds-recibo__montos-titulo {
+    display: flex; align-items: center; gap: .5rem; margin-bottom: .25rem;
+    font-size: 1.05rem; text-transform: uppercase; letter-spacing: .04em;
+}
+.ds-recibo__montos dl div {
+    display: flex; justify-content: space-between; max-width: 16rem;
+    padding: .4rem 0; border-bottom: 1px solid var(--rec-borde);
+}
+.ds-recibo__montos dl div:last-child { border-bottom: 0; }
+.ds-recibo__montos dt, .ds-recibo__montos dd { font-weight: 700; font-variant-numeric: tabular-nums; }
+.ds-recibo__saldo.is-pendiente dd { color: #b02a37; }
+.ds-recibo__qr { display: flex; align-items: center; justify-content: center; padding: .75rem; }
+
+/* Teléfono: todo en una columna, la etiqueta encima de su valor. */
+@media (max-width: 767.98px) {
+    /* Acciones: Cerrar arriba a la izquierda y las de envío en una fila
+       que se reparte el ancho, en vez de botones sueltos a media línea. */
+    .ds-recibo-acciones__grupo { width: 100%; }
+    .ds-recibo-acciones__grupo > * { flex: 1 1 auto; }
+    .ds-recibo-acciones__grupo > * > .btn { width: 100%; }
+
+    .ds-recibo { padding: .75rem; border-radius: 8px; }
+    .ds-recibo__cab { grid-template-columns: 1fr; text-align: center; }
+    .ds-recibo__logo img { max-width: 96px; }
+    .ds-recibo__fecha { align-self: center; }
+    .ds-recibo__fila { grid-template-columns: 1fr; }
+    .ds-recibo__fila--total { flex-direction: column; }
+    .ds-recibo__fila--total .ds-recibo__par:first-child .ds-recibo__etq { flex-basis: auto; }
+    .ds-recibo__pie { grid-template-columns: 1fr; }
+    .ds-recibo__montos { border-right: 0; border-bottom: 1px solid var(--rec-borde); }
+    .ds-recibo__montos dl div { max-width: none; }
+}
+
+/* Impresión: sólo la hoja, sin sombra ni botones, con sus fondos. */
+@media print {
+    .no-print { display: none !important; }
+    .ds-recibo { max-width: none; margin: 0; padding: 0; box-shadow: none; }
+    .ds-recibo, .ds-recibo * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
 /* Separación entre los botones de una celda de acciones.
    Estaba como style="margin-right:5px" repetido en cada enlace: 438 veces
    en la pantalla de cobranza de pensiones, unos 13 KB de la misma

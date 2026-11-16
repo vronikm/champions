@@ -65,8 +65,8 @@
 |
 | LO QUE SI DISTINGUE A CADA SISTEMA es el elemento activo, y sale de
 | --ds-acento, que cada modulo define. El texto va aparte en
-| --ds-acento-texto porque el naranja de Basketball pide texto oscuro
-| (#212529 sobre #ff7900 = 5.87) y los tonos oscuros de Arena, League y Core
+| --ds-acento-texto porque el verde de Fútbol pide texto oscuro
+| (#06102a sobre #a2cc38 = 10,1) y los tonos oscuros de Arena, League y Core
 | piden blanco.
 */
 .ds-core .sidebar-menu .nav-link {
@@ -96,7 +96,7 @@
    Porque los cuatro acentos estan elegidos para ser FONDO con texto encima,
    no para ser texto. Medidos contra el fondo del menu (#343A40):
 
-       Basketball #ff7900  4,38      Arena    #0e7490  2,15
+       Fútbol     #a2cc38  6,15      Arena    #0e7490  2,15
        League     #7c3aed  2,02      Insights #15803d  2,29
 
    Ninguno llega a 4,5. Pintar el padre con el acento en el texto lo habria
@@ -249,15 +249,15 @@
 /* Cada modulo declara su pareja de colores; la regla de abajo los usa.
    En claro, fondo palido y texto oscuro. En oscuro se invierte el papel:
    fondo del mismo tono pero translucido sobre el fondo oscuro, y texto
-   claro del mismo color. Asi la insignia sigue diciendo «naranja es
-   Basketball» en los dos temas. */
-.ds-core .badge-modulo--basketball { --bm-borde: #fde68a; --bm-texto: #1e3a8a; --bm-fondo: #fefce8; }
+   claro del mismo color. Asi la insignia sigue diciendo «verde es
+   Fútbol» en los dos temas. */
+.ds-core .badge-modulo--basketball { --bm-borde: #cfe59a; --bm-texto: #3f6b0c; --bm-fondo: #f5fae8; }
 .ds-core .badge-modulo--core       { --bm-borde: #c7d2fe; --bm-texto: #3730a3; --bm-fondo: #eef2ff; }
 .ds-core .badge-modulo--arena      { --bm-borde: #a5f3fc; --bm-texto: #0e7490; --bm-fondo: #ecfeff; }
 .ds-core .badge-modulo--league     { --bm-borde: #ddd6fe; --bm-texto: #5b21b6; --bm-fondo: #f5f3ff; }
 .ds-core .badge-modulo--insights   { --bm-borde: #bbf7d0; --bm-texto: #15803d; --bm-fondo: #f0fdf4; }
 
-[data-bs-theme="dark"] .ds-core .badge-modulo--basketball { --bm-borde: rgba(253, 224, 71, .30); --bm-texto: #fde047; --bm-fondo: rgba(202, 138, 4, .20); }
+[data-bs-theme="dark"] .ds-core .badge-modulo--basketball { --bm-borde: rgba(162, 204, 56, .30); --bm-texto: #b5dc5c; --bm-fondo: rgba(162, 204, 56, .18); }
 [data-bs-theme="dark"] .ds-core .badge-modulo--core       { --bm-borde: rgba(199, 210, 254, .30); --bm-texto: #a5b4fc; --bm-fondo: rgba(55, 48, 163, .25); }
 [data-bs-theme="dark"] .ds-core .badge-modulo--arena      { --bm-borde: rgba(165, 243, 252, .30); --bm-texto: #67e8f9; --bm-fondo: rgba(14, 116, 144, .25); }
 [data-bs-theme="dark"] .ds-core .badge-modulo--league     { --bm-borde: rgba(221, 214, 254, .30); --bm-texto: #c4b5fd; --bm-fondo: rgba(91, 33, 182, .28); }
@@ -276,24 +276,31 @@
 /* ---------- Botones ---------- */
 
 .ds-core .btn-primary {
-    /* Texto oscuro: el naranja de la marca es demasiado claro para el
-       blanco (2.63 de contraste). Con texto oscuro sube a 5.87, y a
-       6.83 sobre el naranja del hover. */
-    --bs-btn-color:                 #212529;
+    /* Texto marino: el verde de la marca es demasiado claro para el
+       blanco (1,9 de contraste). Con el marino de DigiSports sube a 10,1,
+       y a 11,8 sobre el verde claro del hover. */
+    --bs-btn-color:                 #06102a;
     --bs-btn-bg:                    var(--ds-primary);
     --bs-btn-border-color:          var(--ds-primary);
-    --bs-btn-hover-color:           #212529;
+    --bs-btn-hover-color:           #06102a;
     --bs-btn-hover-bg:              var(--ds-primary-hover);
     --bs-btn-hover-border-color:    var(--ds-primary-hover);
-    --bs-btn-active-color:          #212529;
+    --bs-btn-active-color:          #06102a;
     --bs-btn-active-bg:             var(--ds-primary-hover);
     --bs-btn-active-border-color:   var(--ds-primary-hover);
-    --bs-btn-disabled-color:        #212529;
+    --bs-btn-disabled-color:        #06102a;
     --bs-btn-disabled-bg:           var(--ds-primary);
     --bs-btn-disabled-border-color: var(--ds-primary);
 }
 
 .ds-core .btn { border-radius: var(--ds-radius-sm); font-weight: 600; }
+
+/* El verde de la marca como LETRA (enlaces «Ver todas →» de League, etc.):
+   sobre el fondo claro de los módulos da 1,9 y no se lee, así que en tema
+   claro va el verde oscuro (5,1 sobre blanco). En oscuro, el verde vivo. */
+.ds-core { --ds-primary-texto: #4a7a10; }
+[data-bs-theme="dark"] .ds-core { --ds-primary-texto: var(--ds-primary); }
+.ds-core .ds-link:hover { color: var(--ds-primary-texto); text-decoration: underline; }
 
 /* ==========================================================================
    Acciones: un solo patron para toda pantalla administrativa

@@ -41,7 +41,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                     <?php foreach ($catalogos as $c): $activo = (int)$c['tabla_id'] === $tablaSel; ?>
                         <a href="<?php echo APP_URL; ?>catalogoList/?tabla=<?php echo (int)$c['tabla_id']; ?>"
                            class="list-group-item list-group-item-action d-flex justify-content-between align-items-center<?php echo $activo ? ' active' : ''; ?>"
-                           <?php echo $activo ? 'style="background:var(--ds-primary);border-color:var(--ds-primary);"' : ''; ?>>
+                           <?php echo $activo ? 'style="background:var(--ds-primary);border-color:var(--ds-primary);color:#06102a;"' : ''; ?>>
                             <span><?php echo htmlspecialchars($c['tabla_nombre'], ENT_QUOTES, 'UTF-8'); ?></span>
                             <span class="badge text-bg-<?php echo $activo ? 'light' : 'secondary'; ?>">
                                 <?php echo (int)$c['activos']; ?>

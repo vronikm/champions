@@ -16,8 +16,10 @@
     --ds-surface-2:     #142552;
 
     /* --- Marca --- */
-    --ds-primary:       #ffd60a;   /* amarillo Champions */
-    --ds-primary-hover: #ffe24d;
+    --ds-primary:       #a2cc38;   /* verde DigiSports (el del logo y del botón de acceso) */
+    --ds-primary-hover: #b5dc5c;
+    --ds-azul-marca:    #2b9fd4;   /* el azul del logo */
+    --ds-filete:        linear-gradient(100deg, #2b9fd4 0%, #9bc73b 100%);   /* azul → verde del logo */
 
     /* --- Texto --- */
     --ds-text:          #f8fafc;
@@ -40,7 +42,7 @@
     /* --- Acentos por modulo ---
        El color NO tine la tarjeta entera: solo icono, borde y glow. */
     --ds-core:          #f43f5e;
-    --ds-basketball:    #ffd60a;
+    --ds-basketball:    #a2cc38;
     --ds-arena:         #22d3ee;
     --ds-league:        #a78bfa;
     --ds-insights:      #22c55e;
@@ -57,7 +59,8 @@
 /* Esta hoja es autonoma: no hereda el reset de AdminLTE, asi que fija su
    propio box-sizing. Sin esto, .ds-container suma su padding al 100% de
    ancho y provoca scroll horizontal en movil. */
-/* El naranja vivo hace de texto tambien: el Hub es oscuro siempre. */
+/* El verde hace de texto tambien: el Hub es oscuro siempre (10,1 sobre el marino).
+   En las pantallas claras de los modulos, core.css lo cambia por un verde oscuro. */
 :root { --ds-primary-texto: var(--ds-primary); }
 .ds-body,
 .ds-body *,
@@ -78,7 +81,7 @@
 
     /* Iluminacion ambiental: dos focos muy suaves, sin llegar a distraer. */
     background-image:
-        radial-gradient(ellipse 70% 50% at 15% -10%, rgba(255, 214, 10, .08), transparent 60%),
+        radial-gradient(ellipse 70% 50% at 15% -10%, rgba(162, 204, 56, .08), transparent 60%),
         radial-gradient(ellipse 60% 45% at 90% 0%,   rgba(37, 99, 235, .14), transparent 60%);
     background-attachment: fixed;
 }

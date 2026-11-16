@@ -11,8 +11,9 @@
 /*
 | Acento del menú: el verde de DigiSports (el del botón de la pantalla de
 | acceso, ds_core/assets/css/login.css). core.css pinta el enlace activo
-| con --ds-acento y, sin él, caía en --ds-primary, el amarillo #ffd60a.
-| Texto azul marino de la marca encima: 10,1 de contraste.
+| con --ds-acento y, sin él, cae en --ds-primary, que ya es este mismo
+| verde (digisports.css); se deja explícito para que el menú de Fútbol no
+| dependa de ese valor. Texto azul marino de la marca encima: 10,1.
 */
 .ds-core {
     --ds-acento: #a2cc38;

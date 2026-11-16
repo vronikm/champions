@@ -31,7 +31,7 @@ $logo    = function_exists('ds_logo_url') ? ds_logo_url(0) : '';
         .caja img { width: 72px; height: 72px; object-fit: contain; background: #fff; border-radius: 12px; padding: 4px; }
         h1 { font-size: 1.3rem; margin: 18px 0 8px; }
         p  { color: #cbd5e1; line-height: 1.55; margin: 0; }
-        .regla { width: 46px; height: 3px; background: #ffd60a; border-radius: 2px; margin: 18px auto 0; }
+        .regla { width: 46px; height: 3px; background: linear-gradient(100deg, #2b9fd4 0%, #9bc73b 100%); border-radius: 2px; margin: 18px auto 0; }
     </style>
 </head>
 <body>

@@ -7,7 +7,7 @@
 
    Se apoya en digisports.css para las superficies, el texto, los radios y
    la tipografia; los acentos de marca se definen aqui (--dsl-*), porque
-   --ds-primary es el amarillo de la escuela y sigue mandando dentro del Hub.
+   --ds-primary es ese mismo verde (digisports.css) y manda dentro del Hub.
 
    No depende de AdminLTE ni de Bootstrap. La comparte verificar2fa-view.php.
    ========================================================================== */

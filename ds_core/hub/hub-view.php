@@ -68,7 +68,19 @@ $vendorCss = DS_HUB_URL . 'ds_core/assets/vendor/fontawesome6/css/all.min.css';
                      alt="<?php echo DS_HUB_NAME; ?>" class="ds-brand__logo">
                 <span>
                     <p class="ds-brand__name"><?php echo DS_HUB_NAME; ?></p>
-                    <p class="ds-brand__tagline"><?php echo DS_TAGLINE; ?></p>
+                    <?php /* Bajo «DigiSports», el nombre de la escuela (Core ›
+                             Organización) en lugar del lema genérico; el lema
+                             queda solo si aún no hay nombre configurado. */
+                          $escuelaHub   = trim((string)ds_nombre_organizacion());
+                          $escuelaLarga = $escuelaHub !== '' ? $escuelaHub : DS_TAGLINE;
+                          /* En el teléfono no cabe el completo: el corto, el mismo
+                             del menú lateral («Pedro Larrea»). */
+                          $escuelaCorta = $escuelaHub !== '' ? ds_nombre_corto_organizacion() : DS_TAGLINE;
+                          $hEsc = static fn ($t) => htmlspecialchars((string)$t, ENT_QUOTES, 'UTF-8'); ?>
+                    <p class="ds-brand__tagline ds-brand__escuela" title="<?php echo $hEsc($escuelaLarga); ?>">
+                        <span class="ds-brand__escuela-larga"><?php echo $hEsc($escuelaLarga); ?></span>
+                        <span class="ds-brand__escuela-corta" aria-hidden="true"><?php echo $hEsc($escuelaCorta); ?></span>
+                    </p>
                 </span>
             </a>
 
@@ -79,13 +91,34 @@ $vendorCss = DS_HUB_URL . 'ds_core/assets/vendor/fontawesome6/css/all.min.css';
                     </span>
                 <?php endif; ?>
 
-                <div class="ds-user">
-                    <img src="<?php echo $fotoUsuario; ?>" alt="" class="ds-user__avatar">
-                    <span>
-                        <span class="ds-user__name"><?php echo htmlspecialchars((string)$nombreUsuario, ENT_QUOTES, 'UTF-8'); ?></span><br>
-                        <span class="ds-user__role"><?php echo htmlspecialchars((string)($_SESSION['sede'] ?: ($gerencial ? 'Todas las sedes' : '')), ENT_QUOTES, 'UTF-8'); ?></span>
-                    </span>
-                </div>
+                <?php /* El usuario abre su menú de cuenta, como en el de Fútbol
+                         (navbar.php): Cambiar contraseña (?p=clave, que admite
+                         el cambio voluntario), Mi seguridad y Cerrar sesión.
+                         <details> lo abre y cierra sin JavaScript; el script
+                         de abajo sólo lo cierra al pulsar fuera o con Esc. */ ?>
+                <details class="ds-usermenu" id="dsUserMenu">
+                    <summary class="ds-user" aria-label="Menú de la cuenta de <?php echo htmlspecialchars((string)$nombreUsuario, ENT_QUOTES, 'UTF-8'); ?>">
+                        <img src="<?php echo $fotoUsuario; ?>" alt="" class="ds-user__avatar">
+                        <span>
+                            <span class="ds-user__name"><?php echo htmlspecialchars((string)$nombreUsuario, ENT_QUOTES, 'UTF-8'); ?></span><br>
+                            <span class="ds-user__role"><?php echo htmlspecialchars((string)($_SESSION['sede'] ?: ($gerencial ? 'Todas las sedes' : '')), ENT_QUOTES, 'UTF-8'); ?></span>
+                        </span>
+                        <i class="fas fa-chevron-down ds-user__flecha" aria-hidden="true"></i>
+                    </summary>
+                    <div class="ds-usermenu__panel">
+                        <a href="<?php echo DS_HUB_URL; ?>?p=clave" class="ds-usermenu__item">
+                            <i class="fas fa-key" aria-hidden="true"></i>Cambiar contraseña
+                        </a>
+                        <a href="<?php echo DS_HUB_URL; ?>?p=seguridad" class="ds-usermenu__item">
+                            <i class="fas fa-shield-alt" aria-hidden="true"></i>Mi seguridad
+                            <span class="ds-usermenu__nota"><?php echo dosf_activo(usuario_actual_id()) ? 'Dos pasos activa' : 'Dos pasos inactiva'; ?></span>
+                        </a>
+                        <div class="ds-usermenu__sep" role="separator"></div>
+                        <a href="<?php echo DS_FUTBOL_URL; ?>logOut/" class="ds-usermenu__item ds-usermenu__item--salir">
+                            <i class="fas fa-sign-out-alt" aria-hidden="true"></i>Cerrar sesión
+                        </a>
+                    </div>
+                </details>
 
                 <?php /* Acceso a la seguridad de la propia cuenta. Va en la
                          cabecera del Hub porque es la unica pantalla por la
@@ -376,6 +409,24 @@ $vendorCss = DS_HUB_URL . 'ds_core/assets/vendor/fontawesome6/css/all.min.css';
         <?php endif; ?>
 
     </main>
+
+    <script>
+    /* Menú de la cuenta: se cierra al pulsar fuera o con Esc (abrirlo y
+       cerrarlo con el propio botón ya lo hace <details>). */
+    (function () {
+        var menu = document.getElementById('dsUserMenu');
+        if (!menu) { return; }
+        document.addEventListener('click', function (e) {
+            if (menu.open && !menu.contains(e.target)) { menu.open = false; }
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && menu.open) {
+                menu.open = false;
+                menu.querySelector('summary').focus();
+            }
+        });
+    })();
+    </script>
 
 </body>
 </html>

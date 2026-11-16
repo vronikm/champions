@@ -144,6 +144,31 @@
     margin: 2px 0 0;
 }
 
+/* En el Hub, el nombre de la escuela ocupa el lugar del lema: si es largo,
+   termina en «…» en vez de empujar los botones de la cabecera (el completo
+   va en el title). */
+.ds-brand { min-width: 0; }
+.ds-brand > span { min-width: 0; }
+.ds-brand__escuela {
+    max-width: 26rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* El nombre corto («Pedro Larrea») sólo en el teléfono: el completo,
+   cortado, quedaba en «ACADEMIA DE FUT…» y se perdía justo lo que
+   identifica a la escuela. Al lector de pantalla le llega siempre el
+   completo (el corto va con aria-hidden). */
+.ds-brand__escuela-corta { display: none; }
+@media (max-width: 575.98px) {
+    .ds-brand__escuela { max-width: 52vw; }
+    .ds-brand__escuela-larga {
+        position: absolute; width: 1px; height: 1px; overflow: hidden;
+        clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+    }
+    .ds-brand__escuela-corta { display: inline; }
+}
+
 .ds-header__actions {
     display: flex;
     align-items: center;
@@ -197,6 +222,59 @@
 .ds-user__role {
     font-size: .70rem;
     color: var(--ds-text-muted);
+}
+
+/* Menú de la cuenta del Hub: el bloque del usuario es el botón (summary) y
+   abre un panel con Cambiar contraseña, Mi seguridad y Cerrar sesión. Mismo
+   aspecto que el panel del lanzador de apps. */
+.ds-usermenu { position: relative; }
+.ds-usermenu > summary { list-style: none; cursor: pointer; transition: border-color .18s, background .18s; }
+.ds-usermenu > summary::-webkit-details-marker { display: none; }
+.ds-usermenu > summary:hover,
+.ds-usermenu[open] > summary { border-color: var(--ds-border-strong); background: var(--ds-surface-2); }
+.ds-usermenu > summary:focus-visible { outline: 2px solid var(--ds-primary); outline-offset: 2px; }
+.ds-user__flecha { font-size: .7rem; color: var(--ds-text-muted); margin-left: 2px; transition: transform .18s; }
+.ds-usermenu[open] .ds-user__flecha { transform: rotate(180deg); }
+
+.ds-usermenu__panel {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    min-width: 230px;
+    padding: 8px;
+    border-radius: var(--ds-radius-md);
+    border: 1px solid var(--ds-border);
+    background: var(--ds-surface);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, .45);
+    z-index: 1050;
+}
+.ds-usermenu__item {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    padding: 9px 12px;
+    border-radius: var(--ds-radius-sm);
+    text-decoration: none;
+    color: var(--ds-text);
+    font-size: .88rem;
+    font-weight: 600;
+    transition: background .18s;
+}
+.ds-usermenu__item:hover,
+.ds-usermenu__item:focus-visible { background: var(--ds-surface-2); color: var(--ds-text); outline: none; }
+.ds-usermenu__item i { width: 18px; text-align: center; color: var(--ds-primary); }
+.ds-usermenu__item--salir i { color: var(--ds-text-muted); }
+.ds-usermenu__nota { flex-basis: 100%; padding-left: 30px; font-size: .72rem; font-weight: 500; color: var(--ds-text-muted); }
+.ds-usermenu__sep { height: 1px; margin: 6px 4px; background: var(--ds-border); }
+
+/* Hasta 780 px el bloque del usuario se queda en la foto (más abajo, junto
+   a las demás reglas de móvil); aquí, la flecha y el panel fijo bajo la
+   barra, alineado a la derecha, para que no se salga por la izquierda. */
+@media (max-width: 780px) {
+    .ds-usermenu > summary > span { display: none; }
+    .ds-usermenu > summary.ds-user { padding: 4px 8px 4px 4px; }
+    .ds-usermenu__panel { position: fixed; top: 64px; right: 12px; left: auto; }
 }
 
 /* ==========================================================================

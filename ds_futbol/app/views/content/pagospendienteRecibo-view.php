@@ -35,7 +35,9 @@
 		for ($i = 0; $i < $length; $i += 2) {
 			$pairs[] = substr($first12Chars, $i, 2);
 		}
-		$recibo_hora = $pairs[4].":".$pairs[2].":".$pairs[0];
+		/* Un número de recibo más corto de lo esperado dejaba $pairs sin la
+		   posición 4. Sin la hora, el QR va con la fecha sola. */
+		$recibo_hora = isset($pairs[4]) ? $pairs[4].":".$pairs[2].":".$pairs[0] : '';
 		
 	} else {
 		/* El registro no existe: se vuelve al listado. Antes se
@@ -46,9 +48,12 @@
 	}
 
 	$sede=$insAlumno->informacionSede($datos["alumno_sedeid"]);
-	if($sede->rowCount()==1){
-		$sede=$sede->fetch();
-	}
+	/* Sin la sede, $sede seguía siendo el PDOStatement y leerlo como
+	   array más abajo era un error fatal. Se usa lo que ya trae el recibo. */
+	$sede = $sede->rowCount() == 1 ? $sede->fetch() : [
+		'sede_id' => (int)$datos['alumno_sedeid'], 'sede_nombre' => (string)($datos['sede_nombre'] ?? ''),
+		'sede_direccion' => '', 'sede_telefono' => '', 'sede_email' => '',
+	];
 
 	/*----------  Datos para enviar el recibo del abono  ----------*/
 	/* Mismo envío que pagosRecibo (ds_core/inc/whatsappRecibo.php). Aquí
@@ -112,196 +117,179 @@
 		<!-- vista -->
 		<div class="app-main">
 
+			<?php
+				/* El recibo del abono en pantalla replica la hoja del PDF (pagospendienteReciboPDF):
+				   misma cabecera —logo, organización, contacto y fecha—, las mismas
+				   filas y los montos con el QR al pie. Los estilos, en core.css
+				   (.ds-recibo). Todo lo que viene de la base sale escapado. */
+				$e = static fn ($t) => htmlspecialchars(trim(preg_replace('/\s+/u', ' ', (string)$t)), ENT_QUOTES, 'UTF-8');
+				$tsRecibo    = strtotime($datos['transaccion_fecharegistro']) ?: time();
+				$conceptoRec = implode(' ', array_filter(array_map('trim', [(string)$datos['RUBRO'], (string)$datos['TORNEO'], (string)$datos['pago_periodo']]), 'strlen'));
+				$detalleRec  = trim((string)$datos['transaccion_concepto']);
+				/* Lo que queda pendiente después de este abono. */
+				$saldoRec    = max(0, (float)$datos['transaccion_valorcalculado'] - (float)$datos['transaccion_valor']);
+				$contactoRec = array_filter([
+					'Dirección' => trim((string)$sede['sede_direccion']),
+					'Celular'   => trim((string)$sede['sede_telefono']),
+					'Correo'    => trim((string)($sede['sede_email'] ?? '')),
+				], 'strlen');
+				$logoRec = ds_logo_url((int)$sede['sede_id']);
+			?>
 			<!-- Content Header (Page header) -->
-			<div class="app-content-header">
+			<div class="app-content-header no-print">
 				<div class="container-fluid">
-					<div class="row mb-2">
+					<div class="row mb-2 align-items-center">
 						<div class="col-sm-6">
-							<h1 class="m-0">Recibo <?php echo $datos['RUBRO']." ".$datos['pago_periodo'] ; ?></h1>
-						</div><!-- /.col -->
+							<h1 class="m-0">Recibo <?php echo $e($datos['RUBRO'] . ' ' . $datos['pago_periodo']); ?></h1>
+						</div>
 						<div class="col-sm-6">
 							<ol class="breadcrumb float-sm-end">
-								<li class="breadcrumb-item"><a href="#">Inicio</a></li>
-								<li class="breadcrumb-item active">Ficha Alumno</li>
+								<li class="breadcrumb-item"><a href="<?php echo APP_URL; ?>dashboard/">Inicio</a></li>
+								<li class="breadcrumb-item"><a href="<?php echo APP_URL; ?>pagosList/">Pagos</a></li>
+								<li class="breadcrumb-item active" aria-current="page">Recibo</li>
 							</ol>
-						</div><!-- /.col -->
-					</div><!-- /.row -->
-				</div><!-- /.container-fluid -->
+						</div>
+					</div>
+				</div>
 			</div>
 			<!-- /.content-header -->
-			
+
 			<section class="app-content">
 				<div class="container-fluid">
-					<div class="row">
-						<div class="col-1">
+
+					<?php
+					/* Acciones arriba y fuera de la hoja: se ven sin desplazarse y no
+					   salen al imprimir. Ver PDF es la principal; el id btn_correo se
+					   conserva porque ajax.js le engancha la confirmación. */
+					?>
+					<div class="ds-recibo-acciones no-print">
+						<button type="button" class="btn btn-outline-secondary btn-sm" onclick="cerrarVentana()">
+							<i class="fas fa-times"></i> Cerrar
+						</button>
+						<div class="ds-recibo-acciones__grupo">
+							<a href="<?php echo APP_URL.'pagospendienteReciboPDF/'.(int)$pagoid.'/'; ?>"
+							   class="btn btn-primary btn-sm" target="_blank" rel="noopener">
+								<i class="fas fa-file-pdf"></i> Ver PDF
+							</a>
+
+							<?php if ($repreCorreo !== ''): ?>
+								<a href="<?php echo APP_URL.'pagospendienteReciboEnvio/'.(int)$pagoid.'/'; ?>"
+								   class="btn btn-success btn-sm" id="btn_correo"
+								   title="Enviar el PDF a <?php echo $e($repreCorreo); ?>">
+									<i class="fas fa-envelope"></i> Enviar por correo
+								</a>
+							<?php else: ?>
+								<span class="d-inline-block" tabindex="0" title="El representante no tiene correo registrado">
+									<button type="button" class="btn btn-success btn-sm" disabled>
+										<i class="fas fa-envelope"></i> Enviar por correo
+									</button>
+								</span>
+							<?php endif; ?>
+
+							<button type="button" class="btn btn-sm btn-whatsapp" data-bs-toggle="modal" data-bs-target="#modalWhatsapp">
+								<i class="fab fa-whatsapp"></i> Enviar por WhatsApp
+							</button>
 						</div>
-						<div class="col-10">
-							<!-- Main content -->
-							<div class="invoice p-3 mb-3">							
-								<!-- info row -->
-								<div class="row invoice-info">
-									<div class="col-sm-6 invoice-col">										
-										<address class="text-center">												
-											<img src="<?php echo ds_logo_url((int)$sede["sede_id"]) ?>" style="width: 200px; height: 100px;"/>
-											<br>Dirección: <?php echo $sede["sede_direccion"]; ?><br>
-											Celular: <?php echo $sede["sede_telefono"]; ?> - ECUADOR										
-										</address>
-									</div>
-									<!-- /.col -->
-									<div class="col-sm-6 invoice-col">									
-										<address class="text-center">	
-											<strong class="profile-username"><?php echo ds_nombre_organizacion_may((int)$sede["sede_id"]); ?></strong><br><br>								
-											<div class="row">
-												<div class="col-12 table-responsive">
-													<div class="row">
-														<div class="col-4"></div>														
-														<div class="col-4">
-															<div class="table-responsive">
-															<table class="table table-striped table-sm">
-																<thead>
-																	<tr style="font-size: 12px">
-																		<th>DIA</th>
-																		<th>MES</th>
-																		<th>AÑO</th>																
-																	</tr>
-																</thead>
-																<tbody>
-																	<tr style="font-size: 12px">
-																		<td><?php echo  date('d', strtotime($datos['transaccion_fecharegistro'])); ?></td>
-																		<td><?php echo date('m', strtotime($datos['transaccion_fecharegistro'])); ?></td>
-																		<td><?php echo date('Y', strtotime($datos['transaccion_fecharegistro'])); ?></td>												
-																	</tr>														
-																</tbody>
-															</table>
-															</div>
-														</div>
-														<div class="col-4"></div>
-													</div>	
-												</div>
-												<!-- /.col -->
-											</div>
-										</address>
-									</div>
-									<!-- /.col -->								
+					</div>
+
+					<article class="ds-recibo" aria-label="Recibo <?php echo $e($datos['transaccion_recibo']); ?>">
+
+						<!-- Cabecera: logo, organización y contacto, fecha de emisión -->
+						<header class="ds-recibo__cab">
+							<div class="ds-recibo__logo">
+								<?php if ($logoRec !== ''): ?>
+									<img src="<?php echo $e($logoRec); ?>" alt="Logo de <?php echo $e(ds_nombre_organizacion((int)$sede['sede_id'])); ?>">
+								<?php endif; ?>
+							</div>
+
+							<div class="ds-recibo__org">
+								<h2 class="ds-recibo__nombre"><?php echo $e(ds_nombre_organizacion_may((int)$sede['sede_id'])); ?></h2>
+								<?php if ($contactoRec): ?>
+									<dl class="ds-recibo__contacto">
+										<?php foreach ($contactoRec as $etiqueta => $valor): ?>
+											<div><dt><?php echo $etiqueta; ?>:</dt> <dd><?php echo $e($valor); ?></dd></div>
+										<?php endforeach; ?>
+									</dl>
+								<?php endif; ?>
+							</div>
+
+							<div class="ds-recibo__fecha">
+								<span class="ds-recibo__fecha-titulo">Fecha de emisión</span>
+								<table>
+									<thead><tr><th scope="col">Día</th><th scope="col">Mes</th><th scope="col">Año</th></tr></thead>
+									<tbody><tr>
+										<td><?php echo date('d', $tsRecibo); ?></td>
+										<td><?php echo date('m', $tsRecibo); ?></td>
+										<td><?php echo date('Y', $tsRecibo); ?></td>
+									</tr></tbody>
+								</table>
+							</div>
+						</header>
+
+						<!-- Cuerpo: importe, número y datos del pago -->
+						<div class="ds-recibo__cuerpo">
+							<div class="ds-recibo__fila ds-recibo__fila--total">
+								<div class="ds-recibo__par">
+									<span class="ds-recibo__etq">Por</span>
+									<span class="ds-recibo__importe">$<?php echo number_format((float)$datos['transaccion_valor'], 2); ?></span>
 								</div>
-								<!-- Table row -->
-								<div class="row">
-									<div class="col-12 table-responsive">
-										<table class="table table-striped table-sm">											
-											<tbody>
-												<tr>													
-													<th style="width:200px;">POR</th>	
-													<th>$ <?php echo $datos['transaccion_valor']; ?></th>
-													<th class="text-end">RECIBO </th>
-													<th class="text-center"><?php echo $datos['transaccion_recibo']; ?></th>																							
-												</tr>	
-												<tr>													
-													<th>Recibo de: </th>	
-													<td colspan="3"><?php echo $datos['alumno_primernombre']." ".$datos['alumno_segundonombre']." ".$datos['alumno_apellidopaterno'].$datos['alumno_apellidomaterno']." (".date('Y', strtotime($datos['alumno_fechanacimiento'])).")"; ?></td>																										
-												</tr>	
-												<tr>													
-													<th>La Cantidad de: </th>	
-													<td colspan="3"><?php echo ucfirst($insAlumno->textoLetras($datos['transaccion_valor'])); ?></td>																										
-												</tr>		
-												<tr>													
-													<th>Por Concepto de: </th>	
-													<td colspan="3"><?php echo $datos['RUBRO']." ".$datos['TORNEO']." ".$datos['pago_periodo'].". ".$datos['transaccion_concepto']; ?></td>																										
-												</tr>	
-												<tr>													
-													<th>Forma de pago: </th>	
-													<td colspan="3"><?php echo $datos['FORMAPAGO']; ?></td>																										
-												</tr>							
-											</tbody>
-										</table>
-									</div>
-									<!-- /.col -->
-								</div>
-								<!-- /.row -->
-								<div class="row">
-									<div class="col-4">
-										<p class="lead">MONTO</p>
-
-										<div class="table-responsive table-sm">
-											<table class="table">
-												<tr>
-													<th style="width:50%">SUBTOTAL:</th>
-													<td>$ <?php echo number_format($datos['pago_valor'] + $datos['pago_saldo'], 2); ?></td>
-												</tr>
-												<tr>
-													<th>ABONO:</th>
-													<td>$ <?php echo $datos['transaccion_valor']; ?></td>
-												</tr>
-												<tr>
-													<th>SALDO:</th>
-													<td>$ <?php echo number_format($datos['transaccion_valorcalculado'] - $datos['transaccion_valor'], 2); ?></td>
-												</tr>												
-											</table>
-										</div>
-									</div>
-									<!-- accepted payments column -->
-									<div class="col-4">										
-									</div>
-
-									<div class="col-4">										
-										<?php
-											('Content-Type: image/svg+xml');											
-											$svg = $generator->render_svg($symbology,"Recibo ".$datos["transaccion_recibo"]. "\n".$datos["transaccion_fecharegistro"]. " | ".$recibo_hora."\n".$sede['sede_nombre']."\n".$sede["sede_telefono"]."\n".$sede["sede_email"], $optionsQR);											
-											echo $svg;  
-										?>								
-									</div>
-									<!-- /.col -->
-									
-									<!-- /.col -->
-								</div>
-								<!-- /.row -->
-
-								<!-- this row will not appear when printing -->
-								<div class="row no-print">
-									<div class="col-12">
-										<?php
-										/* Mismo pie que pagosRecibo y por la misma razón:
-										   float-end invertía el orden respecto al código
-										   y el hueco lo sostenía un margin-right de 135 px
-										   puesto a ojo. El id btn_correo se conserva porque
-										   ajax.js le engancha la confirmación de envío. */
-										?>
-										<div class="d-flex flex-wrap align-items-center" style="gap:.5rem;">
-											<button class="btn btn-dark btn-sm" onclick="cerrarVentana()">Cerrar</button>
-
-											<a href="<?php echo APP_URL.'pagospendienteReciboPDF/'.$pagoid.'/'; ?>"
-											   class="btn btn-dark btn-sm ms-auto" target="_blank">
-												<i class="fas fa-print"></i> Ver recibo
-											</a>
-
-											<?php if ($repreCorreo !== ''): ?>
-												<a href="<?php echo APP_URL.'pagospendienteReciboEnvio/'.$pagoid.'/'; ?>"
-												   class="btn btn-success btn-sm" id="btn_correo"
-												   title="Enviar el PDF a <?php echo htmlspecialchars($repreCorreo, ENT_QUOTES, 'UTF-8'); ?>">
-													<i class="fas fa-envelope"></i> Enviar por correo
-												</a>
-											<?php else: ?>
-												<span class="d-inline-block" tabindex="0" title="El representante no tiene correo registrado">
-													<button type="button" class="btn btn-success btn-sm" disabled>
-														<i class="fas fa-envelope"></i> Enviar por correo
-													</button>
-												</span>
-											<?php endif; ?>
-
-											<button type="button" class="btn btn-sm btn-whatsapp" data-bs-toggle="modal" data-bs-target="#modalWhatsapp">
-												<i class="fab fa-whatsapp"></i> Enviar por WhatsApp
-											</button>
-										</div>
-
-									</div>
+								<div class="ds-recibo__par ds-recibo__par--num">
+									<span class="ds-recibo__etq">Recibo</span>
+									<span class="ds-recibo__numero"><?php echo $e($datos['transaccion_recibo']); ?></span>
 								</div>
 							</div>
-							<!-- /.invoice -->
-						</div><!-- /.col -->
-						<div class="col-1">
+
+							<div class="ds-recibo__fila">
+								<span class="ds-recibo__etq">Recibo de:</span>
+								<span><?php echo $e($datos['alumno_primernombre'].' '.$datos['alumno_segundonombre'].' '.$datos['alumno_apellidopaterno'].' '.$datos['alumno_apellidomaterno']); ?>
+									<span class="ds-recibo__nota">(<?php echo date('Y', strtotime($datos['alumno_fechanacimiento'])); ?>)</span></span>
+							</div>
+							<div class="ds-recibo__fila">
+								<span class="ds-recibo__etq">La cantidad de:</span>
+								<span><?php echo $e(ucfirst($insAlumno->textoLetras($datos['transaccion_valor']))); ?></span>
+							</div>
+							<div class="ds-recibo__fila">
+								<span class="ds-recibo__etq">Por concepto de:</span>
+								<span><?php echo $e($conceptoRec . ($detalleRec !== '' ? ', ' . $detalleRec : '')); ?></span>
+							</div>
+							<div class="ds-recibo__fila">
+								<span class="ds-recibo__etq">Forma de pago:</span>
+								<span><?php echo $e($datos['FORMAPAGO']); ?></span>
+							</div>
+
+							<!-- Pie: montos y QR -->
+							<div class="ds-recibo__pie">
+								<div class="ds-recibo__montos">
+									<div class="ds-recibo__montos-titulo">
+										Monto
+										<?php if ($saldoRec > 0): ?>
+											<span class="badge text-bg-warning">Saldo pendiente</span>
+										<?php else: ?>
+											<span class="badge text-bg-success">Pagado</span>
+										<?php endif; ?>
+									</div>
+									<dl>
+										<div><dt>Subtotal:</dt><dd>$<?php echo number_format((float)$datos['pago_valor'] + (float)$datos['pago_saldo'], 2); ?></dd></div>
+										<div><dt>Abono:</dt><dd>$<?php echo number_format((float)$datos['transaccion_valor'], 2); ?></dd></div>
+										<div class="ds-recibo__saldo<?php echo $saldoRec > 0 ? ' is-pendiente' : ''; ?>">
+											<dt>Saldo:</dt><dd>$<?php echo number_format($saldoRec, 2); ?></dd>
+										</div>
+									</dl>
+								</div>
+								<div class="ds-recibo__qr ds-recibo-qr">
+									<?php
+										/* ds-recibo-qr: en pantalla pequeña el SVG escala (core.css);
+										   al imprimir conserva su tamaño para leerse en papel. */
+										echo $generator->render_svg($symbology, "Recibo ".$datos["transaccion_recibo"]."\n".$datos["transaccion_fecharegistro"]." | ".$recibo_hora."\n".$sede['sede_nombre']."\n".$sede["sede_telefono"]."\n".$sede["sede_email"], $optionsQR);
+									?>
+								</div>
+							</div>
 						</div>
-					</div><!-- /.row -->
+					</article>
+					<!-- /.ds-recibo -->
+
 				</div><!-- /.container-fluid -->
-			</section>      
+			</section>
 		</div>
 		<!-- /.vista -->
 		<?php require_once "app/views/inc/footer.php"; ?>

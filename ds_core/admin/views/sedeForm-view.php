@@ -124,6 +124,21 @@ require_once __DIR__ . "/inc/layout-top.php";
                         de la escuela; Arena usa las tarifas por hora de cada instalación.
                     </p>
 
+                    <?php /* Migración 086: sin la columna, la casilla no se ofrece. */ ?>
+                    <?php if ($sede === null || array_key_exists('sede_adultos', $sede)): ?>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="sede_adultos" name="sede_adultos" value="S"
+                                <?php echo ($sede['sede_adultos'] ?? 'N') === 'S' ? 'checked' : ''; ?>>
+                            <label class="form-check-label" for="sede_adultos">
+                                Admite alumnos adultos (enlace e inscripción propios)
+                            </label>
+                            <div class="form-text">
+                                Mayores de edad sin representante: se inscriben como titulares y sus recibos
+                                y facturas salen a su nombre. Fútbol › Inscripción Online › Enlaces para adultos.
+                            </div>
+                        </div>
+                    <?php endif; ?>
+
                     <hr>
 
                     <!-- Logo propio de la sede; si no tiene, hereda el de la organización -->

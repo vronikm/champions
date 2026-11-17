@@ -1424,6 +1424,16 @@ class coreController
                    ':m' => $email, ':tel' => $telefono !== '' ? $telefono : null,
                    ':i' => $inscripcion, ':p' => $pension, ':f' => $logo, ':fi' => $firma];
 
+        /* «Admite alumnos adultos» (migración 086). Va en una escritura aparte
+           para que, sin la columna, la sede se guarde igual que siempre. El
+           nombre identifica la sede: arriba se comprobó que no se repite. */
+        $guardarAdultos = function () use ($nombre): void {
+            if ($this->columnaExiste('general_sede', 'sede_adultos')) {
+                $this->escribir("UPDATE general_sede SET sede_adultos = :a WHERE sede_nombre = :n",
+                    [':a' => ($_POST['sede_adultos'] ?? '') === 'S' ? 'S' : 'N', ':n' => $nombre]);
+            }
+        };
+
         if ($id > 0) {
             $params[':id'] = $id;
             $n = $this->escribir(
@@ -1433,6 +1443,7 @@ class coreController
                         sede_inscripcion = :i, sede_pension = :p, sede_foto = :f,
                         sede_firma = :fi
                   WHERE sede_id = :id", $params);
+            if ($n >= 0) { $guardarAdultos(); }
 
             return $n >= 0
                 ? $this->alerta('redireccionar', 'Sede actualizada',
@@ -1446,6 +1457,7 @@ class coreController
                  sede_email, sede_telefono, sede_inscripcion, sede_pension,
                  sede_foto, sede_firma)
              VALUES (:e, :n, :t, :d, :m, :tel, :i, :p, :f, :fi)", $params);
+        if ($n > 0) { $guardarAdultos(); }
 
         return $n > 0
             ? $this->alerta('redireccionar', 'Sede creada',

@@ -119,6 +119,47 @@ class TokenHelper
         ];
     }
 
+    /*----------  Enlace de inscripción de alumnos adultos (migración 086)  ----------*/
+
+    /**
+     * Valida el token de ds_form/adulto.php. Devuelve
+     * ['sede_id' => int, 'exp' => int, 'expirado' => bool] si la firma es
+     * buena (vencido o no), o null si no lo es.
+     *
+     * Llave derivada propia (ver ds_futbol TokenHelper::generarAdulto): un
+     * enlace de menores no pasa aquí, ni uno de adultos por validar().
+     */
+    public static function validarAdulto(string $token): ?array
+    {
+        $parts = explode('.', $token);
+        if (count($parts) !== 2) {
+            return null;
+        }
+
+        [$payloadB64, $signatureB64] = $parts;
+
+        $esperada = hash_hmac('sha256', $payloadB64, self::llaveAdulto());
+        if (!hash_equals($esperada, self::base64urlDecode($signatureB64))) {
+            return null;
+        }
+
+        $payload = json_decode(self::base64urlDecode($payloadB64), true);
+        if (!is_array($payload) || !isset($payload['sede_id'], $payload['exp'])) {
+            return null;
+        }
+
+        return [
+            'sede_id'  => (int)$payload['sede_id'],
+            'exp'      => (int)$payload['exp'],
+            'expirado' => time() > (int)$payload['exp'],
+        ];
+    }
+
+    private static function llaveAdulto(): string
+    {
+        return hash('sha256', 'ds-inscripcion-adulto|' . TOKEN_SECRET);
+    }
+
     private static function llaveAutorizacion(): string
     {
         return hash('sha256', 'ds-autorizacion-lopdp|' . TOKEN_SECRET);

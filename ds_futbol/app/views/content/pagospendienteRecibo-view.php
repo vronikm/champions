@@ -332,7 +332,10 @@
 	<?php
 	/* Envío por WhatsApp: la pieza es del núcleo y la comparten Fútbol y
 	   Arena. Aquí sólo se redacta lo propio de un recibo de abono. */
-	$waDatos['subtitulo'] = 'Representante de ' . $waDatos['alumno'];
+	/* Alumno adulto (parentesco 4TT, migración 086): recibe su propio recibo. */
+	$waDatos['subtitulo'] = ($datos['PARENTESCO_REP'] ?? '') === '4TT'
+		? 'Alumno titular'
+		: 'Representante de ' . $waDatos['alumno'];
 	$waDatos['intro']     = $waDatos['escuela'] . ' le confirma el abono registrado a su pago pendiente:';
 	$waDatos['lineas']    = [
 		'🧾 Recibo N.º ' . $waDatos['recibo'],

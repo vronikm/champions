@@ -76,6 +76,83 @@ class inscripcionController extends mainModel
     }
 
     /**
+     * Enlace de inscripción para alumnos adultos (migración 086).
+     *
+     * Método aparte, no una opción del anterior: el enlace de menores sigue
+     * exactamente igual. Sólo para sedes activas, de la sesión y marcadas en
+     * Core › Sedes como «Admite alumnos adultos».
+     */
+    public function generarEnlaceAdultoControlador()
+    {
+        $faltante = TokenHelper::configFaltante();
+        if (count($faltante) > 0) {
+            error_log("[inscripcionAdultoEnlace] Faltan constantes en config/app.php: " . implode(', ', $faltante));
+            return json_encode([
+                'tipo'   => 'simple',
+                'titulo' => 'Configuración incompleta',
+                'texto'  => 'Falta definir en config/app.php: ' . implode(', ', $faltante) . '. Avise al administrador del sistema.',
+                'icono'  => 'error'
+            ], JSON_UNESCAPED_UNICODE);
+        }
+
+        $sede_id = intval($_POST['sede_id'] ?? 0);
+        $horas   = intval($_POST['horas_vigencia'] ?? 72);
+        if ($horas < 1 || $horas > 720) {
+            $horas = 72;
+        }
+
+        $sedeNombre = null;
+        foreach ($this->listarSedesAdultos() as $s) {
+            if ((int)$s['sede_id'] === $sede_id) {
+                $sedeNombre = $s['sede_nombre'];
+            }
+        }
+        if ($sedeNombre === null) {
+            return json_encode([
+                'tipo'   => 'simple',
+                'titulo' => 'Sede no permitida',
+                'texto'  => 'La sede no existe, está inactiva, no está asignada a su usuario o no admite alumnos adultos (Core › Sedes).',
+                'icono'  => 'error'
+            ], JSON_UNESCAPED_UNICODE);
+        }
+
+        $segundos = $horas * 3600;
+        $url = TokenHelper::generarURLAdulto($sede_id, $segundos);
+
+        return json_encode([
+            'tipo'            => 'enlace',
+            'titulo'          => 'Enlace generado',
+            'texto'           => 'El enlace de inscripción para alumnos adultos de la sede ' . $sedeNombre . ' ha sido generado.',
+            'icono'           => 'success',
+            'url_formulario'  => $url,
+            'enlace_whatsapp' => TokenHelper::generarEnlaceWhatsAppAdulto($url, $sedeNombre, $segundos),
+            'sede_nombre'     => $sedeNombre,
+            'vigencia_horas'  => $horas
+        ], JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * Sedes de la sesión, activas y que admiten alumnos adultos (086).
+     * Sin la migración, ninguna.
+     */
+    public function listarSedesAdultos(): array
+    {
+        $hay = (int)$this->ejecutarConsulta(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'general_sede' AND COLUMN_NAME = 'sede_adultos'"
+        )->fetchColumn();
+        if ($hay === 0) {
+            return [];
+        }
+
+        return $this->ejecutarConsulta(
+            "SELECT sede_id, sede_nombre FROM general_sede
+              WHERE sede_adultos = 'S' AND " . sql_sedes_de_la_sesion('sede_id') . " AND " . sql_sede_activa('sede_id') . "
+              ORDER BY sede_nombre"
+        )->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    /**
      * Lista las sedes que el usuario en sesión puede usar para generar enlaces.
      * Los roles administrativos (1 y 2) ven todas; el resto solo las asignadas.
      */

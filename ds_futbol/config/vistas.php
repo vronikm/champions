@@ -50,4 +50,6 @@ return [
     "carnetFotoPDF", "cumpleaniosList", "cumpleaniosTarjeta",
     "alumnoFotos",
     "importarAlumnos", "inscripcionEnlace", "consentimientoList", "inscripcionPendientes",
+    // Alumnos adultos, titulares de sí mismos (migración 086)
+    "inscripcionAdultoEnlace", "alumnoAdultoNew",
 ];

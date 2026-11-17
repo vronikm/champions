@@ -114,6 +114,48 @@ class TokenHelper
         return hash('sha256', 'ds-autorizacion-lopdp|' . TOKEN_SECRET);
     }
 
+    /*----------  Enlace de inscripción de alumnos adultos (migración 086)  ----------*/
+
+    /**
+     * Token del formulario de adultos (ds_form/adulto.php). Mismo contenido
+     * que el de inscripción —sede y vencimiento— pero firmado con su propia
+     * llave derivada: un enlace de menores no abre el de adultos ni al revés.
+     */
+    public static function generarAdulto(int $sedeId, ?int $expiraEnSegundos = null): string
+    {
+        $expiraEnSegundos = $expiraEnSegundos ?? self::vigenciaPorDefecto();
+
+        $payloadB64 = self::base64urlEncode(json_encode([
+            'sede_id' => $sedeId,
+            'exp'     => time() + $expiraEnSegundos,
+        ]));
+        $firma = hash_hmac('sha256', $payloadB64, self::llaveAdulto());
+
+        return $payloadB64 . '.' . self::base64urlEncode($firma);
+    }
+
+    public static function generarURLAdulto(int $sedeId, ?int $expiraEnSegundos = null): string
+    {
+        return rtrim(FORM_URL, '/') . '/adulto.php?t=' . self::generarAdulto($sedeId, $expiraEnSegundos);
+    }
+
+    /** Enlace de WhatsApp con el mensaje para un alumno adulto. */
+    public static function generarEnlaceWhatsAppAdulto(string $url, string $sedeNombre, int $expiraEnSegundos): string
+    {
+        $escuela = ds_organizacion()['escuela_nombre'];
+        $mensaje = "Hola! Te comparto el enlace de inscripción para *alumnos adultos* de *{$escuela}* - Sede *{$sedeNombre}*.\n\n"
+                 . "Completa tus datos en el siguiente enlace (tu recibo y tu factura se emitirán a tu nombre):\n{$url}\n\n"
+                 . "Este enlace tiene una vigencia de " . round($expiraEnSegundos / 3600) . " horas.";
+
+        return 'https://wa.me/?text=' . rawurlencode($mensaje);
+    }
+
+    /** La misma derivación que ds_form/app/models/TokenHelper::llaveAdulto(). */
+    private static function llaveAdulto(): string
+    {
+        return hash('sha256', 'ds-inscripcion-adulto|' . TOKEN_SECRET);
+    }
+
     private static function base64urlEncode(string $data): string
     {
         return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');

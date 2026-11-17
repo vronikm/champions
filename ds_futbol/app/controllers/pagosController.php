@@ -2043,6 +2043,7 @@
 						concat(E.repre_primernombre, ' ', E.repre_segundonombre, ' ', E.repre_apellidopaterno, ' ', E.repre_apellidomaterno) REPRESENTANTE,
 						E.repre_correo CORREO_REP,
 						E.repre_celular CELULAR_REP,
+						E.repre_parentesco PARENTESCO_REP,
 						P.pago_periodo,
 						P.pago_fecharegistro,
 						P.pago_recibo,
@@ -2080,7 +2081,7 @@
 		
 			$consulta_datos="SELECT sede_nombre, R.catalogo_descripcion RUBRO, F.catalogo_descripcion FORMAPAGO, 
 					concat(E.repre_primernombre, ' ', E.repre_segundonombre, ' ', E.repre_apellidopaterno, ' ', E.repre_apellidomaterno) REPRESENTANTE,
-					E.repre_correo CORREO_REP, E.repre_celular CELULAR_REP, T.torneo_nombre TORNEO,
+					E.repre_correo CORREO_REP, E.repre_celular CELULAR_REP, E.repre_parentesco PARENTESCO_REP, T.torneo_nombre TORNEO,
 					P.*, A.*, PT.* 
 				FROM alumno_pago P	
 					INNER JOIN sujeto_alumno A ON A.alumno_id = P.pago_alumnoid 

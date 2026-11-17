@@ -133,11 +133,17 @@
 	$subject = $datos['RUBRO']." ".$datos['pago_periodo'];
 	$subject = mb_convert_encoding(	$subject, 'ISO-8859-1', 'UTF-8');
 	
+	/* Alumno adulto, titular de sí mismo (parentesco 4TT, migración 086): el
+	   recibo es suyo, no de un representado. */
+	$deQuien = ($datos['PARENTESCO_REP'] ?? '') === '4TT'
+		? "su recibo de pago"
+		: "el recibo de pago de su representad@ ".$datos['alumno_primernombre']." ".$datos['alumno_segundonombre']." ".$datos['alumno_apellidopaterno']." ".$datos['alumno_apellidomaterno'];
+
 	$message = "Estimad@ ".$datos['REPRESENTANTE'].",
-    Adjunto al presente correo encontrará el recibo de pago de su representad@ ".$datos['alumno_primernombre']." ".$datos['alumno_segundonombre']." ".$datos['alumno_apellidopaterno']." ".$datos['alumno_apellidomaterno'].", por el rubro ".$datos['RUBRO']." ".$datos['pago_periodo'].".
-    
+    Adjunto al presente correo encontrará ".$deQuien.", por el rubro ".$datos['RUBRO']." ".$datos['pago_periodo'].".
+
     NOTA: Este correo electrónico servirá como recibo oficial de su pago.
-    
+
     ".ds_nombre_organizacion_may((int)$sede["sede_id"]);
     
 	$message = mb_convert_encoding($message, 'ISO-8859-1', 'UTF-8');

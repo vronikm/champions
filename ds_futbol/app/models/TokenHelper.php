@@ -139,15 +139,44 @@ class TokenHelper
         return rtrim(FORM_URL, '/') . '/adulto.php?t=' . self::generarAdulto($sedeId, $expiraEnSegundos);
     }
 
+    /**
+     * Mensaje para compartir el enlace de adultos. Lo usa el modal «Compartir
+     * por WhatsApp», donde se puede editar antes de enviarlo.
+     *
+     * El texto es de cada escuela: si existe config/mensaje_inscripcion_adulto.txt
+     * se usa ése; si no, el genérico de abajo. Marcadores:
+     *   {ENLACE}  el enlace de inscripción
+     *   {SEDE}    la sede en tipo título (Forest Ejecutivo)
+     *   {SEDE_MAYUS} la sede en mayúsculas (FOREST EJECUTIVO)
+     *   {ESCUELA} el nombre de la organización (Core › Organización)
+     *   {VENCE}   fecha y hora en que vence el enlace
+     */
+    public static function mensajeWhatsAppAdulto(string $url, string $sedeNombre, int $expiraEnSegundos): string
+    {
+        $archivo   = dirname(__DIR__, 2) . '/config/mensaje_inscripcion_adulto.txt';
+        $plantilla = is_file($archivo) ? trim(str_replace("\r", '', (string)file_get_contents($archivo))) : '';
+
+        if ($plantilla === '') {
+            $plantilla = "¡Hola! 👋 Te comparto el enlace de inscripción para *alumnos adultos* de *{ESCUELA}* - Sede *{SEDE}*.\n\n"
+                       . "📝 Completa tus datos aquí (tu recibo y tu factura se emitirán a tu nombre):\n{ENLACE}\n\n"
+                       . "⏳ El enlace vence el {VENCE}.";
+        }
+
+        $sede = html_entity_decode($sedeNombre, ENT_QUOTES, 'UTF-8');
+
+        return strtr($plantilla, [
+            '{ENLACE}'     => $url,
+            '{SEDE_MAYUS}' => mb_strtoupper($sede, 'UTF-8'),
+            '{SEDE}'       => mb_convert_case(mb_strtolower($sede, 'UTF-8'), MB_CASE_TITLE, 'UTF-8'),
+            '{ESCUELA}'    => str_contains($plantilla, '{ESCUELA}') ? (string)ds_organizacion()['escuela_nombre'] : '',
+            '{VENCE}'      => date('d/m/Y \a \l\a\s H:i', time() + $expiraEnSegundos),
+        ]);
+    }
+
     /** Enlace de WhatsApp con el mensaje para un alumno adulto. */
     public static function generarEnlaceWhatsAppAdulto(string $url, string $sedeNombre, int $expiraEnSegundos): string
     {
-        $escuela = ds_organizacion()['escuela_nombre'];
-        $mensaje = "Hola! Te comparto el enlace de inscripción para *alumnos adultos* de *{$escuela}* - Sede *{$sedeNombre}*.\n\n"
-                 . "Completa tus datos en el siguiente enlace (tu recibo y tu factura se emitirán a tu nombre):\n{$url}\n\n"
-                 . "Este enlace tiene una vigencia de " . round($expiraEnSegundos / 3600) . " horas.";
-
-        return 'https://wa.me/?text=' . rawurlencode($mensaje);
+        return 'https://wa.me/?text=' . rawurlencode(self::mensajeWhatsAppAdulto($url, $sedeNombre, $expiraEnSegundos));
     }
 
     /** La misma derivación que ds_form/app/models/TokenHelper::llaveAdulto(). */

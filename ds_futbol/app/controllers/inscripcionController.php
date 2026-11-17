@@ -126,6 +126,8 @@ class inscripcionController extends mainModel
             'icono'           => 'success',
             'url_formulario'  => $url,
             'enlace_whatsapp' => TokenHelper::generarEnlaceWhatsAppAdulto($url, $sedeNombre, $segundos),
+            /* El texto, para el modal «Compartir por WhatsApp» (se edita antes de enviar). */
+            'mensaje_whatsapp' => TokenHelper::mensajeWhatsAppAdulto($url, $sedeNombre, $segundos),
             'sede_nombre'     => $sedeNombre,
             'vigencia_horas'  => $horas
         ], JSON_UNESCAPED_UNICODE);

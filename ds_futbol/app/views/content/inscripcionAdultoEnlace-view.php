@@ -147,9 +147,9 @@ CSS;
                                                 </button>
                                             </div>
                                             <div class="col-md-6 mb-2">
-                                                <a href="#" id="btnWhatsApp" target="_blank" rel="noopener" class="btn btn-whatsapp w-100">
+                                                <button type="button" id="btnWhatsApp" class="btn btn-whatsapp w-100">
                                                     <i class="fab fa-whatsapp"></i> Compartir por WhatsApp
-                                                </a>
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
@@ -171,9 +171,22 @@ CSS;
 	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/bootstrap5/js/bootstrap.bundle.min.js"></script>
     <script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/adminlte4/js/adminlte.min.js"></script>
 
+    <?php
+    /* Compartir: modal del núcleo con destino (contacto o grupo), mensaje
+       editable e imagen opcional. */
+    $waCompartir = ['titulo' => 'Compartir enlace de inscripción'];
+    require DS_HUB_PATH . "ds_core/inc/whatsappCompartir.php";
+    ?>
+
     <script>
     $(document).ready(function () {
         var textoBoton = '<i class="fas fa-magic"></i> Generar enlace para adultos';
+        var ultimo = null;   /* el último enlace generado: { url, mensaje } */
+
+        $('#btnWhatsApp').click(function () {
+            if (!ultimo) { return; }
+            window.dsWhatsappCompartir.abrir({ mensaje: ultimo.mensaje, enlace: ultimo.url });
+        });
 
         $('#btnGenerar').click(function () {
             var sedeId = $('#sede_id').val();
@@ -201,7 +214,7 @@ CSS;
                         $('#enlaceSede').text(data.sede_nombre);
                         $('#enlaceVigencia').text(data.vigencia_horas);
                         $('#enlaceURL').text(data.url_formulario);
-                        $('#btnWhatsApp').attr('href', data.enlace_whatsapp);
+                        ultimo = { url: data.url_formulario, mensaje: data.mensaje_whatsapp || data.url_formulario };
                         $('#enlaceResultado').slideDown();
                         Swal.fire({ title: data.titulo, text: data.texto, icon: data.icono });
                     } else {

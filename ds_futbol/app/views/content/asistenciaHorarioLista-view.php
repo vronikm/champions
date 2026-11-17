@@ -147,7 +147,18 @@
 	<script>
 		document.addEventListener('DOMContentLoaded', function () {
 			new DataTable("#example1", {
-			"responsive": true, "lengthChange": false, "autoWidth": false,
+			"responsive": true, "autoWidth": false,
+			/* «Mostrar N» para elegir cuántos alumnos se ven por página. */
+			"pageLength": 25,
+			"lengthMenu": [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todos"]],
+			"order": [[2, "asc"]],   /* por apellidos */
+			"columnDefs": [{ "targets": 4, "orderable": false, "searchable": false }],
+			"layout": {
+				"topStart": "pageLength",
+				"topEnd": "search",
+				"bottomStart": "info",
+				"bottomEnd": { "paging": { "firstLast": false } }
+			},
 			"language": {
 				"decimal": "",
 				"emptyTable": "No hay datos disponibles en la tabla",

@@ -1436,8 +1436,10 @@
 										YEAR(A.alumno_fechanacimiento) AS CATEGORIA, H.*
 								FROM asistencia_asignahorario H
 										INNER JOIN sujeto_alumno A ON A.alumno_id = H.asignahorario_alumnoid
-								WHERE H.asignahorario_horarioid = :horario";
-			
+								WHERE H.asignahorario_horarioid = :horario
+								  AND A.alumno_estado = 'A'   /* los inactivos no entrenan: fuera de la lista */
+								ORDER BY A.alumno_apellidopaterno, A.alumno_apellidomaterno";
+
 			$datos = $this->ejecutarConsulta($consulta_datos, [':horario' => (int)$horarioid]);
 			$datos = $datos->fetchAll();
 			/*
@@ -1717,9 +1719,10 @@
 									YEAR(A.alumno_fechanacimiento) AS CATEGORIA, H.*
 								FROM asistencia_asignahorario H
 										INNER JOIN sujeto_alumno A ON A.alumno_id = H.asignahorario_alumnoid
-								WHERE H.asignahorario_horarioid = $horarioid 
-								ORDER BY A.alumno_apellidopaterno");	
-			$datos = $this->ejecutarConsulta($consulta_datos);		
+								WHERE H.asignahorario_horarioid = :horario
+								  AND A.alumno_estado = 'A'   /* igual que la lista en pantalla */
+								ORDER BY A.alumno_apellidopaterno");
+			$datos = $this->ejecutarConsulta($consulta_datos, [':horario' => (int)$horarioid]);
 			return $datos;
 		}
 

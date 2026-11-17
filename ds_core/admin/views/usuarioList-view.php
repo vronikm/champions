@@ -34,20 +34,40 @@ require_once __DIR__ . "/inc/layout-top.php";
     </div>
 
     <div class="card-body">
-        <?php if (count($usuarios) > 5): ?>
-            <input type="search" class="form-control mb-3 ds-usuarios__buscar" id="usuariosBuscar"
-                   placeholder="Buscar usuario, persona o rol…" aria-label="Buscar usuario">
-        <?php endif; ?>
+        <?php /* Buscar y ordenar en una barra. En escritorio se ordena con los
+                 encabezados; en el teléfono la tabla pasa a fichas y no hay
+                 encabezados, así que el orden se elige en el selector. */ ?>
+        <div class="ds-usuarios__barra mb-3">
+            <?php if (count($usuarios) > 5): ?>
+                <input type="search" class="form-control ds-usuarios__buscar" id="usuariosBuscar"
+                       placeholder="Buscar usuario…" title="Busca por usuario, nombre, rol o sede"
+                       aria-label="Buscar por usuario, nombre, rol o sede">
+            <?php endif; ?>
+            <?php if (count($usuarios) > 1): ?>
+                <div class="ds-usuarios__ordenar">
+                    <label class="visually-hidden" for="usuariosOrden">Ordenar por</label>
+                    <select class="form-select" id="usuariosOrden">
+                        <option value="usuario:asc">Usuario (A–Z)</option>
+                        <option value="usuario:desc">Usuario (Z–A)</option>
+                        <option value="persona:asc">Nombre (A–Z)</option>
+                        <option value="rol:asc">Rol</option>
+                        <option value="sedes:asc">Sedes</option>
+                        <option value="estado:asc">Activos primero</option>
+                        <option value="estado:desc">Inactivos primero</option>
+                    </select>
+                </div>
+            <?php endif; ?>
+        </div>
 
         <?php /* Un solo marcado: tabla en escritorio y una ficha por usuario
                  por debajo de 992 px (core.css, .ds-usuarios). */ ?>
         <table class="table align-middle mb-0 ds-usuarios__tabla">
             <thead>
                 <tr>
-                    <th>Usuario</th>
-                    <th>Rol</th>
-                    <th class="ds-usuarios__opcional">Sedes</th>
-                    <th>Estado</th>
+                    <th aria-sort="ascending"><button type="button" class="ds-usuarios__orden" data-orden="usuario">Usuario<i class="fas fa-sort-up" aria-hidden="true"></i></button></th>
+                    <th aria-sort="none"><button type="button" class="ds-usuarios__orden" data-orden="rol">Rol<i class="fas fa-sort" aria-hidden="true"></i></button></th>
+                    <th class="ds-usuarios__opcional" aria-sort="none"><button type="button" class="ds-usuarios__orden" data-orden="sedes">Sedes<i class="fas fa-sort" aria-hidden="true"></i></button></th>
+                    <th aria-sort="none"><button type="button" class="ds-usuarios__orden" data-orden="estado">Estado<i class="fas fa-sort" aria-hidden="true"></i></button></th>
                     <th class="text-end"><span class="visually-hidden">Acciones</span></th>
                 </tr>
             </thead>
@@ -73,7 +93,14 @@ require_once __DIR__ . "/inc/layout-top.php";
                 $todasSedes = $esSuper || ($u['usuario_todassedes'] ?? 'N') === 'S';
                 $sedesTexto = $todasSedes ? 'Todas las sedes' : trim((string)($u['sedes_nombres'] ?? ''));
             ?>
-                <tr data-buscar="<?php echo $h(mb_strtolower($u['usuario_usuario'] . ' ' . $persona . ' ' . $u['rol_nombre'] . ' ' . $sedesTexto)); ?>">
+                <?php /* Claves de orden. «Todas» va antes que cualquier sede y
+                         «sin sede» al final; el estado, activos primero. */ ?>
+                <tr data-buscar="<?php echo $h(mb_strtolower($u['usuario_usuario'] . ' ' . $persona . ' ' . $u['rol_nombre'] . ' ' . $sedesTexto)); ?>"
+                    data-o-usuario="<?php echo $h(mb_strtolower($u['usuario_usuario'])); ?>"
+                    data-o-persona="<?php echo $h(mb_strtolower($persona !== '' ? $persona : '~')); ?>"
+                    data-o-rol="<?php echo $h(mb_strtolower($u['rol_nombre'])); ?>"
+                    data-o-sedes="<?php echo $h($todasSedes ? ' ' : ($sedesTexto === '' ? '~' : mb_strtolower($sedesTexto))); ?>"
+                    data-o-estado="<?php echo $u['usuario_estado'] === 'A' ? '0' : '1'; ?>">
                     <td class="ds-usuarios__principal">
                         <div class="ds-usuarios__quien">
                             <span class="ds-usuarios__inicial" aria-hidden="true"><?php echo $h($inicial); ?></span>
@@ -117,10 +144,11 @@ require_once __DIR__ . "/inc/layout-top.php";
                             <?php if (!$esYo): ?>
                                 <button type="button" class="btn btn-sm btn-warning js-clave ds-usuarios__primario"
                                         title="Cambiar contraseña y enviarla"
+                                        aria-label="Cambiar la contraseña de <?php echo $h($u['usuario_usuario']); ?>"
                                         data-id="<?php echo $id; ?>" data-usuario="<?php echo $h($u['usuario_usuario']); ?>"
                                         data-nombre="<?php echo $h($persona); ?>" data-correo="<?php echo $h($u['correo']); ?>"
                                         data-celular="<?php echo $h(preg_replace('/\D/', '', (string)$u['celular'])); ?>">
-                                    <i class="fas fa-key me-1" aria-hidden="true"></i>Contraseña
+                                    <i class="fas fa-key" aria-hidden="true"></i><span class="ds-usuarios__texto-boton">Contraseña</span>
                                 </button>
                             <?php endif; ?>
                         <?php endif; ?>
@@ -172,6 +200,65 @@ require_once __DIR__ . "/inc/layout-top.php";
         });
         document.getElementById('usuariosNinguno').classList.toggle('d-none', vistos > 0);
     });
+})();
+
+/* Orden por campo. Los encabezados (escritorio) y el selector (teléfono,
+   donde la tabla es una lista de fichas sin encabezados) comparten el mismo
+   estado. Un segundo clic en el mismo encabezado invierte el orden. Se
+   recuerda en este navegador; sin almacenamiento, vale el orden por usuario. */
+(function () {
+    var tbody = document.querySelector('.ds-usuarios__tabla tbody');
+    var selector = document.getElementById('usuariosOrden');
+    var botones = document.querySelectorAll('.ds-usuarios__orden');
+    if (!tbody || (!selector && !botones.length)) { return; }
+
+    var CLAVE = 'ds-usuarios-orden';
+    var comparar = new Intl.Collator('es', { sensitivity: 'base', numeric: true }).compare;
+    var actual = { campo: 'usuario', dir: 'asc' };
+
+    function ordenar(campo, dir) {
+        actual = { campo: campo, dir: dir };
+        var filas = Array.prototype.slice.call(tbody.querySelectorAll('tr[data-o-usuario]'));
+        var signo = dir === 'desc' ? -1 : 1;
+        filas.sort(function (a, b) {
+            return signo * comparar(a.getAttribute('data-o-' + campo), b.getAttribute('data-o-' + campo))
+                || comparar(a.getAttribute('data-o-usuario'), b.getAttribute('data-o-usuario'));
+        });
+        filas.forEach(function (tr) { tbody.appendChild(tr); });
+
+        botones.forEach(function (b) {
+            var th = b.closest('th'), activo = b.getAttribute('data-orden') === campo;
+            th.setAttribute('aria-sort', activo ? (dir === 'asc' ? 'ascending' : 'descending') : 'none');
+            b.querySelector('i').className = 'fas ' + (activo ? (dir === 'asc' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort');
+        });
+        if (selector) {
+            var valor = campo + ':' + dir;
+            /* Si la combinación no está en el selector (p. ej. Rol Z–A desde el
+               encabezado), se muestra la del mismo campo. */
+            selector.value = selector.querySelector('option[value="' + valor + '"]') ? valor : campo + ':asc';
+        }
+        try { localStorage.setItem(CLAVE, campo + ':' + dir); } catch (e) {}
+    }
+
+    botones.forEach(function (b) {
+        b.addEventListener('click', function () {
+            var campo = b.getAttribute('data-orden');
+            ordenar(campo, actual.campo === campo && actual.dir === 'asc' ? 'desc' : 'asc');
+        });
+    });
+    if (selector) {
+        selector.addEventListener('change', function () {
+            var p = selector.value.split(':');
+            ordenar(p[0], p[1]);
+        });
+    }
+
+    try {
+        var guardado = (localStorage.getItem(CLAVE) || '').split(':');
+        if (/^(usuario|persona|rol|sedes|estado)$/.test(guardado[0]) && /^(asc|desc)$/.test(guardado[1])) {
+            ordenar(guardado[0], guardado[1]);
+        }
+    } catch (e) {}
 })();
 
 /* Restablecer el segundo factor de otra persona.

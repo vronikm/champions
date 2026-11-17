@@ -1101,9 +1101,39 @@ td.ds-tabla-acciones .ds-hueco {
 }
 .ds-usuarios__usuario { font-weight: 600; overflow-wrap: anywhere; }
 .ds-usuarios__persona { font-size: .85rem; color: var(--bs-secondary-color); }
-.ds-usuarios__botones { display: flex; justify-content: flex-end; align-items: center; gap: .35rem; flex-wrap: wrap; }
-.ds-usuarios__botones form { margin: 0; }
-.ds-usuarios__buscar { max-width: 24rem; min-height: 2.5rem; }
+/* Acciones SIEMPRE en una fila: antes envolvían y la papelera bajaba sola
+   a una segunda línea en cada usuario. La celda toma sólo lo que necesita. */
+/* Alineadas a la izquierda de su columna: «Editar» cae en el mismo sitio en
+   todas las filas aunque alguna tenga menos botones. */
+.ds-usuarios__botones { display: flex; justify-content: flex-start; align-items: center; gap: .35rem; flex-wrap: nowrap; }
+.ds-usuarios__botones .ds-hueco { display: inline-flex; align-items: center; justify-content: center; min-width: 2rem; align-self: stretch; }
+.ds-usuarios__botones form { margin: 0; display: flex; }
+.ds-usuarios__botones .btn { white-space: nowrap; }
+.ds-usuarios__texto-boton { margin-left: .35rem; }
+.ds-usuarios__tabla td.ds-usuarios__acciones { width: 1%; white-space: nowrap; }
+
+/* Barra: buscar + ordenar. El selector de orden sólo hace falta donde no
+   hay encabezados (fichas, < 992 px); en escritorio se ordena con ellos. */
+.ds-usuarios__barra { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.ds-usuarios__buscar { flex: 1 1 0; min-width: 8rem; max-width: 24rem; min-height: 2.5rem; }
+.ds-usuarios__ordenar { flex: 0 0 9.5rem; }
+.ds-usuarios__ordenar .form-select { min-height: 2.5rem; }
+@media (min-width: 992px) { .ds-usuarios__ordenar { display: none; } }
+
+/* Encabezados que ordenan: el botón hereda el aspecto del <th>. */
+.ds-usuarios__orden {
+    display: inline-flex; align-items: center; gap: .4rem;
+    padding: 0; border: 0; background: none;
+    font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit;
+    cursor: pointer; white-space: nowrap;
+}
+.ds-usuarios__orden i { font-size: .8em; opacity: .4; transition: opacity .15s; }
+.ds-usuarios__orden:hover i { opacity: .8; }
+th[aria-sort="ascending"] .ds-usuarios__orden,
+th[aria-sort="descending"] .ds-usuarios__orden { color: var(--bs-emphasis-color); }
+th[aria-sort="ascending"] .ds-usuarios__orden i,
+th[aria-sort="descending"] .ds-usuarios__orden i { opacity: 1; color: var(--ds-primary-texto, var(--bs-primary)); }
+.ds-usuarios__orden:focus-visible { outline: 2px solid var(--bs-primary); outline-offset: 2px; border-radius: 2px; }
 .ds-clave__resultado li { overflow-wrap: anywhere; }
 
 @media (min-width: 992px) and (max-width: 1199.98px) {
@@ -1119,17 +1149,20 @@ td.ds-tabla-acciones .ds-hueco {
         background: var(--bs-body-bg);
     }
     .ds-usuarios__tabla > tbody > tr[hidden] { display: none; }
-    .ds-usuarios__tabla > tbody > tr > td { display: block; padding: 0; border: 0; background: transparent; }
+    /* .ds-core delante: «.ds-core .table td» pone un borde superior a cada
+       celda y, sin él, la ficha salía rayada por dentro. */
+    .ds-core .ds-usuarios__tabla > tbody > tr > td { display: block; padding: 0; border: 0; background: transparent; }
     .ds-usuarios__tabla td.ds-usuarios__principal { grid-column: 1; grid-row: 1; min-width: 0; }
     .ds-usuarios__tabla td.ds-usuarios__estado { grid-column: 2; grid-row: 1; align-self: start; }
     .ds-usuarios__tabla td.ds-usuarios__dato { grid-column: 1 / -1; font-size: .875rem; }
     .ds-usuarios__tabla td.ds-usuarios__dato[data-rotulo]::before { content: attr(data-rotulo) ": "; color: var(--bs-secondary-color); }
-    .ds-usuarios__tabla td.ds-usuarios__acciones {
+    .ds-core .ds-usuarios__tabla > tbody > tr > td.ds-usuarios__acciones {
         grid-column: 1 / -1; margin-top: .5rem; padding-top: .6rem;
         border-top: 1px solid var(--bs-border-color-translucent);
     }
-    /* Botones de dedo: 44 px; «Contraseña» ocupa el ancho libre. */
-    .ds-usuarios__botones { justify-content: stretch; }
+    /* Botones de dedo: 44 px, en una fila; «Contraseña» ocupa el ancho libre. */
+    .ds-usuarios__tabla td.ds-usuarios__acciones { width: auto; }
+    .ds-usuarios__botones { justify-content: flex-end; }
     .ds-usuarios__botones .btn { min-height: 2.75rem; min-width: 2.75rem; display: inline-flex; align-items: center; justify-content: center; }
     .ds-usuarios__botones .ds-usuarios__primario { flex: 1 1 auto; }
     .ds-usuarios__buscar { max-width: none; }

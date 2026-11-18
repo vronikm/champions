@@ -402,7 +402,7 @@
                 <p class="text-muted mb-4">
                     Quedaste inscrito en la sede <strong><?php echo $h($sedeNombre); ?></strong>.
                 </p>
-                <p class="text-muted">La escuela se pondrá en contacto contigo. Puedes cerrar esta ventana.</p>
+                <p class="text-muted">La academia se pondrá en contacto contigo. Puedes cerrar esta ventana.</p>
             </div>
         </div>
     </div>

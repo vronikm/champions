@@ -12,7 +12,7 @@
 	$h = static fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 	$maxNacimiento = (new DateTime('today'))->modify('-18 years')->format('Y-m-d');
 
-	$tituloVista = 'Nuevo alumno adulto';
+	$tituloVista = 'Nuevo alumno entrenamiento ejecutivo';
 	$extras      = ['swal'];
 	require_once "app/views/inc/cabecera.php";
 ?>
@@ -27,14 +27,14 @@
 			<div class="container-fluid">
 				<div class="row mb-2 g-2 align-items-center">
 					<div class="col-sm-7">
-						<h4 class="m-0">Nuevo alumno adulto</h4>
+						<h4 class="m-0">Nuevo alumno entrenamiento ejecutivo</h4>
 						<p class="small text-body-secondary mb-0">Mayor de edad, sin representante: es su propio titular.</p>
 					</div>
 					<div class="col-sm-5">
 						<ol class="breadcrumb float-sm-end mb-0">
 							<li class="breadcrumb-item"><a href="<?php echo APP_URL; ?>dashboard/">Inicio</a></li>
 							<li class="breadcrumb-item"><a href="<?php echo APP_URL; ?>alumnoList/">Alumnos</a></li>
-							<li class="breadcrumb-item active" aria-current="page">Nuevo alumno adulto</li>
+							<li class="breadcrumb-item active" aria-current="page">Nuevo alumno entrenamiento ejecutivo</li>
 						</ol>
 					</div>
 				</div>

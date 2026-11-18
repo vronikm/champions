@@ -74,13 +74,10 @@
 		if($_POST['modulo_egreso']=="eliminardescargo"){
 			echo $insEgreso->eliminarDescargoEgreso();
 		}
-	}elseif(isset($_POST['modulo_asistencia'])){
-		$insAsistencia = new empleadoController();
-
-		if($_POST['modulo_asistencia']=="coordenadas"){
-			echo $insAsistencia->AsistenciaCoordenadas();
-		}
-	}	
+	}
+	/* La marcación de entrada y salida (modulo_asistencia=coordenadas) se
+	   movió a empleadoEntradaAjax.php: aquí la frenaba el permiso de la
+	   pantalla Empleados, que un entrenador no tiene. */
 	else{
 		session_destroy();
 		header("Location: ".APP_URL."login/");

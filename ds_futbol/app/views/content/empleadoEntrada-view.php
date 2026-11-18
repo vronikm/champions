@@ -106,7 +106,7 @@
 
 									<?php /* El empleado y el tipo los decide el servidor
 									         (AsistenciaCoordenadas): aquí sólo viaja la ubicación. */ ?>
-									<form class="FormularioAjax" id="form-marca" action="<?php echo APP_URL; ?>app/ajax/empleadoAjax.php" method="POST" autocomplete="off">
+									<form class="FormularioAjax" id="form-marca" action="<?php echo APP_URL; ?>app/ajax/empleadoEntradaAjax.php" method="POST" autocomplete="off">
 										<input type="hidden" name="modulo_asistencia" value="coordenadas">
 										<input type="hidden" id="latitude" name="latitude">
 										<input type="hidden" id="longitude" name="longitude">

@@ -247,8 +247,7 @@
 
 							<div class="ds-recibo__fila">
 								<span class="ds-recibo__etq">Recibo de:</span>
-								<span><?php echo $e($datos['alumno_primernombre'].' '.$datos['alumno_segundonombre'].' '.$datos['alumno_apellidopaterno'].' '.$datos['alumno_apellidomaterno']); ?>
-									<span class="ds-recibo__nota">(<?php echo date('Y', strtotime($datos['alumno_fechanacimiento'])); ?>)</span></span>
+								<span><?php echo $e($datos['alumno_primernombre'].' '.$datos['alumno_segundonombre'].' '.$datos['alumno_apellidopaterno'].' '.$datos['alumno_apellidomaterno']); ?></span>
 							</div>
 							<div class="ds-recibo__fila">
 								<span class="ds-recibo__etq">La cantidad de:</span>

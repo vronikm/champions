@@ -84,7 +84,7 @@
     $pdf->SetXY( 175, 52 ); $pdf->SetFont( "Arial", "B", 11 ); $pdf->Cell( 20, 8, $datos['pago_recibo'], 0, 0, 'R');
 
     $pdf->SetXY( 15, 62 ); $pdf->SetFont( "Arial", "B", 10 ); $pdf->Cell( 20, 4, "Recibo de:", 0, 0, 'L');
-    ds_pdf_texto_encajado($pdf, mb_convert_encoding($datos['alumno_primernombre']." ".$datos['alumno_segundonombre']." ".$datos['alumno_apellidopaterno']." ".$datos['alumno_apellidomaterno']." (".date('Y', strtotime($datos['alumno_fechanacimiento'])).")", 'ISO-8859-1', 'UTF-8'), 46, 60.5, 152, 6.5);
+    ds_pdf_texto_encajado($pdf, mb_convert_encoding($datos['alumno_primernombre']." ".$datos['alumno_segundonombre']." ".$datos['alumno_apellidopaterno']." ".$datos['alumno_apellidomaterno'], 'ISO-8859-1', 'UTF-8'), 46, 60.5, 152, 6.5);
 
     $pdf->SetXY( 15, 71 ); $pdf->SetFont( "Arial", "B", 10 ); $pdf->Cell( 20, 0, "La cantidad de:", 0, 0, 'L');
     ds_pdf_texto_encajado($pdf, mb_convert_encoding(ucfirst($insAlumno->textoLetras($datos['PAGO_INICIAL'])), 'ISO-8859-1', 'UTF-8'), 46, 67.5, 152, 6.5);

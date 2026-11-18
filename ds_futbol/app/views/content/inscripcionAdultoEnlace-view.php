@@ -7,7 +7,7 @@
 
 <?php
 	/* La cabecera es comun a todas las vistas: ds_futbol/app/views/inc/cabecera.php */
-	$tituloVista = 'Enlace para alumnos adultos';
+	$tituloVista = 'Enlace entrenamiento ejecutivo';
 	$extras      = array (0 => 'swal',);
 	$cabeceraExtra = <<<'CSS'
     <style>
@@ -49,7 +49,7 @@ CSS;
                 <div class="container-fluid">
                     <div class="row mb-2">
                         <div class="col-sm-6">
-                            <h4 class="m-0">Enlace para alumnos adultos</h4>
+                            <h4 class="m-0">Enlace entrenamiento ejecutivo</h4>
                         </div>
                         <div class="col-sm-6">
                             <ol class="breadcrumb float-sm-end">
@@ -125,13 +125,13 @@ CSS;
                                         </div>
 
                                         <button type="button" id="btnGenerar" class="btn btn-primary w-100">
-                                            <i class="fas fa-magic"></i> Generar enlace para adultos
+                                            <i class="fas fa-magic"></i> Generar enlace entrenamiento ejecutivo
                                         </button>
                                     </form>
 
                                     <div id="enlaceResultado" class="enlace-resultado">
                                         <hr>
-                                        <h5><i class="fas fa-check-circle text-success"></i> Enlace para adultos de: <strong id="enlaceSede"></strong></h5>
+                                        <h5><i class="fas fa-check-circle text-success"></i> Enlace entrenamiento ejecutivo: <strong id="enlaceSede"></strong></h5>
 
                                         <div class="enlace-info">
                                             <small><i class="fas fa-info-circle"></i> Este enlace expira en <strong id="enlaceVigencia"></strong> horas</small>
@@ -180,7 +180,7 @@ CSS;
 
     <script>
     $(document).ready(function () {
-        var textoBoton = '<i class="fas fa-magic"></i> Generar enlace para adultos';
+        var textoBoton = '<i class="fas fa-magic"></i> Generar enlace entrenamiento ejecutivo';
         var ultimo = null;   /* el último enlace generado: { url, mensaje } */
 
         $('#btnWhatsApp').click(function () {

@@ -225,6 +225,16 @@ class mainModel
                 return false;
         }
 
+        /* Foto vertical de celular: los píxeles llegan apaisados y el giro va
+           en el EXIF, que GD ignora y descarta. Se aplica aquí, antes de
+           redimensionar (ds_core/inc/imagen_orientacion.php). */
+        if ($imageType === IMAGETYPE_JPEG && $image instanceof \GdImage) {
+            require_once __DIR__ . "/../../../ds_core/inc/imagen_orientacion.php";
+            $image = ds_imagen_orientar($image, ds_imagen_orientacion_exif($file));
+            $originalWidth  = imagesx($image);
+            $originalHeight = imagesy($image);
+        }
+
         $aspectRatio = $originalWidth / $originalHeight;
         if ($maxWidth / $maxHeight > $aspectRatio) {
             $newWidth = round($maxHeight * $aspectRatio);

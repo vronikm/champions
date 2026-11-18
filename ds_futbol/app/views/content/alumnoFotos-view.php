@@ -419,6 +419,28 @@ document.addEventListener('DOMContentLoaded', function () {
 	| cargar, cuando aún no había ningún botón, y «Subir» no abría nada.
 	*/
 	document.getElementById('tablaFotos').addEventListener('click', function (ev) {
+		/* Girar 90° una foto guardada acostada. Se recarga sólo la página
+		   visible de la tabla: el alumno sigue en su sitio y la miniatura
+		   llega con el nombre nuevo, sin la versión vieja de la caché. */
+		var g = ev.target.closest('.btn-girar');
+		if (g) {
+			var grupo = g.closest('.btn-group');
+			grupo.querySelectorAll('button').forEach(function (x) { x.disabled = true; });
+			g.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span>';
+			var datos = new FormData();
+			datos.append('modulo_fotoalumno', 'girarFoto');
+			datos.append('alumno_id', g.dataset.id);
+			datos.append('sentido', g.dataset.sentido);
+			fetch('<?php echo APP_URL; ?>app/ajax/fotoAlumnoAjax.php', { method: 'POST', body: datos, credentials: 'same-origin' })
+				.then(function (r) { return r.json(); })
+				.then(function (res) {
+					if (res.icono !== 'success') { Swal.fire({ icon: res.icono || 'error', title: res.titulo, text: res.texto }); }
+				})
+				.catch(function () { Swal.fire({ icon: 'error', title: 'Error', text: 'No se pudo girar la foto. Intente nuevamente.' }); })
+				.then(function () { if (typeof tabla !== 'undefined') { tabla.draw(false); } });
+			return;
+		}
+
 		var b = ev.target.closest('.btn-subir');
 		if (!b) { return; }
 		document.getElementById('foto_alumno_id').value = b.dataset.id;

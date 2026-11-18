@@ -397,11 +397,23 @@
 				];
 
 				if ($puedeEditar) {
+					/* Girar: para las fotos que se guardaron acostadas antes de
+					   que la subida respetara la orientación del celular. */
+					$girar = '';
+					if ($f['foto_estado'] === self::OK) {
+						$id = (int)$f['alumno_id'];
+						$girar = '<div class="btn-group btn-group-sm" role="group" aria-label="Girar la foto de ' . $h($nombre) . '">'
+						       . '<button type="button" class="btn btn-outline-secondary btn-girar" data-id="' . $id . '" data-sentido="izq"'
+						       . ' title="Girar a la izquierda" aria-label="Girar a la izquierda"><i class="fas fa-rotate-left" aria-hidden="true"></i></button>'
+						       . '<button type="button" class="btn btn-outline-secondary btn-girar" data-id="' . $id . '" data-sentido="der"'
+						       . ' title="Girar a la derecha" aria-label="Girar a la derecha"><i class="fas fa-rotate-right" aria-hidden="true"></i></button>'
+						       . '</div>';
+					}
 					$fila[] = '<div class="ds-ficha__botones"><button type="button" class="btn btn-sm btn-primary btn-subir ds-ficha__primario"'
 					        . ' data-id="' . (int)$f['alumno_id'] . '"'
 					        . ' data-nombre="' . $h($nombre) . '">'
 					        . '<i class="fas fa-camera me-1" aria-hidden="true"></i>'
-					        . ($f['foto_estado'] === self::OK ? 'Cambiar foto' : 'Subir foto') . '</button></div>';
+					        . ($f['foto_estado'] === self::OK ? 'Cambiar foto' : 'Subir foto') . '</button>' . $girar . '</div>';
 				}
 
 				$datos[] = $fila;
@@ -513,6 +525,91 @@
 
 			return $this->aviso('Foto guardada',
 				'La foto del alumno se actualizó.', 'success', 'recargar');
+		}
+
+		/**
+		 * Gira 90° la foto guardada de un alumno.
+		 *
+		 * Las fotos tomadas en vertical con el celular quedaban acostadas:
+		 * el giro venía en el EXIF y GD lo descartaba al redimensionar. Las
+		 * nuevas ya se enderezan solas (ds_core/inc/imagen_orientacion.php),
+		 * pero las ya guardadas perdieron ese dato y sólo se arreglan a mano.
+		 *
+		 * Se guarda con OTRO nombre, como guardarFoto(): con el mismo, el
+		 * navegador seguiría enseñando la versión acostada de su caché.
+		 */
+		public function girarFoto(): string {
+
+			if (!puede_editar('alumnoFotos')) {
+				return $this->aviso('Acceso denegado',
+					'Su rol no puede modificar las fotos de los alumnos.', 'error');
+			}
+
+			$id      = (int)($_POST['alumno_id'] ?? 0);
+			$sentido = (string)($_POST['sentido'] ?? '');
+			if ($id <= 0 || !in_array($sentido, ['izq', 'der'], true)) {
+				return $this->aviso('Error', 'Solicitud incompleta.', 'error');
+			}
+
+			$alumno = $this->ejecutarConsulta(
+				"SELECT alumno_id, alumno_identificacion, alumno_imagen, alumno_sedeid
+				   FROM sujeto_alumno WHERE alumno_id = :id", [':id' => $id])->fetch();
+			if (!$alumno) {
+				return $this->aviso('Error', 'El alumno no existe.', 'error');
+			}
+
+			/* Mismo alcance por sede que guardarFoto(). */
+			$permitidas = $this->sedesPermitidas();
+			if ($permitidas !== [] && !in_array((int)$alumno['alumno_sedeid'], $permitidas, true)) {
+				return $this->aviso('Acceso denegado',
+					'Este alumno no pertenece a una sede que usted administre.', 'error');
+			}
+
+			$carpeta = $this->carpeta();
+			$actual  = basename(trim((string)$alumno['alumno_imagen']));
+			if ($actual === '' || !is_file($carpeta . $actual)) {
+				return $this->aviso('Sin foto', 'El alumno no tiene una foto guardada que girar.', 'error');
+			}
+
+			$info = @getimagesize($carpeta . $actual);
+			$img  = match ($info[2] ?? null) {
+				IMAGETYPE_JPEG => @imagecreatefromjpeg($carpeta . $actual),
+				IMAGETYPE_PNG  => @imagecreatefrompng($carpeta . $actual),
+				default        => false,
+			};
+			if ($img === false) {
+				return $this->aviso('Error', 'No se pudo leer la foto guardada.', 'error');
+			}
+
+			/* imagerotate() gira en sentido antihorario: -90 es a la derecha. */
+			$girada = imagerotate($img, $sentido === 'der' ? -90 : 90, 0);
+			if ($girada === false) {
+				return $this->aviso('Error', 'No fue posible girar la foto.', 'error');
+			}
+
+			$esJpeg = $info[2] === IMAGETYPE_JPEG;
+			$base   = preg_replace('~[^A-Za-z0-9_-]~', '_',
+			                       (string)$alumno['alumno_identificacion']) ?: ('alumno' . $id);
+			$nombre = $base . '_' . date('YmdHis') . '_' . bin2hex(random_bytes(2)) . ($esJpeg ? '.jpg' : '.png');
+
+			if ($esJpeg) {
+				$ok = imagejpeg($girada, $carpeta . $nombre, 90);
+			} else {
+				imagesavealpha($girada, true);
+				$ok = imagepng($girada, $carpeta . $nombre, 6);
+			}
+			if (!$ok) {
+				return $this->aviso('Error', 'No se pudo guardar la foto girada.', 'error');
+			}
+
+			$this->ejecutarConsulta(
+				"UPDATE sujeto_alumno SET alumno_imagen = :f WHERE alumno_id = :id",
+				[':f' => $nombre, ':id' => $id]);
+
+			/* La anterior se borra después de que la base apunte a la nueva. */
+			@unlink($carpeta . $actual);
+
+			return $this->aviso('Foto girada', 'La foto se giró ' . ($sentido === 'der' ? 'a la derecha' : 'a la izquierda') . '.');
 		}
 
 		/** Alerta con el formato que espera alertas_ajax() en ajax.js */

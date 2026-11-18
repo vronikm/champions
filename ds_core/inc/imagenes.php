@@ -143,6 +143,12 @@ if (!function_exists('ds_imagen_subir')) {
             return 'La imagen está dañada o no se pudo leer.';
         }
 
+        /* Foto vertical de celular: el giro va en el EXIF, que GD descarta. */
+        if ($mime === 'image/jpeg') {
+            require_once __DIR__ . '/imagen_orientacion.php';
+            $img = ds_imagen_orientar($img, ds_imagen_orientacion_exif($origen));
+        }
+
         $ancho = imagesx($img);
         $alto  = imagesy($img);
 

@@ -14,7 +14,7 @@ MYSQL=/ruta/a/mysql MYSQL_OPTS="-u USUARIO -pCLAVE" \
   ds_core/database/migracion_champions/aplicar_migracion.sh BASE
 ```
 
-Aplica los 87 archivos en el orden correcto y se detiene en el primer error.
+Aplica los 88 archivos en el orden correcto y se detiene en el primer error.
 Antes de empezar comprueba que `BASE` sea una copia de SoccerEasy **sin migrar**:
 si ya tiene `facturas_electronicas`, no aplica nada, porque varias migraciones no
 se pueden repetir.
@@ -131,6 +131,12 @@ en desarrollo y llevar el resultado a producción con un volcado (ver más abajo
     (catálogo `posicion_juego`). Los alumnos sin posición o con un código
     fuera del catálogo quedan en «No definido» (`3ND`), que pasa a ser el valor
     por defecto de `alumno_posicionid`. Repetible.
+27. `086_alumnos_adultos.sql` (de `ds_core/database/`, común a los cuatro
+    sistemas; desde aquí las comunes nuevas se numeran 086 en adelante y el
+    script las toma de allí): alumnos adultos que son su propio titular
+    (parentesco `4TT`), la casilla «Admite alumnos adultos» de cada sede
+    (`sede_adultos`, N por defecto) y los menús «Enlaces para adultos» y
+    «Nuevo alumno adulto» con sus permisos. Repetible.
 
 ```bash
 mysql -u USUARIO -p --default-character-set=utf8mb4 BASE < ARCHIVO.sql
@@ -194,7 +200,7 @@ Con la base apuntada en `secrets.php`:
 php ds_core/database/estado_migraciones.php
 ```
 
-Resultado esperado: 36 aplicadas, 0 pendientes, 28 no determinables.
+Resultado esperado: 37 aplicadas, 0 pendientes, 28 no determinables.
 
 El ensayo del 2026-10-21 se comparó además contra `digitech_champions_cf`:
 101 tablas y vistas, 1069 columnas, 380 índices, 86 claves ajenas, 243

@@ -36,6 +36,11 @@ done
 for f in "$AQUI"/06[5-9]_*.sql "$AQUI"/0[7-9][0-9]_*.sql; do
     [ -f "$f" ] && ARCHIVOS+=("$f")
 done
+# Las comunes del núcleo numeradas desde 086 (065–085 son las de cada
+# sistema, en su carpeta): van después de las propias de champions.
+for f in "$RAIZ"/08[6-9]_*.sql "$RAIZ"/09[0-9]_*.sql; do
+    [ -f "$f" ] && ARCHIVOS+=("$f")
+done
 
 # --- Un solo archivo para phpMyAdmin ----------------------------------
 # Sin BOM ni saltos de línea de Windows: cada archivo se limpia al unirlo.

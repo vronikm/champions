@@ -309,5 +309,18 @@ Swal.fire({
 </script>
 <?php endif; ?>
 
+<script>
+/* Asistencia sin conexión (sw-asistencia.js): al llegar aquí la sesión ya
+   no existe, así que se borran las listas de alumnos guardadas en este
+   celular; otra persona que lo use no debe verlas. Las marcas pendientes
+   NO se borran (IndexedDB): son de su profesor y se envían cuando él
+   vuelva a entrar. Se guardarán de nuevo al abrir «Registrar asistencia». */
+if (window.caches && caches.keys) {
+    caches.keys().then(function (claves) {
+        claves.forEach(function (k) { if (/^ds-asis-paginas-/.test(k)) { caches.delete(k); } });
+    }).catch(function () {});
+}
+</script>
+
 </body>
 </html>

@@ -1949,38 +1949,145 @@
 			if ($horario <= 0 || !$this->puedeTomarAsistencia($horario)) {
 				return $error("No puede tomar asistencia en este horario.");
 			}
-			$asignado = (int)$this->ejecutarConsulta("SELECT COUNT(*) FROM asistencia_asignahorario H
-					INNER JOIN sujeto_alumno A ON A.alumno_id = H.asignahorario_alumnoid AND A.alumno_estado = 'A'
-					WHERE H.asignahorario_horarioid = :horario AND H.asignahorario_alumnoid = :alumno",
-				[':horario' => $horario, ':alumno' => $alumno_id])->fetchColumn();
-			if ($asignado === 0) { return $error("El alumno no está en la lista de este horario."); }
+			if (!$this->alumnoEnLista($horario, $alumno_id)) { return $error("El alumno no está en la lista de este horario."); }
 
-			$t       = strtotime($fecha);
-			$aniomes = date('Ym', $t);
-			$dia     = 'asistencia_D' . date('d', $t);
-
-			$datos = $this->ejecutarConsulta("SELECT asistencia_id FROM asistencia_asistencia WHERE asistencia_alumnoid = :alumno AND asistencia_aniomes = :aniomes ORDER BY asistencia_id LIMIT 1",
-				[':alumno' => $alumno_id, ':aniomes' => $aniomes])->fetch();
-			if (!$datos) {
-				$ok = $this->guardarDatos("asistencia_asistencia", [
-					["campo_nombre" => "asistencia_alumnoid", "campo_marcador" => ":Alumnoid", "campo_valor" => $alumno_id],
-					["campo_nombre" => "asistencia_aniomes",  "campo_marcador" => ":Aniomes",  "campo_valor" => $aniomes],
-					["campo_nombre" => $dia,                  "campo_marcador" => ":Estado",   "campo_valor" => $estado],
-				])->rowCount() > 0;
-			} else {
-				/* actualizarDatos devuelve el statement: un UPDATE que no cambia
-				   nada (la misma marca otra vez) también es un éxito. */
-				$ok = (bool)$this->actualizarDatos("asistencia_asistencia",
-					[["campo_nombre" => $dia, "campo_marcador" => ":Estado", "campo_valor" => $estado]],
-					["condicion_campo" => "asistencia_id", "condicion_marcador" => ":Asistencia_id", "condicion_valor" => $datos['asistencia_id']]);
-			}
-			if (!$ok) { return $error("No se pudo guardar la asistencia, intente de nuevo."); }
+			if (!$this->guardarMarca($alumno_id, $fecha, $estado)) { return $error("No se pudo guardar la asistencia, intente de nuevo."); }
 
 			return json_encode(["ok" => true, "icono" => "success", "estado" => $estado, "alumno_id" => $alumno_id, "fecha" => $fecha,
 				"texto" => "Asistencia guardada"], JSON_UNESCAPED_UNICODE);
 		}
 
-		public function BuscarAlumno($alumnoid){		
+		/** ¿El alumno está ACTIVO y en la lista del horario? */
+		private function alumnoEnLista(int $horario, int $alumno): bool {
+			return (int)$this->ejecutarConsulta("SELECT COUNT(*) FROM asistencia_asignahorario H
+					INNER JOIN sujeto_alumno A ON A.alumno_id = H.asignahorario_alumnoid AND A.alumno_estado = 'A'
+					WHERE H.asignahorario_horarioid = :horario AND H.asignahorario_alumnoid = :alumno",
+				[':horario' => $horario, ':alumno' => $alumno])->fetchColumn() > 0;
+		}
+
+		/**
+		 * La marca que hoy tiene el alumno ese día, o ''. Se lee igual que
+		 * la lista (alumnosParaAsistencia): la mayor entre las filas del mes.
+		 */
+		private function marcaActual(int $alumno, string $fecha): string {
+			$t = strtotime($fecha);
+			$columna = 'asistencia_D' . date('d', $t);      /* un entero de date(), no del usuario */
+			return (string)$this->ejecutarConsulta("SELECT COALESCE(MAX(NULLIF($columna, '')), '') FROM asistencia_asistencia
+					WHERE asistencia_alumnoid = :alumno AND asistencia_aniomes = :aniomes",
+				[':alumno' => $alumno, ':aniomes' => (int)date('Ym', $t)])->fetchColumn();
+		}
+
+		/**
+		 * Escribe la marca de un alumno en un día: la fila del mes en
+		 * asistencia_asistencia (la crea si no existe) y su columna Dnn.
+		 */
+		private function guardarMarca(int $alumno, string $fecha, string $estado): bool {
+			$t       = strtotime($fecha);
+			$aniomes = date('Ym', $t);
+			$dia     = 'asistencia_D' . date('d', $t);
+
+			$datos = $this->ejecutarConsulta("SELECT asistencia_id FROM asistencia_asistencia WHERE asistencia_alumnoid = :alumno AND asistencia_aniomes = :aniomes ORDER BY asistencia_id LIMIT 1",
+				[':alumno' => $alumno, ':aniomes' => $aniomes])->fetch();
+			if (!$datos) {
+				return $this->guardarDatos("asistencia_asistencia", [
+					["campo_nombre" => "asistencia_alumnoid", "campo_marcador" => ":Alumnoid", "campo_valor" => $alumno],
+					["campo_nombre" => "asistencia_aniomes",  "campo_marcador" => ":Aniomes",  "campo_valor" => $aniomes],
+					["campo_nombre" => $dia,                  "campo_marcador" => ":Estado",   "campo_valor" => $estado],
+				])->rowCount() > 0;
+			}
+			/* actualizarDatos devuelve el statement: un UPDATE que no cambia
+			   nada (la misma marca otra vez) también es un éxito. */
+			return (bool)$this->actualizarDatos("asistencia_asistencia",
+				[["campo_nombre" => $dia, "campo_marcador" => ":Estado", "campo_valor" => $estado]],
+				["condicion_campo" => "asistencia_id", "condicion_marcador" => ":Asistencia_id", "condicion_valor" => $datos['asistencia_id']]);
+		}
+
+		/*==============================================================
+		| Asistencia SIN CONEXIÓN (PWA de toma de asistencia)
+		|
+		| El profesor marca en la cancha sin señal: las marcas quedan en
+		| el celular (IndexedDB, asistencia-offline.js) y llegan aquí en
+		| lote cuando vuelve la conexión, quizá al día siguiente.
+		|
+		| PLAZO: el profesor puede enviar marcas de hasta DIAS_SIN_CONEXION
+		| días atrás (decisión de la escuela, 2026-11-18); administración,
+		| cualquier día pasado, como ya podía. Nunca días futuros.
+		|
+		| CONFLICTOS: cada marca trae «anterior», lo que el celular creía
+		| que había en el servidor al marcar. Sólo se escribe si el servidor
+		| sigue así (o vacío, o ya con la misma marca). Si mientras tanto
+		| alguien registró otra cosa —oficina u otro profesor—, se CONSERVA
+		| la del servidor y se devuelve «conflicto» con su valor, para que
+		| el profesor lo vea. Así una marca vieja del celular no pisa una
+		| corrección hecha después.
+		|==============================================================*/
+		const DIAS_SIN_CONEXION = 3;
+		const MARCAS_POR_LOTE   = 200;
+
+		/** La fecha de una marca tomada sin conexión, si se acepta; si no, ''. */
+		private function fechaDeMarcaSinConexion(string $fecha): string {
+			$d = \DateTime::createFromFormat('!Y-m-d', trim($fecha));
+			if (!$d || $d->format('Y-m-d') !== trim($fecha)) { return ''; }
+			$f = $d->format('Y-m-d');
+			if ($f > date('Y-m-d')) { return ''; }
+			if ($this->puedeMarcarOtrosDias()) { return $f; }
+			return $f >= date('Y-m-d', strtotime('-' . self::DIAS_SIN_CONEXION . ' days')) ? $f : '';
+		}
+
+		/**
+		 * Recibe un lote de marcas tomadas sin conexión. Cada una:
+		 * {clave, horario, alumno, fecha, estado, anterior}. Devuelve por
+		 * marca {clave, resultado: ok|conflicto|rechazada, actual?, texto?}.
+		 * Una marca mala no detiene al resto.
+		 */
+		public function registrarMarcasLote(array $marcas): array {
+			$NOMBRE = ['P' => 'Presente', 'A' => 'Atraso', 'F' => 'Falta', 'J' => 'Justificado'];
+			$puede  = [];   /* horario => bool, para no repetir la consulta */
+			$res    = [];
+
+			foreach (array_slice($marcas, 0, self::MARCAS_POR_LOTE) as $m) {
+				if (!is_array($m)) { continue; }
+				$clave    = substr((string)($m['clave'] ?? ''), 0, 120);
+				$horario  = (int)($m['horario'] ?? 0);
+				$alumno   = (int)($m['alumno'] ?? 0);
+				$estado   = strtoupper(trim((string)($m['estado'] ?? '')));
+				$anterior = strtoupper(trim((string)($m['anterior'] ?? '')));
+				$fecha    = $this->fechaDeMarcaSinConexion((string)($m['fecha'] ?? ''));
+				$rechazo  = static fn(string $t) => ['clave' => $clave, 'resultado' => 'rechazada', 'texto' => $t];
+
+				if (!isset($NOMBRE[$estado])) { $res[] = $rechazo('Estado de asistencia no válido.'); continue; }
+				if ($fecha === '') {
+					$res[] = $rechazo('Fuera de plazo: las marcas sin conexión se aceptan hasta ' . self::DIAS_SIN_CONEXION . ' días después. Pida a administración que la registre.');
+					continue;
+				}
+				if ($horario <= 0 || !($puede[$horario] ??= $this->puedeTomarAsistencia($horario))) {
+					$res[] = $rechazo('No puede tomar asistencia en este horario.'); continue;
+				}
+				if (!$this->alumnoEnLista($horario, $alumno)) { $res[] = $rechazo('El alumno ya no está en la lista de este horario.'); continue; }
+
+				$actual = $this->marcaActual($alumno, $fecha);
+				if ($actual !== '' && $actual !== $anterior && $actual !== $estado) {
+					$res[] = ['clave' => $clave, 'resultado' => 'conflicto', 'actual' => $actual,
+						'texto' => 'Ya estaba registrado como ' . ($NOMBRE[$actual] ?? $actual) . '; se conservó.'];
+					continue;
+				}
+				$res[] = $this->guardarMarca($alumno, $fecha, $estado)
+					? ['clave' => $clave, 'resultado' => 'ok', 'estado' => $estado]
+					: ['clave' => $clave, 'resultado' => 'error', 'texto' => 'No se pudo guardar; se reintentará.'];
+			}
+			return $res;
+		}
+
+		/** Endpoint del lote: JSON con {ok, resultados}. */
+		public function registrarMarcasLoteJson(): string {
+			$marcas = json_decode((string)($_POST['marcas'] ?? ''), true);
+			if (!is_array($marcas)) {
+				return json_encode(['ok' => false, 'texto' => 'Lote de marcas no válido.'], JSON_UNESCAPED_UNICODE);
+			}
+			return json_encode(['ok' => true, 'resultados' => $this->registrarMarcasLote($marcas)], JSON_UNESCAPED_UNICODE);
+		}
+
+		public function BuscarAlumno($alumnoid){
 			$consulta_datos="SELECT S.sede_nombre, CASE WHEN alumno_estado = 'A' THEN 'Activo' WHEN alumno_estado = 'I' THEN 'Inactivo' ELSE 'Sin definir' END estado, Year(alumno_fechanacimiento) anio
 					,CASE WHEN IFNULL(R.total, 0) > 0 THEN 1 ELSE 0 END pendiente,  IFNULL(R.total, 0) total
 					,A.* 

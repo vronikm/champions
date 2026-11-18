@@ -52,6 +52,12 @@
 		'fecha'   => $fecha,
 		'hoy'     => $hoy,
 		'url'     => APP_URL . 'app/ajax/asistenciaAjax.php',
+		/* Sin conexión (asistencia-offline.js): de quién son las marcas que
+		   se guardan en el celular, cuándo se descargó esta lista y a dónde
+		   ir a entrar si la sesión venció. */
+		'usuario' => (int)($_SESSION['usuarioid'] ?? 0),
+		'generada'=> date('Y-m-d H:i'),
+		'login'   => APP_URL . 'login/',
 		'pagos'   => (object)$pagos,
 		'alumnos' => array_map(static fn($a) => [
 			'id' => (int)$a['alumno_id'],
@@ -66,6 +72,7 @@
 <?php
 	/* La cabecera es comun a todas las vistas: ds_futbol/app/views/inc/cabecera.php */
 	$tituloVista = 'Tomar asistencia';
+	$pwaAsistencia = true;   /* instalable y sin conexión: app/views/inc/pwa-asistencia.php */
 	require_once "app/views/inc/cabecera.php";
 ?>
   <body class="layout-fixed sidebar-expand-lg bg-body-tertiary">
@@ -129,6 +136,9 @@
 
 				<?php else: ?>
 
+					<!-- Sin conexión / sesión vencida / lista descargada: lo pone el script. -->
+					<div class="ds-offline" id="toma-offline" role="status" aria-live="polite" hidden></div>
+
 					<!-- =================== Avance y guardado (fijo arriba) =================== -->
 					<div class="ds-toma__barra" id="toma-barra">
 						<div class="ds-toma__avance">
@@ -177,13 +187,20 @@
 	<script>
 	document.addEventListener('DOMContentLoaded', function () {
 		/*
-		| Tomar asistencia SIN recargar la página.
+		| Tomar asistencia SIN recargar la página y SIN conexión.
 		|
-		| Cada toque pinta la marca al instante y la manda al servidor con
-		| fetch. La respuesta se LEE: si el servidor la rechaza, la marca
-		| vuelve a la anterior y se dice por qué. Si no hay señal, queda
-		| PENDIENTE y se reintenta sola (cada pocos segundos y al volver la
-		| conexión); salir de la página con marcas pendientes avisa.
+		| Cada toque pinta la marca al instante y la GUARDA EN EL CELULAR
+		| (IndexedDB, asistencia-offline.js) antes de enviarla. Luego se
+		| envía en lote; si no hay señal, queda «En el celular» y se envía
+		| sola al volver la conexión, al volver a la app, cada 30 s y, en
+		| Android, aunque la app esté cerrada (Background Sync del service
+		| worker). Cerrar el navegador no pierde nada.
+		|
+		| Sin señal, la página llega de la copia guardada (sw-asistencia.js).
+		| Si esa copia es de otro día, la toma es la de hoy según el celular.
+		|
+		| Conflictos: si mientras tanto alguien registró otra marca en el
+		| servidor, se conserva la del servidor y la ficha lo dice.
 		|
 		| ANTES: jQuery $.ajax que no miraba la respuesta (pintaba «guardado»
 		| aunque la sesión hubiese caducado) y un formulario de fecha que
@@ -222,8 +239,29 @@
 			return partes.join(' · ');
 		}
 
-		/* confirmada: lo que dice el servidor. pendientes: alumno → estado por enviar. */
-		var alumnos = [], confirmada = {}, pendientes = {}, enviando = false, reintento = null, fecha = D.fecha;
+		/*
+		| confirmada: lo que dice el servidor (según la página o el último envío).
+		| pend: lo marcado en este celular que aún no llegó al servidor; vive
+		|       en IndexedDB (asistencia-offline.js), no en memoria.
+		| avisos: conflictos o rechazos del último envío, por alumno.
+		*/
+		var alumnos = [], confirmada = {}, pend = {}, avisos = {}, fecha = D.fecha;
+		var Q = window.DSAsistencia || null;
+		var red = navigator.onLine ? 'ok' : 'sin-red';   /* ok | enviando | sin-red | sin-sesion */
+		if (!Q) {
+			/* Sin la librería (no debería pasar: va en la cabecera) no hay dónde guardar. */
+			document.getElementById('toma-lista').insertAdjacentHTML('beforebegin',
+				'<div class="alert alert-danger">No se pudo cargar el módulo de asistencia. Recargue la página.</div>');
+		}
+
+		/*
+		| ¿La página viene de la copia guardada en el celular de otro día?
+		| Entonces la toma es la de HOY según el teléfono y las marcas que
+		| traía la página eran de ese otro día: se descartan.
+		*/
+		var hoyCel = Q ? Q.hoy() : D.hoy;
+		var deOtroDia = Q && fecha === D.hoy && D.hoy !== hoyCel;
+		if (deOtroDia) { fecha = hoyCel; D.alumnos.forEach(function (a) { a.marca = ''; }); }
 
 		function el(tag, clase, texto) { var e = document.createElement(tag); if (clase) e.className = clase; if (texto != null) e.textContent = texto; return e; }
 
@@ -291,87 +329,152 @@
 			filtrar();
 		});
 
-		/* El aspecto de una fila: el estado a la vista (pendiente o confirmado). */
-		function fila(id, aviso) {
+		/* El aspecto de una fila: la marca a la vista y dónde está guardada. */
+		function fila(id) {
 			var li = lista.querySelector('li[data-id="' + id + '"]'); if (!li) return;
-			var actual = pendientes[id] || confirmada[id] || '';
+			var actual = pend[id] || confirmada[id] || '';
 			li.querySelectorAll('.ds-toma__opcion').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.estado === actual ? 'true' : 'false'); });
 			li.classList.toggle('ds-toma__alumno--marcado', actual !== '');
+			li.classList.toggle('ds-toma__alumno--celular', !!pend[id]);
 			var g = li.querySelector('.ds-toma__guardado');
 			g.className = 'ds-toma__guardado';
-			if (aviso) { g.textContent = aviso; g.classList.add('text-danger'); }
-			else if (pendientes[id]) { g.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Guardando…'; g.classList.add('text-body-secondary'); }
-			else if (confirmada[id]) { g.innerHTML = '<i class="fas fa-check" aria-hidden="true"></i> Guardado'; g.classList.add('text-success-emphasis'); }
-			else { g.textContent = ''; }
+			if (avisos[id]) {
+				g.innerHTML = '<i class="fas fa-triangle-exclamation" aria-hidden="true"></i> ';
+				g.appendChild(document.createTextNode(avisos[id].texto));
+				g.classList.add(avisos[id].resultado === 'conflicto' ? 'text-warning-emphasis' : 'text-danger');
+			} else if (pend[id]) {
+				g.innerHTML = red === 'enviando'
+					? '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Enviando…'
+					: '<i class="fas fa-mobile-screen" aria-hidden="true"></i> En el celular';
+				g.classList.add('text-body-secondary');
+			} else if (confirmada[id]) {
+				g.innerHTML = '<i class="fas fa-check" aria-hidden="true"></i> Guardado'; g.classList.add('text-success-emphasis');
+			} else { g.textContent = ''; }
 		}
+		function filas() { alumnos.forEach(function (a) { fila(a.id); }); }
 
 		function resumen() {
 			var n = { P: 0, A: 0, F: 0, J: 0 }, marcados = 0;
-			alumnos.forEach(function (a) { var e = pendientes[a.id] || confirmada[a.id]; if (e) { n[e]++; marcados++; } });
+			alumnos.forEach(function (a) { var e = pend[a.id] || confirmada[a.id]; if (e) { n[e]++; marcados++; } });
 			document.getElementById('toma-cuenta').textContent = marcados + ' de ' + alumnos.length + ' marcados';
 			document.getElementById('toma-progreso').style.width = (alumnos.length ? marcados / alumnos.length * 100 : 0) + '%';
 			document.getElementById('toma-totales').textContent = ESTADOS.map(function (e) { return n[e.v] + ' ' + NOMBRE[e.v][n[e.v] === 1 ? 0 : 1]; }).join(' · ');
-			var cola = Object.keys(pendientes).length, estado = document.getElementById('toma-estado');
+			var cola = Object.keys(pend).length, estado = document.getElementById('toma-estado');
 			estado.className = 'small';
-			if (!cola) { estado.innerHTML = alumnos.length ? '<i class="fas fa-check me-1" aria-hidden="true"></i>Todo guardado' : ''; estado.classList.add('text-success-emphasis'); }
-			else if (!navigator.onLine || reintento) { estado.innerHTML = '<i class="fas fa-wifi me-1" aria-hidden="true"></i>Sin conexión: ' + cola + ' por enviar'; estado.classList.add('text-danger'); }
-			else { estado.textContent = 'Guardando ' + cola + '…'; estado.classList.add('text-body-secondary'); }
+			if (!cola) {
+				estado.innerHTML = alumnos.length ? '<i class="fas fa-check me-1" aria-hidden="true"></i>Todo enviado' : '';
+				estado.classList.add('text-success-emphasis');
+			} else if (red === 'enviando') {
+				estado.textContent = 'Enviando ' + cola + '…'; estado.classList.add('text-body-secondary');
+			} else {
+				estado.innerHTML = '<i class="fas fa-mobile-screen me-1" aria-hidden="true"></i>' + cola + ' en el celular';
+				estado.classList.add('text-warning-emphasis');
+			}
 			document.getElementById('toma-todos').disabled = marcados === alumnos.length;
+			franja();
 		}
 
-		/* Envía la cola de una en una, con la marca más reciente de cada alumno. */
-		function enviar() {
-			if (enviando) return;
-			var ids = Object.keys(pendientes); if (!ids.length) { resumen(); return; }
-			var id = ids[0], estado = pendientes[id];
-			var datos = new FormData();
-			datos.append('modulo_asistencia', 'asistencia'); datos.append('horario_id', D.horario);
-			datos.append('alumno_id', id); datos.append('estado', estado); datos.append('fecha', fecha); datos.append('ds_csrf', csrf);
-			enviando = true;
-			var corte = new AbortController(), reloj = setTimeout(function () { corte.abort(); }, 15000);
-			fetch(D.url, { method: 'POST', body: datos, credentials: 'same-origin', signal: corte.signal })
-				.then(function (r) { return r.text(); })
-				.then(function (texto) {
-					var j = null; try { j = JSON.parse(texto); } catch (e) {}
-					if (j && j.ok) {
-						confirmada[id] = j.estado;
-						if (pendientes[id] === estado) { delete pendientes[id]; }   /* si volvió a tocar, va la nueva */
-						fila(id);
-					} else {
-						/* Rechazo del servidor (o la sesión caducó: llega HTML, no JSON). No se reintenta. */
-						delete pendientes[id];
-						fila(id, j && j.texto ? j.texto : 'No se guardó: su sesión pudo caducar. Vuelva a entrar.');
-						if (!j) { Swal.fire({ icon: 'warning', title: 'Sesión caducada', text: 'Vuelva a entrar para seguir tomando asistencia.', confirmButtonText: 'Aceptar' }); }
-					}
-					reintento = null;
-				})
-				.catch(function () {
-					/* Sin señal o tiempo agotado: queda pendiente y se reintenta. */
-					if (!reintento) { reintento = setTimeout(function () { reintento = null; enviar(); }, 5000); }
-				})
-				.finally(function () {
-					clearTimeout(reloj); enviando = false; resumen();
-					if (!reintento && Object.keys(pendientes).length) { enviar(); }
+		/* La franja de arriba: sin señal, sesión vencida o lista descargada. */
+		function franja() {
+			var f = document.getElementById('toma-offline'), cola = Object.keys(pend).length, html = '', clase = '';
+			if (red === 'sin-sesion' && cola) {
+				clase = 'ds-offline--sesion';
+				html = '<i class="fas fa-user-lock" aria-hidden="true"></i><span><strong>Su sesión venció.</strong> ' + cola +
+					(cola === 1 ? ' marca está guardada' : ' marcas están guardadas') + ' en el celular. ' +
+					'<a href="' + D.login + '">Entre de nuevo</a> y vuelva a esta lista para enviarlas.</span>';
+			} else if (red === 'sin-red' || !navigator.onLine) {
+				clase = 'ds-offline--sin-red';
+				html = '<i class="fas fa-wifi" aria-hidden="true"></i><span><strong>Sin conexión.</strong> Siga marcando: ' +
+					(cola ? (cola === 1 ? 'la marca queda' : 'las ' + cola + ' marcas quedan') + ' en el celular y se envía' + (cola === 1 ? '' : 'n') + ' solas al volver la señal.'
+					      : 'lo que marque queda en el celular y se envía solo al volver la señal.') +
+					(deOtroDia || !navigator.onLine ? ' <span class="ds-offline__nota">Lista descargada el ' + fechaCorta(D.generada) + '.</span>' : '') + '</span>';
+			}
+			if (Q && !Q.persistente && cola) {
+				html += (html ? '<br>' : '<i class="fas fa-triangle-exclamation" aria-hidden="true"></i>') +
+					'<span>Este navegador no guarda datos (modo privado): no cierre la página hasta que todo se envíe.</span>';
+				clase = clase || 'ds-offline--sin-red';
+			}
+			f.hidden = html === '';
+			f.className = 'ds-offline ' + clase;
+			f.innerHTML = html;
+		}
+		function fechaCorta(t) { var p = String(t || '').split(/[- :]/); return p.length >= 5 ? p[2] + '/' + p[1] + ' a las ' + p[3] + ':' + p[4] : ''; }
+
+		/*
+		| Lo del celular para este horario y día: marcas pendientes y avisos
+		| del último envío. Un conflicto deja a la vista lo que tiene el
+		| servidor (se conservó esa marca).
+		*/
+		function leerLocal() {
+			if (!Q) { return Promise.resolve(); }
+			var f = { usuario: D.usuario, horario: D.horario, fecha: fecha };
+			return Promise.all([Q.pendientes(f), Q.avisos(f)]).then(function (r) {
+				var antes = pend;
+				pend = {}; avisos = {};
+				r[0].forEach(function (m) { pend[m.alumno] = m.estado; });
+				/* Lo que estaba pendiente y ya no está, sin aviso, lo envió alguien
+				   (esta página, otra pestaña o el service worker en segundo plano):
+				   ahora es lo del servidor. */
+				var avisados = {};
+				r[1].forEach(function (a) { avisados[a.alumno] = true; });
+				Object.keys(antes).forEach(function (id) { if (!pend[id] && !avisados[id]) { confirmada[id] = antes[id]; } });
+				r[1].forEach(function (a) {
+					avisos[a.alumno] = a;
+					if (a.resultado === 'conflicto' && a.actual) { confirmada[a.alumno] = a.actual; }
 				});
+			});
+		}
+
+		/*
+		| Enviar lo pendiente. Lo que estaba pendiente antes del envío y ya no
+		| lo está (sin aviso) llegó al servidor: pasa a «Guardado».
+		*/
+		var programado = null;
+		function enviar() {
+			if (!Q) { return; }
+			clearTimeout(programado);
+			programado = setTimeout(function () {
+				if (!Object.keys(pend).length) { return; }
+				/* Sin red ni se intenta: la marca ya está a salvo en el celular. */
+				if (!navigator.onLine) { red = 'sin-red'; filas(); resumen(); Q.pedirEnvioEnSegundoPlano(); return; }
+				red = 'enviando'; filas(); resumen();
+				Q.sincronizar().then(function (r) {
+					red = r.estado === 'sin-red' ? 'sin-red' : (r.estado === 'sin-sesion' ? 'sin-sesion' : 'ok');
+					return leerLocal();
+				}).then(function () {
+					filas(); resumen();
+					if (Object.keys(pend).length && red !== 'sin-sesion') { Q.pedirEnvioEnSegundoPlano(); }
+				});
+			}, 250);
 		}
 
 		function marcar(id, estado) {
-			pendientes[id] = estado; fila(id); resumen(); enviar();
+			delete avisos[id];
+			var anterior = confirmada[id] || '';
+			if (!Q) { return; }
+			Q.guardar({ usuario: D.usuario, horario: D.horario, alumno: Number(id), fecha: fecha, estado: estado, anterior: anterior })
+				.then(function (reg) {
+					if (reg.pendiente) { pend[id] = estado; } else { delete pend[id]; }
+					fila(id); resumen(); enviar();
+				})
+				.catch(function () {
+					Swal.fire({ icon: 'error', title: 'No se guardó', text: 'El celular no pudo guardar la marca. Vuelva a intentarlo.', confirmButtonText: 'Aceptar' });
+				});
 		}
 
 		lista.addEventListener('click', function (ev) {
 			var b = ev.target.closest('.ds-toma__opcion'); if (!b) return;
 			var id = b.closest('li').dataset.id;
-			if ((pendientes[id] || confirmada[id]) === b.dataset.estado) return;   /* ya es esa */
+			if ((pend[id] || confirmada[id]) === b.dataset.estado && !avisos[id]) return;   /* ya es esa */
 			marcar(id, b.dataset.estado);
 		});
 
 		document.getElementById('toma-todos').addEventListener('click', function () {
-			var faltan = alumnos.filter(function (a) { return !(pendientes[a.id] || confirmada[a.id]); });
+			var faltan = alumnos.filter(function (a) { return !(pend[a.id] || confirmada[a.id]); });
 			if (!faltan.length) return;
 			Swal.fire({ icon: 'question', title: 'Marcar presentes', text: 'Se marcarán como presentes los ' + faltan.length + ' alumnos sin marcar.',
 				showCancelButton: true, confirmButtonText: 'Sí, marcar', cancelButtonText: 'Cancelar' })
-				.then(function (r) { if (r.isConfirmed) { faltan.forEach(function (a) { pendientes[a.id] = 'P'; fila(a.id); }); resumen(); enviar(); } });
+				.then(function (r) { if (r.isConfirmed) { faltan.forEach(function (a) { marcar(a.id, 'P'); }); } });
 		});
 
 		function filtrar() {
@@ -387,17 +490,32 @@
 		document.getElementById('toma-buscar').addEventListener('input', filtrar);
 
 		function cargar(lista_) {
-			alumnos = lista_; confirmada = {}; pendientes = {};
+			alumnos = lista_; confirmada = {};
 			alumnos.forEach(function (a) { if (a.marca) confirmada[a.id] = a.marca; });
-			pintar();
+			return leerLocal().then(pintar, pintar).then(enviar);
 		}
-		cargar(D.alumnos);
 
-		/* Administración: otra fecha, sin recargar. */
+		/* La fecha del encabezado, si la página guardada era de otro día. */
+		if (deOtroDia) {
+			var etiqueta = document.querySelector('.ds-toma__hoy');
+			if (etiqueta) {
+				var d = new Date(fecha + 'T12:00:00');
+				etiqueta.innerHTML = '<i class="far fa-calendar me-1" aria-hidden="true"></i>Hoy, ' +
+					d.toLocaleDateString('es-EC', { weekday: 'long', day: 'numeric', month: 'long' });
+			}
+		}
+
+		(Q ? Q.listo : Promise.resolve()).then(function () { cargar(D.alumnos); });
+
+		/* Administración: otra fecha, sin recargar (sólo con conexión). */
 		var campoFecha = document.getElementById('toma-fecha');
 		if (campoFecha) {
+			var actualizarCampo = function () { campoFecha.disabled = !navigator.onLine; document.getElementById('toma-hoy').disabled = !navigator.onLine; };
+			actualizarCampo();
+			window.addEventListener('online', actualizarCampo);
+			window.addEventListener('offline', actualizarCampo);
 			function cambiarFecha(nueva) {
-				if (Object.keys(pendientes).length) { Swal.fire({ icon: 'info', title: 'Espere', text: 'Aún hay marcas por guardar.', confirmButtonText: 'Aceptar' }); campoFecha.value = fecha; return; }
+				if (Object.keys(pend).length) { Swal.fire({ icon: 'info', title: 'Espere', text: 'Aún hay marcas por enviar.', confirmButtonText: 'Aceptar' }); campoFecha.value = fecha; return; }
 				var datos = new FormData();
 				datos.append('modulo_asistencia', 'cargar_lista'); datos.append('horario_id', D.horario); datos.append('fecha', nueva); datos.append('ds_csrf', csrf);
 				fetch(D.url, { method: 'POST', body: datos, credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (j) {
@@ -410,10 +528,17 @@
 			document.getElementById('toma-hoy').addEventListener('click', function () { campoFecha.value = D.hoy; cambiarFecha(D.hoy); });
 		}
 
-		window.addEventListener('online', function () { if (reintento) { clearTimeout(reintento); reintento = null; } enviar(); });
-		window.addEventListener('offline', resumen);
+		/* Reintentos: al volver la señal, al volver a la app y cada 30 s con pendientes. */
+		window.addEventListener('online', function () { red = 'ok'; enviar(); resumen(); });
+		window.addEventListener('offline', function () { red = 'sin-red'; filas(); resumen(); });
+		document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') { leerLocal().then(function () { filas(); resumen(); enviar(); }); } });
+		setInterval(function () { if (Object.keys(pend).length && navigator.onLine && red !== 'enviando') { enviar(); } }, 30000);
+		/* El service worker envió en segundo plano: releer lo del celular. */
+		if (Q) { Q.escuchar(function (m) { if (m && m.tipo === 'sincronizado' && red !== 'enviando') { leerLocal().then(function () { filas(); resumen(); }); } }); }
+
+		/* Sólo sin almacenamiento persistente se puede perder algo al salir. */
 		window.addEventListener('beforeunload', function (e) {
-			if (Object.keys(pendientes).length) { e.preventDefault(); e.returnValue = ''; }
+			if (Q && !Q.persistente && Object.keys(pend).length) { e.preventDefault(); e.returnValue = ''; }
 		});
 	});
 	</script>

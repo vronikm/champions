@@ -1248,6 +1248,33 @@
     border-radius: var(--bs-border-radius-lg); padding: .65rem .85rem;
 }
 .ds-toma__alumno--marcado { border-left-color: var(--bs-success); }
+/* Marcado pero aún sólo en el celular (sin enviar): el borde en ámbar. */
+.ds-toma__alumno--celular { border-left-color: var(--bs-warning); }
+
+/* =========================================================================
+   ASISTENCIA SIN CONEXIÓN (PWA): franja de estado arriba de la toma y de
+   la lista de horarios. Sin señal, sesión vencida, por enviar o listo.
+   ========================================================================= */
+.ds-offline {
+    display: flex; align-items: flex-start; gap: .6rem; flex-wrap: wrap;
+    padding: .7rem .9rem; margin-bottom: .75rem; border-radius: var(--bs-border-radius-lg);
+    border: 1px solid var(--bs-border-color); background: var(--bs-tertiary-bg);
+    font-size: .9rem; line-height: 1.4;
+}
+.ds-offline[hidden] { display: none; }
+.ds-offline > i { margin-top: .2rem; flex: none; }
+.ds-offline > span { flex: 1 1 14rem; min-width: 0; }
+.ds-offline a { font-weight: 600; }
+.ds-offline .btn { min-height: 2.5rem; }
+.ds-offline__nota { display: block; font-size: .8rem; opacity: .85; margin-top: .15rem; }
+.ds-offline--sin-red  { background: var(--bs-warning-bg-subtle); border-color: var(--bs-warning-border-subtle); color: var(--bs-warning-text-emphasis); }
+.ds-offline--sesion   { background: var(--bs-danger-bg-subtle);  border-color: var(--bs-danger-border-subtle);  color: var(--bs-danger-text-emphasis); }
+.ds-offline--listo    { background: var(--bs-success-bg-subtle); border-color: var(--bs-success-border-subtle); color: var(--bs-success-text-emphasis); }
+.ds-offline--pendiente{ background: var(--bs-info-bg-subtle);    border-color: var(--bs-info-border-subtle);    color: var(--bs-info-text-emphasis); }
+.ds-offline--sesion a, .ds-offline--sin-red a { color: inherit; text-decoration: underline; }
+@media (max-width: 575.98px) {
+    .ds-offline .btn { width: 100%; }
+}
 .ds-toma__nombre { font-weight: 600; overflow-wrap: anywhere; }
 .ds-toma__meta { display: flex; flex-wrap: wrap; gap: .25rem .75rem; font-size: .8rem; color: var(--bs-secondary-color); }
 .ds-toma__guardado { font-weight: 600; }

@@ -96,6 +96,8 @@ $swalEnCabecera = in_array('swal', $extras, true);
     <script src="<?php echo APP_URL; ?>app/views/dist/js/sweetalert2.all.min.js"></script>
 <?php endif; ?>
 <?php echo $cabeceraExtra; ?>
+<?php /* Toma de asistencia instalable y sin conexión (asistencia, asistenciaAlumno). */ ?>
+<?php if (!empty($pwaAsistencia)) { require __DIR__ . '/pwa-asistencia.php'; } ?>
 
     <?php /* El testigo CSRF y el script que lo pega a cada peticion. */ ?>
     <?php require DS_HUB_PATH . "ds_core/inc/csrf-cabecera.php"; ?>

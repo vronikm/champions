@@ -30,7 +30,6 @@ $sedeId  = (int)$r['reserva_sedeid'];
 $logo    = ds_logo_url($sedeId);
 
 /* WhatsApp: la pieza es del núcleo (ds_core/inc/whatsappRecibo.php). */
-$enlace  = $insArena->enlacePublicoRecibo((int)$r['pago_id']);
 $waDatos = [
     'repre'     => $r['cliente_nombre'],
     'subtitulo' => 'Cliente · ' . $r['cliente_identificacion'],
@@ -45,8 +44,6 @@ $waDatos = [
                 : '⏳ Saldo pendiente: USD ' . number_format((float)$r['saldo_despues'], 2),
     ],
     'recibo'    => $r['recibo_numero'],
-    'enlace'    => $enlace['url'],
-    'vence'     => $enlace['vence'] ? date('d/m/Y', $enlace['vence']) : '',
     'pdf'       => $pdf,
 ];
 

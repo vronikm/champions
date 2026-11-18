@@ -74,7 +74,6 @@
 		        'texto' => 'El representante no tiene un correo válido registrado. Agréguelo en su ficha o envíe el recibo por WhatsApp.'],
 		default => '',
 	};
-	$enlaceRecibo = $insAlumno->enlacePublicoAbono((int)$pagoid);
 	$waDatos = [
 		'tipo'     => 'abono',
 		'escuela'  => ds_nombre_organizacion(),
@@ -87,8 +86,6 @@
 		'saldo'    => number_format(max(0, (float)$datos['transaccion_valorcalculado'] - (float)$datos['transaccion_valor']), 2, '.', ''),
 		'fecha'    => date('d/m/Y', strtotime($datos['transaccion_fecha'] ?: $datos['transaccion_fecharegistro'])),
 		'recibo'   => (string)$datos['transaccion_recibo'],
-		'enlace'   => $enlaceRecibo['url'],
-		'vence'    => $enlaceRecibo['vence'] ? date('d/m/Y', $enlaceRecibo['vence']) : '',
 		'pdf'      => APP_URL . 'pagospendienteReciboPDF/' . (int)$pagoid . '/',
 	];
 ?>

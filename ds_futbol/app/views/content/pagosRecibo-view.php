@@ -80,7 +80,6 @@
 		default => '',
 	};
 	$repreCelular = preg_replace('/\D/', '', (string)($datos['CELULAR_REP'] ?? ''));
-	$enlaceRecibo = $insAlumno->enlacePublicoRecibo((int)$pagoid);
 	$waDatos = [
 		'tipo'     => 'pago',
 		'escuela'  => ds_nombre_organizacion(),
@@ -93,8 +92,6 @@
 		'saldo'    => number_format((float)$datos['SALDO_INICIAL'], 2, '.', ''),
 		'fecha'    => date('d/m/Y', strtotime($datos['pago_fecha'] ?: $datos['pago_fecharegistro'])),
 		'recibo'   => (string)$datos['pago_recibo'],
-		'enlace'   => $enlaceRecibo['url'],
-		'vence'    => $enlaceRecibo['vence'] ? date('d/m/Y', $enlaceRecibo['vence']) : '',
 		'pdf'      => APP_URL . 'pagosReciboPDF/' . (int)$pagoid . '/',
 	];
 

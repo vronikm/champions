@@ -11,16 +11,26 @@
 	$alumno_apellidopaterno = $campo('alumno_apellido1');
 	$alumno_anio            = preg_match('/^\d{4}$/', $campo('alumno_anio')) ? $campo('alumno_anio') : '';
 
+	/* Filtro inicial por la ruta: alumnoList/{sede}/{estado}/. Lo usan las
+	   tarjetas del Dashboard («Alumnos activos» de una sede) para abrir la
+	   lista ya filtrada. Sólo vale al entrar: con el formulario enviado
+	   mandan sus campos. La sede no amplía nada: condicionSede() la cruza
+	   con las sedes de la sesión. */
+	$sedeDeRuta   = ctype_digit((string)($url[1] ?? '')) ? (int)$url[1] : 0;
+	$estadoDeRuta = in_array(strtoupper((string)($url[2] ?? '')), ['A', 'I', 'T'], true) ? strtoupper($url[2]) : '';
+	$conFormulario = $_SERVER['REQUEST_METHOD'] === 'POST';
+
 	/* Estado: el listado muestra los ACTIVOS salvo que se pida otra cosa. */
-	$alumno_estado = in_array($campo('alumno_estado'), ['A', 'I', 'T'], true) ? $campo('alumno_estado') : 'A';
+	$alumno_estado = in_array($campo('alumno_estado'), ['A', 'I', 'T'], true) ? $campo('alumno_estado')
+	               : (!$conFormulario && $estadoDeRuta !== '' ? $estadoDeRuta : 'A');
 
 	/* Sede: «Todas» se ofrece a administración y a quien tiene más de una;
 	   para el resto, «todas» son las suyas (el servidor lo acota en
 	   condicionSede). Al abrir la pantalla, todas: antes no salía ningún
 	   alumno hasta pulsar Buscar. */
-	$opcionesSede = $insAlumno->listarSedebusqueda($campo('alumno_sedeid'), $_SESSION['rol'], $_SESSION['usuario']);
+	$alumno_sedeid = isset($_POST['alumno_sedeid']) ? (int)$campo('alumno_sedeid') : (!$conFormulario ? $sedeDeRuta : 0);
+	$opcionesSede = $insAlumno->listarSedebusqueda($alumno_sedeid, $_SESSION['rol'], $_SESSION['usuario']);
 	$ofrecerTodas = sedes_de_la_sesion() === null || substr_count($opcionesSede, '<option') > 1;
-	$alumno_sedeid = isset($_POST['alumno_sedeid']) ? (int)$campo('alumno_sedeid') : 0;
 
 	$categoria = $alumno_anio === '' ? 0 : (int)$alumno_anio;
 

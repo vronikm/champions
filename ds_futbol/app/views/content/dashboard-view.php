@@ -92,7 +92,7 @@
 		return [
 			["clase" => "text-bg-info",    "enlacePie" => "link-dark",
 			 "valor" => $s["activos"],   "texto" => "Alumnos activos",
-			 "icono" => "fa-users",             "url" => APP_URL . "alumnoList/"],
+			 "icono" => "fa-users",             "url" => APP_URL . "alumnoList/" . (int)$s["id"] . "/A/"],
 
 			["clase" => "text-bg-success", "enlacePie" => "link-light",
 			 "valor" => $s["cancelado"], "texto" => "Pagos receptados mes",
@@ -100,7 +100,7 @@
 
 			["clase" => "text-bg-warning", "enlacePie" => "link-dark",
 			 "valor" => $s["inactivos"], "texto" => "Alumnos inactivos",
-			 "icono" => "fa-user-slash",        "url" => APP_URL . "alumnoList/"],
+			 "icono" => "fa-user-slash",        "url" => APP_URL . "alumnoList/" . (int)$s["id"] . "/I/"],
 
 			["clase" => "text-bg-danger",  "enlacePie" => "link-light",
 			 "valor" => $s["pendiente"], "texto" => "Pagos pendientes",

@@ -714,9 +714,11 @@
 								FROM asistencia_horario AH
 									INNER JOIN asistencia_horario_detalle on detalle_horarioid = horario_id
 										LEFT JOIN(
-												SELECT asignahorario_horarioid HORARIOID, count(1) TOTAL
-												FROM asistencia_asignahorario
-												GROUP BY asignahorario_horarioid
+												SELECT G.asignahorario_horarioid HORARIOID, COUNT(DISTINCT G.asignahorario_alumnoid) TOTAL
+												FROM asistencia_asignahorario G
+												INNER JOIN sujeto_alumno A ON A.alumno_id = G.asignahorario_alumnoid
+												       AND A.alumno_estado = 'A'   /* como «Ver lista»: sólo activos */
+												GROUP BY G.asignahorario_horarioid
 										)TOTAL ON TOTAL.HORARIOID = AH.horario_id 
 								WHERE (horario_nombre LIKE :nombre 
 								OR horario_detalle LIKE :detalle) ";			
@@ -728,9 +730,11 @@
 									FROM asistencia_horario AH
 										INNER JOIN asistencia_horario_detalle on detalle_horarioid = horario_id
 										LEFT JOIN(
-												SELECT asignahorario_horarioid HORARIOID, count(1) TOTAL
-												FROM asistencia_asignahorario
-												GROUP BY asignahorario_horarioid
+												SELECT G.asignahorario_horarioid HORARIOID, COUNT(DISTINCT G.asignahorario_alumnoid) TOTAL
+												FROM asistencia_asignahorario G
+												INNER JOIN sujeto_alumno A ON A.alumno_id = G.asignahorario_alumnoid
+												       AND A.alumno_estado = 'A'   /* como «Ver lista»: sólo activos */
+												GROUP BY G.asignahorario_horarioid
 										)TOTAL ON TOTAL.HORARIOID = AH.horario_id
 									WHERE horario_nombre <> '' ";
 				$parametros = [];
@@ -749,9 +753,11 @@
 									FROM asistencia_horario AH
 										INNER JOIN asistencia_horario_detalle on detalle_horarioid = horario_id
 										LEFT JOIN(
-												SELECT asignahorario_horarioid HORARIOID, count(1) TOTAL
-												FROM asistencia_asignahorario
-												GROUP BY asignahorario_horarioid
+												SELECT G.asignahorario_horarioid HORARIOID, COUNT(DISTINCT G.asignahorario_alumnoid) TOTAL
+												FROM asistencia_asignahorario G
+												INNER JOIN sujeto_alumno A ON A.alumno_id = G.asignahorario_alumnoid
+												       AND A.alumno_estado = 'A'   /* como «Ver lista»: sólo activos */
+												GROUP BY G.asignahorario_horarioid
 										)TOTAL ON TOTAL.HORARIOID = AH.horario_id
 									WHERE horario_nombre = '' ";
 				$parametros = [];

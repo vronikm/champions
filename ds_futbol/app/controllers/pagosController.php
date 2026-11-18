@@ -31,8 +31,9 @@
 		|
 		| VALOR ADEUDADO = saldo de los pagos pendientes (estado P, cualquier
 		| rubro) + pensiones no pagadas desde la última (mesesPensionAdeudados)
-		| por el valor de la pensión: el descuento activo (DDS) si lo tiene, si
-		| no la de su sede. Las pensiones sin pagar sólo corren para alumnos
+		| por el valor de la pensión: el del descuento activo si lo tiene (beca
+		| 100 % DBC, beca 50 % DBP o descuento DDS, como cobra pagosNew), si no
+		| la de su sede. Con beca completa la pensión es 0 y no corre deuda. Las pensiones sin pagar sólo corren para alumnos
 		| ACTIVOS: un inactivo no entrena, y contarle los meses desde que dejó
 		| de venir inflaba la deuda con meses que nadie va a cobrar.
 		|
@@ -75,7 +76,7 @@
 					FROM sujeto_alumno A
 					LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
 					LEFT JOIN alumno_pago_descuento D ON D.descuento_alumnoid = A.alumno_id
-					       AND D.descuento_estado = 'S' AND D.descuento_rubroid = 'DDS'
+					       AND D.descuento_estado = 'S' AND D.descuento_rubroid IN ('DBC', 'DBP', 'DDS')   /* beca 100 %, beca 50 % o descuento: el valor es la pensión que paga (como pagosNew) */
 					LEFT JOIN (SELECT pago_alumnoid, MAX(pago_fecha) AS ultima,
 					                  SUBSTRING_INDEX(GROUP_CONCAT(pago_periodo ORDER BY pago_fecha DESC, pago_id DESC SEPARATOR '|'), '|', 1) AS periodo
 					             FROM alumno_pago WHERE pago_rubroid = 'RPE' AND pago_estado <> 'E'

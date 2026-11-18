@@ -209,6 +209,7 @@
 		var PAGO = {
 			mora:     { texto: 'En mora',   icono: 'fa-circle-exclamation' },
 			aldia:    { texto: 'Al día',    icono: 'fa-circle-check' },
+			beca:     { texto: 'Beca',      icono: 'fa-graduation-cap' },
 			sinpagos: { texto: 'Sin pagos', icono: 'fa-circle-question' }
 		};
 		var filtroPago = '';
@@ -261,17 +262,17 @@
 			filtros(); filtrar(); resumen();
 		}
 
-		/* Botones «Todos · En mora · Al día · Sin pagos» con su cifra. Sólo
+		/* Botones «Todos · En mora · Al día · Beca · Sin pagos» con su cifra. Sólo
 		   los estados que tienen alumnos; sin datos de pagos, no se muestran. */
 		function filtros() {
 			var caja = document.getElementById('toma-filtros');
-			var n = { mora: 0, aldia: 0, sinpagos: 0 }, con = 0;
+			var n = { mora: 0, aldia: 0, beca: 0, sinpagos: 0 }, con = 0;
 			alumnos.forEach(function (a) { var p = PAGOS[a.id]; if (p && n.hasOwnProperty(p.estado)) { n[p.estado]++; con++; } });
 			caja.innerHTML = '';
 			caja.hidden = con === 0;
 			if (!con) { filtroPago = ''; return; }
 			if (filtroPago && !n[filtroPago]) { filtroPago = ''; }
-			[['', 'Todos', alumnos.length]].concat(['mora', 'aldia', 'sinpagos'].filter(function (k) { return n[k] > 0; })
+			[['', 'Todos', alumnos.length]].concat(['mora', 'aldia', 'beca', 'sinpagos'].filter(function (k) { return n[k] > 0; })
 				.map(function (k) { return [k, PAGO[k].texto, n[k]]; }))
 				.forEach(function (f) {
 					var b = el('button', 'ds-toma__filtro' + (f[0] ? ' ds-toma__filtro--' + f[0] : ''));

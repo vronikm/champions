@@ -1281,6 +1281,7 @@
 .ds-toma__pago--aldia    { background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); border-color: var(--bs-success-border-subtle); }
 .ds-toma__pago--mora     { background: var(--bs-danger-bg-subtle);  color: var(--bs-danger-text-emphasis);  border-color: var(--bs-danger-border-subtle); }
 .ds-toma__pago--sinpagos { background: var(--bs-secondary-bg);      color: var(--bs-secondary-color);       border-color: var(--bs-border-color); }
+.ds-toma__pago--beca     { background: var(--bs-info-bg-subtle);    color: var(--bs-info-text-emphasis);    border-color: var(--bs-info-border-subtle); }
 
 /* Filtro por estado de pagos, con la cifra de cada uno. */
 .ds-toma__filtros { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .75rem; }
@@ -1300,9 +1301,11 @@
 }
 .ds-toma__filtro--mora  i { color: var(--bs-danger-text-emphasis); }
 .ds-toma__filtro--aldia i { color: var(--bs-success-text-emphasis); }
+.ds-toma__filtro--beca  i { color: var(--bs-info-text-emphasis); }
 .ds-toma__filtro[aria-pressed="true"] { background: var(--bs-emphasis-color); border-color: var(--bs-emphasis-color); color: var(--bs-body-bg); }
 .ds-toma__filtro--mora[aria-pressed="true"]  { background: var(--bs-danger);  border-color: var(--bs-danger);  color: #fff; }
 .ds-toma__filtro--aldia[aria-pressed="true"] { background: var(--bs-success); border-color: var(--bs-success); color: #fff; }
+.ds-toma__filtro--beca[aria-pressed="true"]  { background: var(--bs-info); border-color: var(--bs-info); color: #000; }
 .ds-toma__filtro[aria-pressed="true"] i { color: inherit; }
 .ds-toma__filtro[aria-pressed="true"] .ds-toma__cifra { background: rgba(255, 255, 255, .25); color: inherit; }
 

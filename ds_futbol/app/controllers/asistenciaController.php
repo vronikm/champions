@@ -1810,14 +1810,17 @@
 		| El MISMO criterio que la lista de pagos (pagosController::
 		| listarAlumnosPagos): lo que debe = saldo pendiente + pensiones
 		| cumplidas desde su último pago de pensión × su pensión (la de la
-		| sede, o la del descuento DDS si lo tiene; con beca, cero). Así el
-		| profesor y quien cobra ven lo mismo.
+		| sede, o la de su descuento activo: beca 100 % DBC, beca 50 % DBP o
+		| descuento DDS). Así el profesor y quien cobra ven lo mismo.
+		|
+		| «beca»: tiene beca completa (DBC) y no debe nada. No paga pensión,
+		| así que «sin pagos» o «al día» dirían algo que no es.
 		|
 		| «sinpagos»: nunca pagó una pensión y no tiene saldo. La lista de
 		| pagos lo pinta «Al día» porque no hay deuda calculable, pero aquí
 		| decir «al día» de quien nunca pagó confundiría al profesor.
 		|
-		| Devuelve [alumno_id => ['estado' => mora|aldia|sinpagos,
+		| Devuelve [alumno_id => ['estado' => mora|beca|aldia|sinpagos,
 		|                         'meses' => pensiones, 'deuda' => importe]].
 		*/
 		public function estadoPagosAlumnos(array $ids): array {
@@ -1825,12 +1828,12 @@
 			if (!$ids) { return []; }
 			$en = implode(',', $ids);   /* enteros: se pueden escribir en la consulta */
 
-			$filas = $this->ejecutarConsulta("SELECT A.alumno_id, S.sede_pension, D.descuento_valor,
+			$filas = $this->ejecutarConsulta("SELECT A.alumno_id, S.sede_pension, D.descuento_valor, D.descuento_rubroid,
 						UP.ultima, COALESCE(PP.saldo, 0) AS saldo
 					FROM sujeto_alumno A
 					LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
 					LEFT JOIN alumno_pago_descuento D ON D.descuento_alumnoid = A.alumno_id
-					       AND D.descuento_estado = 'S' AND D.descuento_rubroid = 'DDS'
+					       AND D.descuento_estado = 'S' AND D.descuento_rubroid IN ('DBC', 'DBP', 'DDS')   /* beca 100 %, beca 50 % o descuento: el valor es la pensión que paga (como pagosNew) */
 					LEFT JOIN (SELECT pago_alumnoid, MAX(pago_fecha) AS ultima
 					             FROM alumno_pago WHERE pago_rubroid = 'RPE' AND pago_estado <> 'E' AND pago_alumnoid IN ($en)
 					            GROUP BY pago_alumnoid) UP ON UP.pago_alumnoid = A.alumno_id
@@ -1847,7 +1850,12 @@
 				$deuda   = round($saldo + $meses * $pension, 2);
 				$sinPago = !$f['ultima'] || str_starts_with((string)$f['ultima'], '0000');
 				$estado[(int)$f['alumno_id']] = [
-					'estado' => $deuda > 0 ? 'mora' : ($sinPago && $pension > 0 ? 'sinpagos' : 'aldia'),
+					'estado' => match (true) {
+						$deuda > 0                         => 'mora',
+						$f['descuento_rubroid'] === 'DBC'  => 'beca',
+						$sinPago && $pension > 0           => 'sinpagos',
+						default                            => 'aldia',
+					},
 					'meses'  => $meses,
 					'deuda'  => $deuda,
 				];

@@ -365,4 +365,34 @@ class mainModel
 				default => "$columna = 'A'",
 			};
 		}
+
+		/*----------  Pensiones que debe desde su último pago de pensión  ----------*/
+		/*
+		| La MISMA regla que pensionesPendientes(): cada mes cumplido desde la
+		| fecha del último pago de pensión, hasta el último día del mes en
+		| curso, es una pensión adeudada. Al sumar meses, el día se recorta al
+		| final del mes, como DATE_ADD de MySQL (31 de enero + 1 mes = 28 de
+		| febrero); el +1 month de PHP lo pasaría a marzo.
+		|
+		| Vive aquí, y no en pagosController, para que la lista de pagos y la
+		| toma de asistencia digan lo mismo sobre quién está en mora.
+		*/
+		protected function mesesPensionAdeudados(?string $ultimoPago): int{
+			if (!$ultimoPago || str_starts_with($ultimoPago, '0000')) { return 0; }
+			$base  = new \DateTime($ultimoPago);
+			$tope  = new \DateTime(date('Y-m-t'));
+			$meses = 0;
+			for ($m = 1; $m <= 120; $m++) {
+				$y = (int)$base->format('Y');
+				$mes = (int)$base->format('n') + $m;
+				$y += intdiv($mes - 1, 12);
+				$mes = ($mes - 1) % 12 + 1;
+				/* date('t') y no cal_days_in_month(): ésta es de la extensión
+				   calendar, que no todos los hosting traen. */
+				$dia = min((int)$base->format('j'), (int)date('t', mktime(0, 0, 0, $mes, 1, $y)));
+				if (new \DateTime(sprintf('%04d-%02d-%02d', $y, $mes, $dia)) > $tope) { break; }
+				$meses++;
+			}
+			return $meses;
+		}
 }

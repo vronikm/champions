@@ -1798,6 +1798,57 @@
 					ORDER BY apellidos, nombres", [':horario' => $horarioId, ':aniomes' => (int)date('Ym', $t)])->fetchAll();
 		}
 
+		/*
+		| Al día o en mora, para la toma de asistencia.
+		|
+		| El MISMO criterio que la lista de pagos (pagosController::
+		| listarAlumnosPagos): lo que debe = saldo pendiente + pensiones
+		| cumplidas desde su último pago de pensión × su pensión (la de la
+		| sede, o la del descuento DDS si lo tiene; con beca, cero). Así el
+		| profesor y quien cobra ven lo mismo.
+		|
+		| «sinpagos»: nunca pagó una pensión y no tiene saldo. La lista de
+		| pagos lo pinta «Al día» porque no hay deuda calculable, pero aquí
+		| decir «al día» de quien nunca pagó confundiría al profesor.
+		|
+		| Devuelve [alumno_id => ['estado' => mora|aldia|sinpagos,
+		|                         'meses' => pensiones, 'deuda' => importe]].
+		*/
+		public function estadoPagosAlumnos(array $ids): array {
+			$ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn($i) => $i > 0)));
+			if (!$ids) { return []; }
+			$en = implode(',', $ids);   /* enteros: se pueden escribir en la consulta */
+
+			$filas = $this->ejecutarConsulta("SELECT A.alumno_id, S.sede_pension, D.descuento_valor,
+						UP.ultima, COALESCE(PP.saldo, 0) AS saldo
+					FROM sujeto_alumno A
+					LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
+					LEFT JOIN alumno_pago_descuento D ON D.descuento_alumnoid = A.alumno_id
+					       AND D.descuento_estado = 'S' AND D.descuento_rubroid = 'DDS'
+					LEFT JOIN (SELECT pago_alumnoid, MAX(pago_fecha) AS ultima
+					             FROM alumno_pago WHERE pago_rubroid = 'RPE' AND pago_estado <> 'E' AND pago_alumnoid IN ($en)
+					            GROUP BY pago_alumnoid) UP ON UP.pago_alumnoid = A.alumno_id
+					LEFT JOIN (SELECT pago_alumnoid, SUM(pago_saldo) AS saldo
+					             FROM alumno_pago WHERE pago_estado = 'P' AND pago_alumnoid IN ($en)
+					            GROUP BY pago_alumnoid) PP ON PP.pago_alumnoid = A.alumno_id
+					WHERE A.alumno_id IN ($en)")->fetchAll();
+
+			$estado = [];
+			foreach ($filas as $f) {
+				$pension = $f['descuento_valor'] !== null ? (float)$f['descuento_valor'] : (float)$f['sede_pension'];
+				$meses   = $pension > 0 ? $this->mesesPensionAdeudados($f['ultima']) : 0;
+				$saldo   = (float)$f['saldo'];
+				$deuda   = round($saldo + $meses * $pension, 2);
+				$sinPago = !$f['ultima'] || str_starts_with((string)$f['ultima'], '0000');
+				$estado[(int)$f['alumno_id']] = [
+					'estado' => $deuda > 0 ? 'mora' : ($sinPago && $pension > 0 ? 'sinpagos' : 'aldia'),
+					'meses'  => $meses,
+					'deuda'  => $deuda,
+				];
+			}
+			return $estado;
+		}
+
 		/** Cabecera de la pantalla: nombre, sede, días y hora del horario activo, o null. */
 		public function resumenHorario(int $horarioId): ?array {
 			$fila = $this->ejecutarConsulta("SELECT H.horario_id, H.horario_nombre, H.horario_detalle, S.sede_nombre,

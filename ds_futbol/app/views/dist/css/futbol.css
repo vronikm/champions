@@ -1269,7 +1269,57 @@
 .ds-toma__opcion[aria-pressed="true"][data-estado="J"] { background: var(--bs-info); border-color: var(--bs-info); color: #000; }
 .ds-toma__corto { display: none; }
 
+/* Al día / en mora. Una píldora en la ficha, con el color «subtle» del
+   tema (texto *-text-emphasis sobre *-bg-subtle: contraste suficiente en
+   claro y en oscuro) y un icono, para que no dependa sólo del color. */
+.ds-toma__meta { align-items: center; }
+.ds-toma__pago {
+    display: inline-flex; align-items: center; gap: .3rem;
+    padding: .15rem .55rem; border-radius: 999px; border: 1px solid transparent;
+    font-size: .78rem; font-weight: 600; line-height: 1.35; white-space: nowrap;
+}
+.ds-toma__pago--aldia    { background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); border-color: var(--bs-success-border-subtle); }
+.ds-toma__pago--mora     { background: var(--bs-danger-bg-subtle);  color: var(--bs-danger-text-emphasis);  border-color: var(--bs-danger-border-subtle); }
+.ds-toma__pago--sinpagos { background: var(--bs-secondary-bg);      color: var(--bs-secondary-color);       border-color: var(--bs-border-color); }
+
+/* Filtro por estado de pagos, con la cifra de cada uno. */
+.ds-toma__filtros { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .75rem; }
+.ds-toma__filtros[hidden] { display: none; }
+.ds-toma__filtro {
+    display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
+    min-height: 2.5rem; padding: .3rem .85rem; border-radius: 999px;
+    border: 1px solid var(--bs-border-color); background: var(--bs-body-bg); color: var(--bs-emphasis-color);
+    font-size: .875rem; font-weight: 600; line-height: 1.1;
+}
+.ds-toma__filtro:hover { background: var(--bs-tertiary-bg); }
+.ds-toma__filtro:focus-visible { outline: 2px solid var(--bs-emphasis-color); outline-offset: 2px; }
+.ds-toma__cifra {
+    min-width: 1.5rem; padding: .1rem .4rem; border-radius: 999px; text-align: center;
+    font-size: .75rem; font-variant-numeric: tabular-nums;
+    background: var(--bs-secondary-bg); color: var(--bs-emphasis-color);
+}
+.ds-toma__filtro--mora  i { color: var(--bs-danger-text-emphasis); }
+.ds-toma__filtro--aldia i { color: var(--bs-success-text-emphasis); }
+.ds-toma__filtro[aria-pressed="true"] { background: var(--bs-emphasis-color); border-color: var(--bs-emphasis-color); color: var(--bs-body-bg); }
+.ds-toma__filtro--mora[aria-pressed="true"]  { background: var(--bs-danger);  border-color: var(--bs-danger);  color: #fff; }
+.ds-toma__filtro--aldia[aria-pressed="true"] { background: var(--bs-success); border-color: var(--bs-success); color: #fff; }
+.ds-toma__filtro[aria-pressed="true"] i { color: inherit; }
+.ds-toma__filtro[aria-pressed="true"] .ds-toma__cifra { background: rgba(255, 255, 255, .25); color: inherit; }
+
 @media (max-width: 767.98px) {
+    /* En el teléfono, los filtros en una fila de botones iguales y a todo
+       lo ancho: se tocan con el pulgar. */
+    .ds-toma__filtros { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+    /* Cada filtro en dos líneas: icono y cifra arriba, el nombre debajo
+       (en una fila de cuatro, «En mora» partido no se leía). */
+    .ds-toma__filtro {
+        flex-wrap: wrap; gap: .1rem .3rem; min-height: 3.25rem;
+        padding: .35rem .25rem; border-radius: var(--bs-border-radius-lg);
+    }
+    .ds-toma__filtro i { order: 0; }
+    .ds-toma__filtro .ds-toma__cifra { order: 1; background: none; padding: 0; min-width: 0; font-size: 1rem; font-weight: 700; }
+    .ds-toma__filtro .ds-toma__rotulo { order: 2; flex-basis: 100%; text-align: center; font-size: .75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ds-toma__filtro[aria-pressed="true"] .ds-toma__cifra { background: none; }
     .ds-toma__alumno { grid-template-columns: minmax(0, 1fr); }
     .ds-toma__opciones { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .ds-toma__fecha { width: 100%; }

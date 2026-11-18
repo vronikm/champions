@@ -27,6 +27,19 @@
 
 	$alumnos = $puede ? $insAlumno->alumnosParaAsistencia($horario_id, $fecha) : [];
 
+	/*
+	| Al día o en mora (mismo criterio que la lista de pagos). Va aparte de
+	| la lista porque no depende de la fecha: al cambiarla, administración
+	| recibe otra lista de marcas, pero el estado de pagos es el de hoy.
+	| El importe sólo viaja a quien puede ver Pagos; el profesor ve el
+	| estado y cuántas pensiones, que es lo que necesita para avisar.
+	*/
+	$verMontos = puede('ver', 'pagosList');
+	$pagos = [];
+	foreach ($insAlumno->estadoPagosAlumnos(array_column($alumnos, 'alumno_id')) as $id => $p) {
+		$pagos[$id] = ['estado' => $p['estado'], 'meses' => $p['meses']] + ($verMontos ? ['deuda' => $p['deuda']] : []);
+	}
+
 	$h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
 	$DIAS = [1 => 'L', 2 => 'M', 3 => 'X', 4 => 'J', 5 => 'V', 6 => 'S', 7 => 'D'];
 	$LARGOS = [1 => 'lunes', 2 => 'martes', 3 => 'miércoles', 4 => 'jueves', 5 => 'viernes', 6 => 'sábado', 7 => 'domingo'];
@@ -39,6 +52,7 @@
 		'fecha'   => $fecha,
 		'hoy'     => $hoy,
 		'url'     => APP_URL . 'app/ajax/asistenciaAjax.php',
+		'pagos'   => (object)$pagos,
 		'alumnos' => array_map(static fn($a) => [
 			'id' => (int)$a['alumno_id'],
 			'apellidos' => html_entity_decode((string)$a['apellidos'], ENT_QUOTES | ENT_HTML5, 'UTF-8'),
@@ -127,14 +141,18 @@
 						</div>
 					</div>
 
-					<div class="d-flex flex-wrap gap-2 mb-3">
+					<div class="d-flex flex-wrap gap-2 mb-2">
 						<input type="search" class="form-control ds-toma__buscar" id="toma-buscar" placeholder="Buscar alumno…" aria-label="Buscar alumno">
 						<button type="button" class="btn btn-success" id="toma-todos" title="Marca como presentes a los alumnos que aún no tienen asistencia"><i class="fas fa-check-double me-1" aria-hidden="true"></i>Todos presentes</button>
 					</div>
 
+					<!-- Filtro por estado de pagos: los botones y sus cifras los pone el script. -->
+					<div class="ds-toma__filtros" id="toma-filtros" role="group" aria-label="Filtrar por estado de pagos"></div>
+
 					<!-- =================== La lista =================== -->
 					<ol class="ds-toma__lista list-unstyled" id="toma-lista" aria-label="Alumnos del horario"></ol>
 					<p class="text-body-secondary text-center d-none" id="toma-vacia">Este horario no tiene alumnos activos asignados.</p>
+					<p class="text-body-secondary text-center d-none" id="toma-sin-resultados">Ningún alumno coincide con el filtro.</p>
 
 				<?php endif; ?>
 
@@ -182,6 +200,27 @@
 		var lista = document.getElementById('toma-lista');
 		var csrf = (document.querySelector('meta[name="ds-csrf"]') || {}).content || '';
 
+		/*
+		| Estado de pagos de cada alumno (al día / en mora / sin pagos), con
+		| el mismo criterio que la lista de pagos. No cambia con la fecha.
+		| El importe sólo llega si el rol puede ver Pagos.
+		*/
+		var PAGOS = D.pagos || {};
+		var PAGO = {
+			mora:     { texto: 'En mora',   icono: 'fa-circle-exclamation' },
+			aldia:    { texto: 'Al día',    icono: 'fa-circle-check' },
+			sinpagos: { texto: 'Sin pagos', icono: 'fa-circle-question' }
+		};
+		var filtroPago = '';
+		function etiquetaPago(p) {
+			var partes = [PAGO[p.estado].texto];
+			if (p.estado === 'mora') {
+				partes.push(p.meses > 0 ? p.meses + (p.meses === 1 ? ' pensión' : ' pensiones') : 'saldo pendiente');
+				if (typeof p.deuda === 'number') { partes.push('$' + p.deuda.toFixed(2)); }
+			}
+			return partes.join(' · ');
+		}
+
 		/* confirmada: lo que dice el servidor. pendientes: alumno → estado por enviar. */
 		var alumnos = [], confirmada = {}, pendientes = {}, enviando = false, reintento = null, fecha = D.fecha;
 
@@ -192,9 +231,17 @@
 			document.getElementById('toma-vacia').classList.toggle('d-none', alumnos.length > 0);
 			alumnos.forEach(function (a) {
 				var li = el('li', 'ds-toma__alumno'); li.dataset.id = a.id;
+				var p = PAGOS[a.id];
+				li.dataset.pago = p ? p.estado : '';
 				var quien = el('div', 'ds-toma__quien');
 				quien.appendChild(el('div', 'ds-toma__nombre', a.apellidos + ' ' + a.nombres));
 				var meta = el('div', 'ds-toma__meta');
+				if (p && PAGO[p.estado]) {
+					var chip = el('span', 'ds-toma__pago ds-toma__pago--' + p.estado);
+					chip.innerHTML = '<i class="fas ' + PAGO[p.estado].icono + '" aria-hidden="true"></i>';
+					chip.appendChild(document.createTextNode(etiquetaPago(p)));
+					meta.appendChild(chip);
+				}
 				meta.appendChild(el('span', '', a.categoria ? 'Categoría ' + a.categoria : ''));
 				meta.appendChild(el('span', 'ds-toma__guardado'));
 				quien.appendChild(meta);
@@ -211,8 +258,37 @@
 				lista.appendChild(li);
 				fila(a.id);
 			});
-			filtrar(); resumen();
+			filtros(); filtrar(); resumen();
 		}
+
+		/* Botones «Todos · En mora · Al día · Sin pagos» con su cifra. Sólo
+		   los estados que tienen alumnos; sin datos de pagos, no se muestran. */
+		function filtros() {
+			var caja = document.getElementById('toma-filtros');
+			var n = { mora: 0, aldia: 0, sinpagos: 0 }, con = 0;
+			alumnos.forEach(function (a) { var p = PAGOS[a.id]; if (p && n.hasOwnProperty(p.estado)) { n[p.estado]++; con++; } });
+			caja.innerHTML = '';
+			caja.hidden = con === 0;
+			if (!con) { filtroPago = ''; return; }
+			if (filtroPago && !n[filtroPago]) { filtroPago = ''; }
+			[['', 'Todos', alumnos.length]].concat(['mora', 'aldia', 'sinpagos'].filter(function (k) { return n[k] > 0; })
+				.map(function (k) { return [k, PAGO[k].texto, n[k]]; }))
+				.forEach(function (f) {
+					var b = el('button', 'ds-toma__filtro' + (f[0] ? ' ds-toma__filtro--' + f[0] : ''));
+					b.type = 'button'; b.dataset.filtro = f[0];
+					b.setAttribute('aria-pressed', filtroPago === f[0] ? 'true' : 'false');
+					if (f[0]) { b.innerHTML = '<i class="fas ' + PAGO[f[0]].icono + '" aria-hidden="true"></i>'; }
+					b.appendChild(el('span', 'ds-toma__rotulo', f[1]));
+					b.appendChild(el('span', 'ds-toma__cifra', String(f[2])));
+					caja.appendChild(b);
+				});
+		}
+		document.getElementById('toma-filtros').addEventListener('click', function (ev) {
+			var b = ev.target.closest('.ds-toma__filtro'); if (!b) return;
+			filtroPago = b.dataset.filtro;
+			this.querySelectorAll('.ds-toma__filtro').forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+			filtrar();
+		});
 
 		/* El aspecto de una fila: el estado a la vista (pendiente o confirmado). */
 		function fila(id, aviso) {
@@ -299,10 +375,13 @@
 
 		function filtrar() {
 			var q = document.getElementById('toma-buscar').value.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+			var visibles = 0;
 			lista.querySelectorAll('li').forEach(function (li) {
 				var t = li.querySelector('.ds-toma__nombre').textContent.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-				li.hidden = q !== '' && t.indexOf(q) === -1;
+				li.hidden = (q !== '' && t.indexOf(q) === -1) || (filtroPago !== '' && li.dataset.pago !== filtroPago);
+				if (!li.hidden) { visibles++; }
 			});
+			document.getElementById('toma-sin-resultados').classList.toggle('d-none', !alumnos.length || visibles > 0);
 		}
 		document.getElementById('toma-buscar').addEventListener('input', filtrar);
 

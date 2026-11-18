@@ -53,6 +53,31 @@ if [ "${1:-}" = "--generar" ]; then
         printf -- "--\n-- Importar con phpMyAdmin SOBRE LA BASE QUE CONTIENE LA COPIA DE\n"
         printf -- "-- SOCCEREASY, después de respaldarla. No repetir sobre una base ya migrada.\n"
         printf -- "-- =====================================================================\nSET NAMES utf8mb4;\n"
+        # La misma comprobación que hace este script antes de aplicar, en SQL:
+        # phpMyAdmin no tiene consola donde preguntar. Si la base no sirve, la
+        # sentencia falla con un nombre que dice por qué y NO se aplica nada
+        # (phpMyAdmin se detiene en el primer error). Antes, sobre una base
+        # vacía, el primer error era un críptico «#1146 alumno_cemergencia no
+        # existe» (2026-11-18, en el hosting). Nombres de hasta 64 caracteres.
+        cat <<'GUARDIA'
+
+-- ---------------------------------------------------------------------
+-- >>> Comprobación: ¿es una copia de SoccerEasy SIN migrar?
+-- Si no lo es, se detiene aquí con un error que lo dice y no cambia nada.
+-- ---------------------------------------------------------------------
+SET @ds_soccereasy = (SELECT COUNT(*) FROM information_schema.TABLES
+                       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('sujeto_alumno', 'alumno_cemergencia'));
+SET @ds_migrada    = (SELECT COUNT(*) FROM information_schema.TABLES
+                       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'facturas_electronicas');
+SET @ds_guardia = CASE
+    WHEN DATABASE() IS NULL  THEN 'SELECT * FROM `DETENIDO_elija_primero_la_base_en_phpMyAdmin`'
+    WHEN @ds_soccereasy < 2  THEN 'SELECT * FROM `DETENIDO_no_es_copia_de_SoccerEasy_restaurela_primero`'
+    WHEN @ds_migrada > 0     THEN 'SELECT * FROM `DETENIDO_esta_base_ya_esta_migrada_no_se_aplica_nada`'
+    ELSE 'DO 0' END;
+PREPARE ds_guardia FROM @ds_guardia;
+EXECUTE ds_guardia;
+DEALLOCATE PREPARE ds_guardia;
+GUARDIA
         for f in "${ARCHIVOS[@]}"; do
             printf "\n-- ---------------------------------------------------------------------\n-- >>> %s\n" "$(basename "$f")"
             printf -- "-- ---------------------------------------------------------------------\n"

@@ -188,9 +188,27 @@ ds_core/database/migracion_champions/aplicar_migracion.sh --generar migracion_pr
 3. Comprobar que terminó sin error. Si se detiene, **no** repetir el archivo
    entero sobre lo ya aplicado: restaurar el respaldo y empezar de nuevo.
 
+El archivo **no es una base**: convierte la que ya tiene SoccerEasy. Sobre una
+base vacía no hay nada que convertir. Por eso empieza con una comprobación que,
+sin cambiar nada, se detiene con un error que dice el motivo:
+
+| Error (#1146, «la tabla … no existe») | Qué pasa |
+|---|---|
+| `DETENIDO_no_es_copia_de_SoccerEasy_restaurela_primero` | La base está vacía o no es SoccerEasy: importar antes su volcado (pasos 1 y 2). |
+| `DETENIDO_esta_base_ya_esta_migrada_no_se_aplica_nada` | Ya tiene `facturas_electronicas`: no se repite. |
+| `DETENIDO_elija_primero_la_base_en_phpMyAdmin` | Se importó sin elegir una base a la izquierda. |
+
+Para **probar el sistema** en el hosting no hace falta migrar allí: basta con el
+volcado de una base ya migrada (ver «Llevarla a producción»), importado en una
+base vacía.
+
 Probado el 2026-10-22 con un usuario sin `SUPER` (como el del hosting) sobre
 una copia de SoccerEasy: 25 segundos, sin errores, y la base resultante
-idéntica a la migrada con el script.
+idéntica a la migrada con el script. Repetido el 2026-11-18 con los 88
+archivos (incluida la 086): 33 segundos, la misma estructura que
+`digitech_migra_champions_cf` (108 tablas y vistas, 1175 columnas, 412
+índices, 93 claves ajenas, 100 menús); y la comprobación inicial detiene la
+importación sobre una base vacía y sobre una ya migrada sin tocarlas.
 
 ## Comprobación
 

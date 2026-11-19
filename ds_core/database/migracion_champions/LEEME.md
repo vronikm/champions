@@ -143,6 +143,10 @@ en desarrollo y llevar el resultado a producción con un volcado (ver más abajo
     `reserva_usuariocancelacion`) y quién canceló una reserva fija
     (`dsa_reserva_fija.fija_usuariocancelacion`). Las semanas ya canceladas
     con su serie heredan el motivo de la serie. Repetible.
+29. `088_arena_menu_reportes.sql` (de `ds_core/database/`, común): grupo
+    «Reportes» en el menú de Arena y, dentro, «Pagos» (`reportePagos`):
+    lo recaudado por forma y por hora y el cuadre del efectivo. No concede
+    permisos: se asignan en Core › Permisos. Repetible.
 
 ```bash
 mysql -u USUARIO -p --default-character-set=utf8mb4 BASE < ARCHIVO.sql

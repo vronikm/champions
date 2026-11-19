@@ -17,4 +17,5 @@ return [
     'reservaList', 'reservaForm', 'reservaDetalle',
     'reciboPago', 'reciboPdf',
     'monederoList', 'monederoDetalle',
+    'reportePagos',                       /* Reportes › Pagos (migración 088) */
 ];

@@ -3716,33 +3716,326 @@ class arenaController
       Menú lateral del módulo
       ====================================================================*/
 
+    /*======================================================================
+      Reportes › Pagos: lo recaudado, para cuadrar la caja (2026-11-19)
+
+      QUÉ DINERO ENTRA Y CUÁL NO
+
+      - Un abono en efectivo, transferencia o tarjeta es dinero que entra.
+        Si el cliente dejó el vuelto en su monedero, ese vuelto TAMBIÉN se
+        quedó en la caja: entregó $30 por un abono de $26 y no se le
+        devolvió nada. Entra valor + vuelto.
+      - Un abono con MONEDERO no trae dinero: se pagó con saldo que entró
+        antes. Se informa aparte y no suma a lo recaudado.
+      - Un depósito al monedero (efectivo o transferencia) sí es dinero que
+        entra, aunque todavía no esté aplicado a ninguna reserva. Un ajuste
+        (AJU) no lo es.
+      - Una devolución del monedero (DEV) es dinero que sale; no dice cómo
+        se entregó, así que se informa y no se resta sola.
+
+      LA HORA ES LA DEL REGISTRO
+
+      pago_fecha es CURDATE() de MySQL, que en un hosting en UTC adelanta el
+      día después de las 19:00 de Ecuador. Se filtra por el instante del
+      registro (pago_fecharegistro) entre las 00:00 y las 23:59:59 de
+      Ecuador, calculadas en PHP. FROM_UNIXTIME y el TIMESTAMP se leen en la
+      misma zona de la sesión, así que la comparación es exacta sea cual sea
+      esa zona. pago_fecha, ±1 día, sólo acota para usar su índice.
+      ====================================================================*/
+
+    /** Días como máximo en una consulta: un año. */
+    public const REPORTE_MAX_DIAS = 366;
+
+    /** Normaliza el filtro del reporte: fechas válidas y en orden, hoy por defecto. */
+    public function filtroReportePagos(array $q): array
+    {
+        $fecha = static function ($v): ?string {
+            $v = (string)$v;
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) { return null; }
+            [$a, $m, $d] = array_map('intval', explode('-', $v));
+            return checkdate($m, $d, $a) ? $v : null;
+        };
+        $hoy   = date('Y-m-d');
+        $desde = $fecha($q['desde'] ?? '') ?? $hoy;
+        $hasta = $fecha($q['hasta'] ?? '') ?? $desde;
+        if ($hasta < $desde) { [$desde, $hasta] = [$hasta, $desde]; }
+        /* Un rango enorme no se rechaza: se acorta y se avisa en la vista. */
+        $recortado = false;
+        if ((strtotime($hasta) - strtotime($desde)) / 86400 >= self::REPORTE_MAX_DIAS) {
+            $desde = date('Y-m-d', strtotime($hasta . ' -' . (self::REPORTE_MAX_DIAS - 1) . ' days'));
+            $recortado = true;
+        }
+        return [
+            'desde'     => $desde,
+            'hasta'     => $hasta,
+            'cajero'    => max(0, (int)($q['cajero'] ?? 0)),
+            'sede'      => max(0, (int)($q['sede'] ?? 0)),
+            'recortado' => $recortado,
+        ];
+    }
+
+    /** Quienes han registrado pagos o movimientos de monedero: el filtro «Cajero». */
+    public function cajerosPagos(): array
+    {
+        return $this->filas(
+            "SELECT u.usuario_id, u.usuario_usuario
+               FROM seguridad_usuario u
+              WHERE u.usuario_id IN (SELECT pago_usuarioid FROM dsa_pago WHERE pago_usuarioid IS NOT NULL)
+                 OR u.usuario_id IN (SELECT movimiento_usuarioid FROM dsa_monedero_movimiento
+                                      WHERE movimiento_usuarioid IS NOT NULL)
+              ORDER BY u.usuario_usuario");
+    }
+
+    /** Sedes que tienen instalaciones: el filtro «Sede» (sólo si hay más de una). */
+    public function sedesConInstalaciones(): array
+    {
+        return $this->filas(
+            "SELECT DISTINCT s.sede_id, s.sede_nombre
+               FROM dsa_instalacion i
+               JOIN general_sede s ON s.sede_id = i.instalacion_sedeid
+              WHERE i.instalacion_estado <> 'E'
+              ORDER BY s.sede_nombre");
+    }
+
+    /**
+     * Todo el reporte de un filtro ya normalizado (filtroReportePagos).
+     * Devuelve los movimientos y los totales calculados aquí, una sola vez,
+     * para que la pantalla, el CSV y la impresión digan lo mismo.
+     */
+    public function reportePagos(array $f): array
+    {
+        $a = strtotime($f['desde'] . ' 00:00:00');
+        $b = strtotime($f['hasta'] . ' 23:59:59');
+        $base = [
+            ':d0' => date('Y-m-d', strtotime($f['desde'] . ' -1 day')),
+            ':h0' => date('Y-m-d', strtotime($f['hasta'] . ' +1 day')),
+            ':a'  => $a, ':b' => $b,
+        ];
+
+        $sqlP = "SELECT p.pago_id, p.pago_valor, p.pago_recibido, p.pago_vuelto, p.pago_vueltoamonedero,
+                        p.pago_referencia, p.pago_observacion,
+                        UNIX_TIMESTAMP(p.pago_fecharegistro) AS ts,
+                        f.forma_codigo, f.forma_nombre, f.forma_esmonedero,
+                        r.reserva_id, r.reserva_codigo, r.reserva_fecha, r.reserva_horainicio, r.reserva_horafin,
+                        c.cliente_nombre, i.instalacion_nombre, s.sede_nombre,
+                        COALESCE(u.usuario_usuario, '—') AS cajero
+                   FROM dsa_pago p
+                   JOIN dsa_forma_ingreso f ON f.forma_id      = p.pago_formaid
+                   JOIN dsa_reserva       r ON r.reserva_id    = p.pago_reservaid
+                   JOIN dsa_cliente       c ON c.cliente_id    = r.reserva_clienteid
+                   JOIN dsa_instalacion   i ON i.instalacion_id = r.reserva_instalacionid
+                   LEFT JOIN general_sede      s ON s.sede_id    = r.reserva_sedeid
+                   LEFT JOIN seguridad_usuario u ON u.usuario_id = p.pago_usuarioid
+                  WHERE p.pago_estado = 'A'
+                    AND p.pago_fecha BETWEEN :d0 AND :h0
+                    AND p.pago_fecharegistro BETWEEN FROM_UNIXTIME(:a) AND FROM_UNIXTIME(:b)";
+        $pP = $base;
+        if ($f['cajero'] > 0) { $sqlP .= " AND p.pago_usuarioid = :u"; $pP[':u'] = $f['cajero']; }
+        if ($f['sede'] > 0)   { $sqlP .= " AND r.reserva_sedeid = :s"; $pP[':s'] = $f['sede']; }
+        $pagos = $this->filas($sqlP . " ORDER BY p.pago_fecharegistro, p.pago_id", $pP);
+
+        /* Los movimientos del monedero no tienen sede: con una sede elegida
+           no se pueden atribuir y se dejan fuera (la vista lo dice). */
+        $monedero = [];
+        if ($f['sede'] === 0) {
+            $sqlM = "SELECT mv.movimiento_id, mv.movimiento_tipo, mv.movimiento_origen, mv.movimiento_valor,
+                            mv.movimiento_referencia, mv.movimiento_detalle,
+                            UNIX_TIMESTAMP(mv.movimiento_fecharegistro) AS ts,
+                            c.cliente_nombre, COALESCE(u.usuario_usuario, '—') AS cajero
+                       FROM dsa_monedero_movimiento mv
+                       JOIN dsa_monedero m ON m.monedero_id = mv.movimiento_monederoid
+                       JOIN dsa_cliente  c ON c.cliente_id  = m.monedero_clienteid
+                       LEFT JOIN seguridad_usuario u ON u.usuario_id = mv.movimiento_usuarioid
+                      WHERE ((mv.movimiento_tipo = 'I' AND mv.movimiento_origen IN ('EFE','TRA'))
+                          OR (mv.movimiento_tipo = 'E' AND mv.movimiento_origen = 'DEV'))
+                        AND mv.movimiento_fecha BETWEEN :d0 AND :h0
+                        AND mv.movimiento_fecharegistro BETWEEN FROM_UNIXTIME(:a) AND FROM_UNIXTIME(:b)";
+            $pM = $base;
+            if ($f['cajero'] > 0) { $sqlM .= " AND mv.movimiento_usuarioid = :u"; $pM[':u'] = $f['cajero']; }
+            $monedero = $this->filas($sqlM . " ORDER BY mv.movimiento_fecharegistro, mv.movimiento_id", $pM);
+        }
+
+        $r = [
+            'recaudado' => 0.0, 'efectivo' => 0.0, 'bancos' => 0.0,
+            'monederoAplicado' => 0.0, 'vueltoMonedero' => 0.0, 'devoluciones' => 0.0,
+            'cobrosEfectivo' => 0.0, 'vueltoMonederoEfectivo' => 0.0, 'depositosEfectivo' => 0.0,
+            'nPagos' => count($pagos), 'nMovimientos' => 0,
+        ];
+        $formas = [];          // nombre => [n, total, entra]
+        $horas  = [];          // 0..23 => [total, n]
+        $dias   = [];          // Y-m-d => [total, n]
+        $movs   = [];          // la lista única, en orden de hora
+
+        $sumar = static function (array &$a, $k, float $v) {
+            $a[$k] = $a[$k] ?? ['total' => 0.0, 'n' => 0];
+            $a[$k]['total'] += $v; $a[$k]['n']++;
+        };
+
+        foreach ($pagos as $p) {
+            $valor   = (float)$p['pago_valor'];
+            $vuelto  = $p['pago_vueltoamonedero'] === 'S' ? (float)$p['pago_vuelto'] : 0.0;
+            $esMon   = $p['forma_esmonedero'] === 'S';
+            $entra   = $esMon ? 0.0 : $valor + $vuelto;
+            $ts      = (int)$p['ts'];
+
+            $formas[$p['forma_nombre']] = $formas[$p['forma_nombre']] ?? ['n' => 0, 'total' => 0.0, 'monedero' => $esMon];
+            $formas[$p['forma_nombre']]['n']++;
+            $formas[$p['forma_nombre']]['total'] += $valor;
+
+            if ($esMon) {
+                $r['monederoAplicado'] += $valor;
+            } else {
+                $r['recaudado'] += $entra;
+                $r['vueltoMonedero'] += $vuelto;
+                if ($p['forma_codigo'] === 'EFE') {
+                    $r['efectivo'] += $entra;
+                    $r['cobrosEfectivo'] += $valor;
+                    $r['vueltoMonederoEfectivo'] += $vuelto;
+                } else {
+                    $r['bancos'] += $entra;
+                }
+                $sumar($horas, (int)date('G', $ts), $entra);
+                $sumar($dias, date('Y-m-d', $ts), $entra);
+            }
+
+            $movs[] = [
+                'ts' => $ts, 'tipo' => 'pago', 'id' => (int)$p['pago_id'],
+                'recibo' => $this->reciboNumero((int)$p['pago_id']),
+                'forma' => $p['forma_nombre'], 'codigoForma' => $p['forma_codigo'], 'esMonedero' => $esMon,
+                'valor' => $valor, 'entra' => $entra,
+                'recibido' => $p['pago_recibido'] !== null ? (float)$p['pago_recibido'] : null,
+                'vuelto' => (float)$p['pago_vuelto'], 'vueltoAMonedero' => $p['pago_vueltoamonedero'] === 'S',
+                'referencia' => (string)$p['pago_referencia'],
+                'cliente' => $p['cliente_nombre'], 'cajero' => $p['cajero'],
+                'reservaId' => (int)$p['reserva_id'], 'reserva' => $p['reserva_codigo'],
+                'detalle' => $p['instalacion_nombre'] . ' · ' . date('d/m', strtotime($p['reserva_fecha'])) . ' '
+                           . substr($p['reserva_horainicio'], 0, 5) . '–' . substr($p['reserva_horafin'], 0, 5),
+            ];
+        }
+
+        $nombresMon = ['EFE' => 'Depósito al monedero · Efectivo', 'TRA' => 'Depósito al monedero · Transferencia',
+                       'DEV' => 'Devolución del monedero'];
+        foreach ($monedero as $m) {
+            $valor = (float)$m['movimiento_valor'];
+            $ts    = (int)$m['ts'];
+            $r['nMovimientos']++;
+            if ($m['movimiento_origen'] === 'DEV') {
+                $r['devoluciones'] += $valor;
+                $entra = 0.0;
+            } else {
+                $entra = $valor;
+                $r['recaudado'] += $valor;
+                if ($m['movimiento_origen'] === 'EFE') {
+                    $r['efectivo'] += $valor; $r['depositosEfectivo'] += $valor;
+                } else {
+                    $r['bancos'] += $valor;
+                }
+                $sumar($horas, (int)date('G', $ts), $valor);
+                $sumar($dias, date('Y-m-d', $ts), $valor);
+            }
+            $nombre = $nombresMon[$m['movimiento_origen']];
+            $formas[$nombre] = $formas[$nombre] ?? ['n' => 0, 'total' => 0.0, 'monedero' => false];
+            $formas[$nombre]['n']++;
+            $formas[$nombre]['total'] += $valor;
+
+            $movs[] = [
+                'ts' => $ts, 'tipo' => $m['movimiento_origen'] === 'DEV' ? 'devolucion' : 'deposito',
+                'id' => (int)$m['movimiento_id'], 'recibo' => '',
+                'forma' => $nombre, 'codigoForma' => $m['movimiento_origen'], 'esMonedero' => false,
+                'valor' => $valor, 'entra' => $entra, 'recibido' => null, 'vuelto' => 0.0, 'vueltoAMonedero' => false,
+                'referencia' => (string)$m['movimiento_referencia'],
+                'cliente' => $m['cliente_nombre'], 'cajero' => $m['cajero'],
+                'reservaId' => 0, 'reserva' => '',
+                'detalle' => (string)($m['movimiento_detalle'] ?: 'Monedero'),
+            ];
+        }
+
+        usort($movs, static fn ($x, $y) => [$x['ts'], $x['id']] <=> [$y['ts'], $y['id']]);
+        ksort($horas);
+        ksort($dias);
+        uasort($formas, static fn ($x, $y) => $y['total'] <=> $x['total']);
+
+        return ['resumen' => $r, 'formas' => $formas, 'horas' => $horas, 'dias' => $dias, 'movimientos' => $movs];
+    }
+
+    /*
+    | MENÚ CON GRUPOS (2026-11-19, migración 088)
+    |
+    | Hasta «Reportes» el menú de Arena era plano. Ahora admite grupos como
+    | el de Fútbol: una entrada con menu_hijo = 'S' (sin vista) que se
+    | despliega y agrupa las que la tienen por menu_padreid.
+    |
+    | Los permisos se dan sobre las PANTALLAS (Core › Permisos las lista
+    | bajo el nombre de su grupo); el grupo no tiene permiso propio. Se
+    | muestra si el rol puede ver al menos una de sus pantallas: un grupo
+    | vacío sería un «Reportes» que se abre y no tiene nada. El Super
+    | Administrador lo ve todo, como siempre.
+    */
     public function menuLateral(string $vistaActual): string
     {
-        $sql = "SELECT m.menu_vista, m.menu_nombre, m.menu_icono
+        $sql = "SELECT m.menu_id, m.menu_vista, m.menu_nombre, m.menu_icono,
+                       COALESCE(m.menu_padreid, 0) AS padre, m.menu_hijo
                   FROM seguridad_menu m
                  WHERE m.menu_estado = 'A' AND m.menu_modulo = 'arena'";
 
         if (!es_superadministrador()) {
-            $sql .= " AND EXISTS (SELECT 1 FROM seguridad_permiso p
-                                   WHERE p.permiso_menuid = m.menu_id
-                                     AND p.permiso_rolid  = :rol
-                                     AND p.permiso_estado = 'A'
-                                     AND p.permiso_ver    = 'S')";
+            $sql .= " AND (m.menu_hijo = 'S'
+                           OR EXISTS (SELECT 1 FROM seguridad_permiso p
+                                       WHERE p.permiso_menuid = m.menu_id
+                                         AND p.permiso_rolid  = :rol
+                                         AND p.permiso_estado = 'A'
+                                         AND p.permiso_ver    = 'S'))";
         }
-        $sql .= " ORDER BY m.menu_orden";
+        $sql .= " ORDER BY m.menu_orden, m.menu_id";
 
         $filas = $this->filas($sql, es_superadministrador() ? [] : [':rol' => rol_actual()]);
 
+        $hijos = [];
+        foreach ($filas as $f) {
+            if ((int)$f['padre'] > 0) {
+                $hijos[(int)$f['padre']][] = $f;
+            }
+        }
+
+        $e = static fn ($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
+        /* nav-icon es de AdminLTE 4: sin ella el texto se pega al borde y
+           los iconos no quedan alineados entre si. */
+        $enlace = static function (array $f, string $vistaActual) use ($e): string {
+            $activo = ($f['menu_vista'] === $vistaActual) ? ' active' : '';
+            return '<li class="nav-item">'
+                 . '<a href="' . APP_URL . $e($f['menu_vista']) . '/" class="nav-link' . $activo . '"'
+                 . ($activo ? ' aria-current="page"' : '') . '>'
+                 . '<i class="nav-icon ' . $e($f['menu_icono']) . '"></i>'
+                 . '<p>' . $e($f['menu_nombre']) . '</p>'
+                 . '</a></li>';
+        };
+
         $html = '';
         foreach ($filas as $f) {
-            $activo = ($f['menu_vista'] === $vistaActual) ? ' active' : '';
-            $html .= '<li class="nav-item">'
-                   . '<a href="' . APP_URL . $f['menu_vista'] . '/" class="nav-link' . $activo . '">'
-                   /* nav-icon es de AdminLTE 4: sin ella el texto se pega
-                      al borde y los iconos no quedan alineados entre si. */
-                   . '<i class="nav-icon ' . htmlspecialchars($f['menu_icono'], ENT_QUOTES, 'UTF-8') . '"></i>'
-                   . '<p>' . htmlspecialchars($f['menu_nombre'], ENT_QUOTES, 'UTF-8') . '</p>'
-                   . '</a></li>';
+            if ((int)$f['padre'] > 0) {
+                continue;                                   /* va dentro de su grupo */
+            }
+            if ($f['menu_hijo'] !== 'S') {
+                $html .= $enlace($f, $vistaActual);
+                continue;
+            }
+
+            $suyos = $hijos[(int)$f['menu_id']] ?? [];
+            if (!$suyos) {
+                continue;                                   /* grupo sin nada visible */
+            }
+            $abierto = in_array($vistaActual, array_column($suyos, 'menu_vista'), true);
+
+            /* nav-arrow (AdminLTE 4) rota la flecha al abrir el grupo. */
+            $html .= '<li class="nav-item' . ($abierto ? ' menu-open' : '') . '">'
+                   . '<a href="#" class="nav-link' . ($abierto ? ' active' : '') . '">'
+                   . '<i class="nav-icon ' . $e($f['menu_icono']) . '"></i>'
+                   . '<p>' . $e($f['menu_nombre']) . '<i class="nav-arrow fas fa-angle-right"></i></p>'
+                   . '</a><ul class="nav nav-treeview">';
+            foreach ($suyos as $h) {
+                $html .= $enlace($h, $vistaActual);
+            }
+            $html .= '</ul></li>';
         }
 
         return $html;

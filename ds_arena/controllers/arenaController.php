@@ -1969,6 +1969,7 @@ class arenaController
                        r.reserva_horainicio, r.reserva_horafin, r.reserva_horas,
                        r.reserva_total, r.reserva_abonado, r.reserva_saldo,
                        r.reserva_estado, r.reserva_fijaid, fj.fija_codigo,
+                       r.reserva_motivocancelacion,
                        c.cliente_nombre, c.cliente_identificacion,
                        i.instalacion_nombre,
                        s.sede_nombre
@@ -2032,11 +2033,13 @@ class arenaController
             "SELECT r.*, c.cliente_nombre, c.cliente_identificacion,
                     i.instalacion_nombre, i.instalacion_codigo,
                     fj.fija_codigo, fj.fija_dia, fj.fija_estado,
-                    fj.fija_horainicio, fj.fija_horafin
+                    fj.fija_horainicio, fj.fija_horafin,
+                    uc.usuario_usuario AS cancelada_por
                FROM dsa_reserva r
                JOIN dsa_cliente c ON c.cliente_id = r.reserva_clienteid
                JOIN dsa_instalacion i ON i.instalacion_id = r.reserva_instalacionid
                LEFT JOIN dsa_reserva_fija fj ON fj.fija_id = r.reserva_fijaid
+               LEFT JOIN seguridad_usuario uc ON uc.usuario_id = r.reserva_usuariocancelacion
               WHERE r.reserva_id = :id", [':id' => $id]);
 
         return $r[0] ?? null;
@@ -2185,6 +2188,21 @@ class arenaController
             : $this->alerta('simple', 'Error', 'No fue posible crear la reserva.', 'error');
     }
 
+    /** Letras mínimas del motivo de una cancelación: «x» o «.» no explican nada. */
+    public const MOTIVO_MINIMO = 4;
+
+    /**
+     * El motivo de una cancelación, limpio: espacios de más fuera y hasta
+     * 250 caracteres (el tamaño de la columna). Devuelve '' si no llega a
+     * MOTIVO_MINIMO letras o números, para que quien llama lo rechace.
+     */
+    private static function motivoCancelacion($texto): string
+    {
+        $m = trim(preg_replace('/\s+/u', ' ', (string)$texto) ?? '');
+        $m = mb_substr($m, 0, 250);
+        return preg_match_all('/[\p{L}\p{N}]/u', $m) >= self::MOTIVO_MINIMO ? $m : '';
+    }
+
     public function cambiarEstadoReserva(): string
     {
         if (!puede_editar('reservaList')) {
@@ -2245,16 +2263,47 @@ class arenaController
                 ' abonados. Devuelva el importe o páselo al monedero antes de cancelar.', 'error');
         }
 
-        $n = $this->escribir(
-            "UPDATE dsa_reserva SET reserva_estado = :e WHERE reserva_id = :id",
-            [':e' => $estado, ':id' => $id]);
+        /*
+        | EL MOTIVO DE LA CANCELACIÓN ES OBLIGATORIO (migración 087)
+        |
+        | Una cancelada sin motivo no se puede revisar después: ¿la pidió el
+        | cliente, llovió, fue un error? Se guarda con la fecha y quien la
+        | canceló. Al reactivar se vacían: el motivo era de esa cancelación.
+        */
+        $motivo = '';
+        if ($estado === 'X') {
+            $motivo = self::motivoCancelacion($_POST['reserva_motivo'] ?? '');
+            if ($motivo === '') {
+                return $this->alerta('simple', 'Falta el motivo',
+                    'Escriba por qué se cancela la reserva (al menos ' . self::MOTIVO_MINIMO . ' letras).', 'warning');
+            }
+            $n = $this->escribir(
+                "UPDATE dsa_reserva
+                    SET reserva_estado = 'X', reserva_motivocancelacion = :m,
+                        reserva_fechacancelacion = NOW(), reserva_usuariocancelacion = :u
+                  WHERE reserva_id = :id",
+                [':m' => $motivo, ':u' => (int)($_SESSION['usuarioid'] ?? 0) ?: null, ':id' => $id]);
+        } else {
+            $n = $this->escribir(
+                "UPDATE dsa_reserva
+                    /* El estado va AL FINAL: MySQL asigna de izquierda a
+                       derecha y cada IF vería ya el estado nuevo. */
+                    SET reserva_motivocancelacion  = IF(reserva_estado = 'X', NULL, reserva_motivocancelacion),
+                        reserva_fechacancelacion   = IF(reserva_estado = 'X', NULL, reserva_fechacancelacion),
+                        reserva_usuariocancelacion = IF(reserva_estado = 'X', NULL, reserva_usuariocancelacion),
+                        reserva_estado = :e
+                  WHERE reserva_id = :id",
+                [':e' => $estado, ':id' => $id]);
+        }
 
         /* Del catálogo, en minúscula, para que quepa dentro de la frase. */
         $nombre = $this->estadoReservaNombre($estado, true);
 
         $texto = $r['reserva_estado'] === 'X'
             ? "{$r['reserva_codigo']} se reactivó y quedó como {$nombre}. El horario seguía libre y vuelve a estar reservado."
-            : "{$r['reserva_codigo']} quedó como {$nombre}.";
+            : ($estado === 'X'
+                ? "{$r['reserva_codigo']} quedó cancelada y su horario está libre. Motivo: {$motivo}"
+                : "{$r['reserva_codigo']} quedó como {$nombre}.");
 
         return $n >= 0
             ? $this->alerta('recargar', $r['reserva_estado'] === 'X' ? 'Reserva reactivada' : 'Reserva ' . $nombre, $texto)
@@ -2630,7 +2679,7 @@ class arenaController
 
         $id     = (int)($_POST['fija_id'] ?? 0);
         $desde  = trim((string)($_POST['fija_cancelar_desde'] ?? ''));
-        $motivo = mb_substr(trim((string)($_POST['fija_motivo'] ?? '')), 0, 250);
+        $motivo = self::motivoCancelacion($_POST['fija_motivo'] ?? '');
 
         $f = $this->reservaFija($id);
         if ($f === null) {
@@ -2639,6 +2688,13 @@ class arenaController
         if ($f['fija_estado'] !== 'A') {
             return $this->alerta('simple', 'Ya cancelada', "{$f['fija_codigo']} ya estaba cancelada.", 'info');
         }
+        /* Obligatorio desde la migración 087: era opcional y casi nunca se
+           escribía, así que no se sabía por qué se había dejado la hora. */
+        if ($motivo === '') {
+            return $this->alerta('simple', 'Falta el motivo',
+                'Escriba por qué se cancela la reserva fija (al menos ' . self::MOTIVO_MINIMO . ' letras).', 'warning');
+        }
+        $usuario = (int)($_SESSION['usuarioid'] ?? 0) ?: null;
         $p = explode('-', $desde);
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $desde) || !checkdate((int)$p[1], (int)$p[2], (int)$p[0])) {
             return $this->alerta('simple', 'Fecha no válida', 'Indique desde qué día se cancela.', 'error');
@@ -2658,15 +2714,22 @@ class arenaController
             $con->prepare(
                 "UPDATE dsa_reserva_fija
                     SET fija_estado = 'X', fija_hasta = DATE_SUB(:d, INTERVAL 1 DAY),
-                        fija_motivocancelacion = :m, fija_fechacancelacion = CURRENT_TIMESTAMP
+                        fija_motivocancelacion = :m, fija_fechacancelacion = CURRENT_TIMESTAMP,
+                        fija_usuariocancelacion = :u
                   WHERE fija_id = :id AND fija_estado = 'A'"
-            )->execute([':d' => $desde, ':m' => $motivo !== '' ? $motivo : null, ':id' => $id]);
+            )->execute([':d' => $desde, ':m' => $motivo, ':u' => $usuario, ':id' => $id]);
 
+            /* Cada semana cancelada lleva el motivo de su serie: en el
+               listado se ve semana a semana, no sólo en la tarjeta. */
             $stmt = $con->prepare(
-                "UPDATE dsa_reserva SET reserva_estado = 'X'
+                "UPDATE dsa_reserva
+                    SET reserva_estado = 'X', reserva_motivocancelacion = :m,
+                        reserva_fechacancelacion = NOW(), reserva_usuariocancelacion = :u
                   WHERE reserva_fijaid = :id AND reserva_fecha >= :d
                     AND reserva_estado IN ('P','C') AND reserva_abonado = 0");
-            $stmt->execute([':id' => $id, ':d' => $desde]);
+            $stmt->execute([
+                ':m'  => mb_substr("Reserva fija {$f['fija_codigo']} cancelada: {$motivo}", 0, 250),
+                ':u'  => $usuario, ':id' => $id, ':d' => $desde]);
             $canceladas = $stmt->rowCount();
             $con->commit();
         } catch (\Throwable $e) {

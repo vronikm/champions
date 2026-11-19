@@ -45,6 +45,21 @@ require_once __DIR__ . "/inc/layout-top.php";
         <i class="fas fa-ban fa-lg"></i>
         <div class="flex-grow-1">
             <strong>Reserva cancelada.</strong> No admite cobros y su horario quedó libre.
+            <?php /* Por qué, cuándo y quién (migración 087). Las canceladas
+                     antes de esa migración no lo tienen y se dice así. */
+            $motivoX = trim((string)($reserva['reserva_motivocancelacion'] ?? '')); ?>
+            <span class="d-block mt-1">
+                <i class="fas fa-comment-dots me-1" aria-hidden="true"></i><strong>Motivo:</strong>
+                <?php echo $motivoX !== '' ? htmlspecialchars($motivoX, ENT_QUOTES, 'UTF-8') : '<em>sin motivo registrado</em>'; ?>
+            </span>
+            <?php if (!empty($reserva['reserva_fechacancelacion'])): ?>
+                <span class="d-block small text-body-secondary">
+                    Cancelada el <?php echo date('d/m/Y H:i', strtotime($reserva['reserva_fechacancelacion'])); ?>
+                    <?php if (!empty($reserva['cancelada_por'])): ?>
+                        por <?php echo htmlspecialchars($reserva['cancelada_por'], ENT_QUOTES, 'UTF-8'); ?>
+                    <?php endif; ?>
+                </span>
+            <?php endif; ?>
             <span class="d-block small">Si se canceló por error, puede reactivarla: volverá a Pendiente si nadie ocupó ese horario.</span>
         </div>
         <?php if (puede_editar('reservaList')): ?>

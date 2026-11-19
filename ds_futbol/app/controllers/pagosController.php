@@ -85,7 +85,7 @@
 					             FROM alumno_pago WHERE pago_estado = 'P'
 					            GROUP BY pago_alumnoid) PP ON PP.pago_alumnoid = A.alumno_id
 					LEFT JOIN (SELECT dia_alumnoid, COUNT(*) AS dias, SUM(dia_marca IN ('P','A')) AS asistidos,
-					                  MAX(CASE WHEN dia_marca IN ('P','A') THEN dia_fecha END) AS ultima_asis   /* último día que vino: presente o atraso */
+					                  MAX(CASE WHEN dia_marca IN ('P','A') AND dia_fecha <= CURDATE() THEN dia_fecha END) AS ultima_asis   /* último día que vino (presente o atraso); una marca con fecha futura es un error de carga y no cuenta */
 					             FROM insights_v_asistencia_dia GROUP BY dia_alumnoid) AS1 ON AS1.dia_alumnoid = A.alumno_id
 					WHERE " . implode(" AND ", $condiciones) . "
 					ORDER BY A.alumno_apellidopaterno, A.alumno_apellidomaterno, A.alumno_primernombre", $parametros)->fetchAll();

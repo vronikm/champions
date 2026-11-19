@@ -127,7 +127,10 @@
 				   filas y los montos con el QR al pie. Los estilos, en core.css
 				   (.ds-recibo). Todo lo que viene de la base sale escapado. */
 				$e = static fn ($t) => htmlspecialchars(trim(preg_replace('/\s+/u', ' ', (string)$t)), ENT_QUOTES, 'UTF-8');
-				$tsRecibo    = strtotime($datos['pago_fecharegistro']) ?: time();
+				/* Fecha de emisión = cuándo se registró en el sistema, no la
+				   fecha de pago ni el campo «Fecha de registro» del formulario
+				   (pagosController::fechaEmisionRecibo). */
+				$tsRecibo    = $insAlumno->fechaEmisionRecibo($datos);
 				$conceptoRec = implode(' ', array_filter(array_map('trim', [(string)$datos['RUBRO'], (string)$datos['torneo_nombre'], (string)$datos['pago_periodo']]), 'strlen'));
 				$detalleRec  = trim((string)$datos['pago_concepto']);
 				$saldoRec    = (float)$datos['SALDO_INICIAL'];
@@ -282,7 +285,7 @@
 									<?php
 										/* ds-recibo-qr: en pantalla pequeña el SVG escala (core.css);
 										   al imprimir conserva su tamaño para leerse en papel. */
-										echo $generator->render_svg($symbology, "Recibo ".$datos["pago_recibo"]."\n".$datos["pago_fecharegistro"]." | ".$recibo_hora."\n".$sede['sede_nombre']."\n".$sede["sede_telefono"]."\n".$sede["sede_email"], $optionsQR);
+										echo $generator->render_svg($symbology, "Recibo ".$datos["pago_recibo"]."\n".date('Y-m-d', $tsRecibo)." | ".$recibo_hora."\n".$sede['sede_nombre']."\n".$sede["sede_telefono"]."\n".$sede["sede_email"], $optionsQR);
 									?>
 								</div>
 							</div>

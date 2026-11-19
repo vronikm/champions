@@ -2033,9 +2033,10 @@
 						A.alumno_segundonombre,
 						A.alumno_fechanacimiento,
 						TOR.torneo_nombre,
+						UNIX_TIMESTAMP(P.pago_fechasistema) AS pago_emision_ts,   /* ver fechaEmisionRecibo() */
 						P.*,
 						A.*
-						FROM alumno_pago P	
+						FROM alumno_pago P
 							INNER JOIN sujeto_alumno A ON A.alumno_id = P.pago_alumnoid
 							INNER JOIN general_tabla_catalogo R ON R.catalogo_valor = P.pago_rubroid 
 							INNER JOIN general_tabla_catalogo F ON F.catalogo_valor = P.pago_formapagoid
@@ -2052,6 +2053,32 @@
 
 			$datos = $this->ejecutarConsulta($consulta_datos, [':pago' => (int)$pagoid]);		
 			return $datos;
+		}
+
+		/*
+		| FECHA DE EMISIÓN DEL RECIBO: CUÁNDO SE REGISTRÓ EN EL SISTEMA
+		|
+		| El recibo mostraba pago_fecharegistro, que NO es el momento del
+		| registro: es un campo del formulario («Fecha de registro») que trae
+		| hoy por omisión y se puede cambiar. Un pago del 10/11 registrado el
+		| 16/11 salía emitido el 10/11, mientras su número (6112118162356413)
+		| y la hora del QR decían 16/11/26 21:18:53.
+		|
+		| La emisión es pago_fechasistema, la marca que pone la base al
+		| guardar. Es la misma que codifica el número de recibo: coinciden en
+		| los 5.891 recibos de ADF (y en el 95-99 % de los otros sistemas;
+		| las diferencias son registros importados). Se lee como
+		| UNIX_TIMESTAMP para que la zona horaria de MySQL en el hosting no
+		| corra el día; PHP la pinta en la de Ecuador. Sin esa marca, la de
+		| registro del formulario.
+		*/
+		public function fechaEmisionRecibo(array $datos): int
+		{
+			$ts = (int)($datos['pago_emision_ts'] ?? 0);
+			if ($ts > 0) {
+				return $ts;
+			}
+			return strtotime((string)($datos['pago_fecharegistro'] ?? '')) ?: time();
 		}
 
 		public function generarReciboPendiente($transaccion_id){

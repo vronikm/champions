@@ -48,7 +48,7 @@
 		'sede_direccion' => '', 'sede_telefono' => '', 'sede_email' => '',
 	];
    											
-    $data="Recibo ".$datos["pago_recibo"]. "\n".$datos["pago_fecharegistro"]. " | ".$recibo_hora."\n".$sede['sede_nombre']."\n".$sede["sede_telefono"]."\n".$sede["sede_email"];
+    $data="Recibo ".$datos["pago_recibo"]. "\n".date('Y-m-d', $insAlumno->fechaEmisionRecibo($datos)). " | ".$recibo_hora."\n".$sede['sede_nombre']."\n".$sede["sede_telefono"]."\n".$sede["sede_email"];
 
     $image = $generator->render_image($symbology, $data, $optionsQR);
     imagejpeg($image, $filename);
@@ -67,7 +67,8 @@
     //,,ancho,
 
     /* Cabecera común de los recibos (logo, organización, contacto y fecha): ds_core/inc/organizacion.php */
-    ds_recibo_cabecera($pdf, $sede, (string)$datos['pago_fecharegistro']);
+    /* Emisión = registro en el sistema (pagosController::fechaEmisionRecibo). */
+    ds_recibo_cabecera($pdf, $sede, date('Y-m-d H:i:s', $insAlumno->fechaEmisionRecibo($datos)));
 
     $pdf->SetLineWidth(0.1); $pdf->Rect(10, 51, 190, 70, "D");
     //margen, alto izquierdo de separación de línea, ancho de la fila de lado a lado, alto derecho de separación de línea

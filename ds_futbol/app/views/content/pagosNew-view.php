@@ -191,8 +191,9 @@ CSS;
 						</div><!-- /.col -->
 						<div class="col-sm-6">
 							<ol class="breadcrumb float-sm-end">
-								<li class="breadcrumb-item"><a href="#">Inicio</a></li>
-								<li class="breadcrumb-item active">Ficha Alumno</li>
+								<li class="breadcrumb-item"><a href="<?php echo APP_URL; ?>dashboard/">Inicio</a></li>
+								<li class="breadcrumb-item"><a href="<?php echo APP_URL; ?>pagosList/">Pagos</a></li>
+								<li class="breadcrumb-item active" aria-current="page"><?php echo htmlspecialchars($datos['alumno_primernombre'].' '.$datos['alumno_apellidopaterno'], ENT_QUOTES, 'UTF-8'); ?></li>
 							</ol>
 						</div><!-- /.col -->
 					</div><!-- /.row -->
@@ -381,7 +382,7 @@ CSS;
 											<?php
 												if($beca != 'S'){
 													echo '						
-														' . ds_acciones_form('', ['limpiar' => true]) . '
+														' . ds_acciones_form('', ['limpiar' => true, 'respaldo' => APP_URL . 'pagosList/']) . '
 													';
 												}
 												
@@ -531,7 +532,7 @@ CSS;
 											<?php
 												if($beca != 'S'){
 													echo '
-														' . ds_acciones_form('', ['limpiar' => true]) . '
+														' . ds_acciones_form('', ['limpiar' => true, 'respaldo' => APP_URL . 'pagosList/']) . '
 													';							
 												}
 											?>
@@ -660,7 +661,7 @@ CSS;
 											</div>		
 																					
 											<!-- /.post -->
-											<?php echo ds_acciones_form('', ['limpiar' => true]); ?>
+											<?php echo ds_acciones_form('', ['limpiar' => true, 'respaldo' => APP_URL . 'pagosList/']); ?>
 											</form>
 
 											<div class="tab-custom-content">
@@ -792,7 +793,7 @@ CSS;
 													</div>
 												</div>											
 											<!-- /.post -->
-											<?php echo ds_acciones_form('', ['limpiar' => true]); ?>
+											<?php echo ds_acciones_form('', ['limpiar' => true, 'respaldo' => APP_URL . 'pagosList/']); ?>
 											</form>	
 											
 											<div class="tab-custom-content">
@@ -915,7 +916,7 @@ CSS;
 													</div>
 												</div>										
 												<!-- /.post -->
-											<?php echo ds_acciones_form('', ['limpiar' => true]); ?>
+											<?php echo ds_acciones_form('', ['limpiar' => true, 'respaldo' => APP_URL . 'pagosList/']); ?>
 											</form>	
 											
 											<div class="tab-custom-content">
@@ -1038,7 +1039,7 @@ CSS;
 												</div>											
 											<!-- /.post -->
 
-											<?php echo ds_acciones_form('', ['limpiar' => true]); ?>
+											<?php echo ds_acciones_form('', ['limpiar' => true, 'respaldo' => APP_URL . 'pagosList/']); ?>
 											</form>	
 											
 											<div class="tab-custom-content">

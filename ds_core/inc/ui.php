@@ -148,9 +148,19 @@ if (!function_exists('ds_icono')) {
         } elseif ($urlVolver === '') {
             /* El onclick va en el propio botón en vez de en un script
                aparte: así la función es autosuficiente y no hay que
-               acordarse de cargar nada en cada una de las 86 vistas. */
+               acordarse de cargar nada en cada una de las 86 vistas.
+
+               Con 'respaldo' (una URL) se retrocede sólo si se llegó desde
+               otra pantalla del sistema; si la pestaña se abrió aparte
+               (target="_blank" desde Cobranza) o desde fuera, history.back()
+               no hacía nada o sacaba del sistema: entonces va al respaldo. */
+            $respaldo = trim((string)($opciones['respaldo'] ?? ''));
+            $js = $respaldo === ''
+                ? 'history.back()'
+                : "if(history.length>1&&document.referrer.indexOf(location.origin+'/')===0){history.back()}"
+                  . 'else{location.href=' . json_encode($respaldo, JSON_UNESCAPED_SLASHES) . '}';
             $html .= str_replace('<button type="button"',
-                '<button type="button" onclick="history.back();return false;"',
+                '<button type="button" onclick="' . htmlspecialchars($js, ENT_QUOTES, 'UTF-8') . ';return false;"',
                 ds_boton('volver', $volver, ['type' => 'button', 'estilo' => 'secondary']));
         } else {
             $html .= ds_boton('volver', $volver, ['href' => $urlVolver, 'estilo' => 'secondary']);

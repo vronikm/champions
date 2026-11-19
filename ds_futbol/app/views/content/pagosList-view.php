@@ -14,7 +14,10 @@
 	| entrada: abajo se escapan al pintarlos en el formulario, y la consulta
 	| los recibe como parámetros ligados.
 	*/
-	$criterio = static fn(string $clave) => trim((string)($_POST[$clave] ?? ''));
+	/* Van por GET (antes POST): así «Volver» desde la ficha de pagos regresa
+	   a esta búsqueda sin el aviso «Confirmar reenvío del formulario», y la
+	   búsqueda se puede recargar o guardar como enlace. */
+	$criterio = static fn(string $clave) => is_string($_GET[$clave] ?? null) ? trim($_GET[$clave]) : '';
 
 	$alumno_identificacion  = $criterio('alumno_identificacion');
 	$alumno_primernombre    = $criterio('alumno_nombre1');
@@ -28,7 +31,7 @@
 	   todas: antes no salía ningún alumno hasta pulsar Buscar. */
 	$opcionesSede  = $insPago->listarOptionSede($criterio('alumno_sedeid'), $_SESSION['rol'], $_SESSION['usuario']);
 	$ofrecerTodas  = sedes_de_la_sesion() === null || substr_count($opcionesSede, '<option') > 1;
-	$alumno_sedeid = isset($_POST['alumno_sedeid']) ? (int)$criterio('alumno_sedeid') : 0;
+	$alumno_sedeid = isset($_GET['alumno_sedeid']) ? (int)$criterio('alumno_sedeid') : 0;
 
 	$filas = $insPago->listarAlumnosPagos($alumno_identificacion, $alumno_apellidopaterno, $alumno_primernombre, $alumno_estado, $alumno_sedeid);
 	$total = substr_count($filas, '<tr>');
@@ -72,7 +75,7 @@
 			<div class="container-fluid ds-crud">
 
 				<!-- =================== Criterios de búsqueda =================== -->
-				<form action="<?php echo APP_URL."pagosList/" ?>" method="POST" autocomplete="off" class="card ds-alumnos__filtros">
+				<form action="<?php echo APP_URL."pagosList/" ?>" method="GET" autocomplete="off" class="card ds-alumnos__filtros">
 					<div class="card-header">
 						<h3 class="card-title"><i class="fas fa-filter me-2" aria-hidden="true"></i>Criterios de búsqueda</h3>
 						<div class="card-tools">

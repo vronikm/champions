@@ -5,7 +5,7 @@
 	/* Rol de la sesión: decide si el filtro ofrece "Todas las sedes". */
 	$rolid = rol_actual();
 
-	$campo = static fn(string $n) => isset($_POST[$n]) ? $insAlumno->limpiarCadena($_POST[$n]) : '';
+	$campo = static fn(string $n) => isset($_GET[$n]) && is_string($_GET[$n]) ? $insAlumno->limpiarCadena($_GET[$n]) : '';
 	$alumno_identificacion  = $campo('alumno_identificacion');
 	$alumno_primernombre    = $campo('alumno_nombre1');
 	$alumno_apellidopaterno = $campo('alumno_apellido1');
@@ -18,7 +18,7 @@
 	   con las sedes de la sesión. */
 	$sedeDeRuta   = ctype_digit((string)($url[1] ?? '')) ? (int)$url[1] : 0;
 	$estadoDeRuta = in_array(strtoupper((string)($url[2] ?? '')), ['A', 'I', 'T'], true) ? strtoupper($url[2]) : '';
-	$conFormulario = $_SERVER['REQUEST_METHOD'] === 'POST';
+	$conFormulario = isset($_GET['alumno_estado']);   /* la búsqueda va por GET: «Volver» desde una ficha la recupera sin «Confirmar reenvío» */
 
 	/* Estado: el listado muestra los ACTIVOS salvo que se pida otra cosa. */
 	$alumno_estado = in_array($campo('alumno_estado'), ['A', 'I', 'T'], true) ? $campo('alumno_estado')
@@ -28,7 +28,7 @@
 	   para el resto, «todas» son las suyas (el servidor lo acota en
 	   condicionSede). Al abrir la pantalla, todas: antes no salía ningún
 	   alumno hasta pulsar Buscar. */
-	$alumno_sedeid = isset($_POST['alumno_sedeid']) ? (int)$campo('alumno_sedeid') : (!$conFormulario ? $sedeDeRuta : 0);
+	$alumno_sedeid = isset($_GET['alumno_sedeid']) ? (int)$campo('alumno_sedeid') : (!$conFormulario ? $sedeDeRuta : 0);
 	$opcionesSede = $insAlumno->listarSedebusqueda($alumno_sedeid, $_SESSION['rol'], $_SESSION['usuario']);
 	$ofrecerTodas = sedes_de_la_sesion() === null || substr_count($opcionesSede, '<option') > 1;
 
@@ -88,7 +88,7 @@
 			<div class="container-fluid ds-crud">
 
 				<!-- =================== Criterios de búsqueda =================== -->
-				<form action="<?php echo APP_URL."alumnoList/" ?>" method="POST" autocomplete="off" class="card ds-alumnos__filtros">
+				<form action="<?php echo APP_URL."alumnoList/" ?>" method="GET" autocomplete="off" class="card ds-alumnos__filtros">
 					<div class="card-header">
 						<h3 class="card-title"><i class="fas fa-filter me-2" aria-hidden="true"></i>Criterios de búsqueda</h3>
 						<div class="card-tools">

@@ -839,6 +839,9 @@
 		| sin días ni hora, y sin forma de saber si la asistencia se tomaba.
 		|
 		| Rol distinto de 1 y 2: sólo los horarios que dicta $profesor_id.
+		|
+		| Sólo sedes activas (sede_estado = 'A'): los horarios de una sede
+		| inactiva no se dictan y no deben pedir asistencia.
 		*/
 		public function listarHorariosProfesor($profesor_id){
 			$parametros = [];
@@ -859,7 +862,8 @@
 					LEFT JOIN asistencia_lugar L ON L.lugar_id = D.detalle_lugarid
 					LEFT JOIN asistencia_hora HR ON HR.hora_id = D.detalle_horaid
 					LEFT JOIN sujeto_empleado E ON E.empleado_id = D.detalle_profesorid
-					WHERE H.horario_estado <> 'E'" . $soloProfesor . "
+					WHERE H.horario_estado <> 'E'
+					  AND S.sede_estado = 'A'" . $soloProfesor . "
 					GROUP BY H.horario_id, H.horario_nombre, H.horario_detalle, S.sede_nombre
 					ORDER BY S.sede_nombre, inicio, H.horario_nombre", $parametros)->fetchAll();
 

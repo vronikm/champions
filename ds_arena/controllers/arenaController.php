@@ -3817,6 +3817,19 @@ class arenaController
                         UNIX_TIMESTAMP(p.pago_fecharegistro) AS ts,
                         f.forma_codigo, f.forma_nombre, f.forma_esmonedero,
                         r.reserva_id, r.reserva_codigo, r.reserva_fecha, r.reserva_horainicio, r.reserva_horafin,
+                        /* La franja de Horarios en la que cae la reserva: su
+                           instalación, el día de la semana (1 = lunes, como
+                           horario_dia) y la hora de inicio. Las franjas de un
+                           mismo día no se cruzan (guardarHorario), así que es
+                           una sola. */
+                        (SELECT CONCAT(h.horario_desde, '|', h.horario_hasta)
+                           FROM dsa_horario h
+                          WHERE h.horario_instalacionid = r.reserva_instalacionid
+                            AND h.horario_dia = WEEKDAY(r.reserva_fecha) + 1
+                            AND h.horario_estado = 'A'
+                            AND r.reserva_horainicio >= h.horario_desde
+                            AND r.reserva_horainicio <  h.horario_hasta
+                          ORDER BY h.horario_desde DESC LIMIT 1) AS franja,
                         c.cliente_nombre, i.instalacion_nombre, s.sede_nombre,
                         COALESCE(u.usuario_usuario, '—') AS cajero
                    FROM dsa_pago p
@@ -3862,8 +3875,9 @@ class arenaController
             'nPagos' => count($pagos), 'nMovimientos' => 0,
         ];
         $formas = [];          // nombre => [n, total, entra]
-        $horas  = [];          // 0..23 => [total, n]
+        $horas  = $this->franjasDefinidas($f['sede']);   // 'HH:MM-HH:MM' => franja de Horarios (ver abajo)
         $dias   = [];          // Y-m-d => [total, n]
+        $r['depositos'] = 0.0; // depósitos al monedero: no tienen horario
         $movs   = [];          // la lista única, en orden de hora
 
         $sumar = static function (array &$a, $k, float $v) {
@@ -3894,9 +3908,22 @@ class arenaController
                 } else {
                     $r['bancos'] += $entra;
                 }
-                $sumar($horas, (int)date('G', $ts), $entra);
                 $sumar($dias, date('Y-m-d', $ts), $entra);
             }
+
+            /* Ingresos por horario: lo que pagó la reserva (también con
+               monedero: es lo que produjo esa franja), en la franja de
+               Horarios en la que se jugó, no en la hora en que se cobró. Si
+               la reserva no cae en ninguna franja vigente (se borró o se
+               cambió el horario), cuenta en su propia hora, marcada. */
+            [$fd, $fh] = $p['franja'] ? explode('|', $p['franja']) : [$p['reserva_horainicio'], $p['reserva_horafin']];
+            $clave = substr($fd, 0, 5) . '-' . substr($fh, 0, 5);
+            $horas[$clave] ??= $this->franjaVacia(substr($fd, 0, 5), substr($fh, 0, 5), $p['franja'] !== null);
+            $horas[$clave]['total'] += $valor;
+            $horas[$clave]['n']++;
+            $horas[$clave]['reservas'][(int)$p['reserva_id']] = true;
+            $horas[$clave]['instalaciones'][$p['instalacion_nombre']] = true;
+            if ($esMon) { $horas[$clave]['monedero'] += $valor; }
 
             $movs[] = [
                 'ts' => $ts, 'tipo' => 'pago', 'id' => (int)$p['pago_id'],
@@ -3925,12 +3952,12 @@ class arenaController
             } else {
                 $entra = $valor;
                 $r['recaudado'] += $valor;
+                $r['depositos'] += $valor;
                 if ($m['movimiento_origen'] === 'EFE') {
                     $r['efectivo'] += $valor; $r['depositosEfectivo'] += $valor;
                 } else {
                     $r['bancos'] += $valor;
                 }
-                $sumar($horas, (int)date('G', $ts), $valor);
                 $sumar($dias, date('Y-m-d', $ts), $valor);
             }
             $nombre = $nombresMon[$m['movimiento_origen']];
@@ -3951,11 +3978,64 @@ class arenaController
         }
 
         usort($movs, static fn ($x, $y) => [$x['ts'], $x['id']] <=> [$y['ts'], $y['id']]);
-        ksort($horas);
+        ksort($horas);   // 'HH:MM-HH:MM' ordena por hora de inicio
+        foreach ($horas as &$h) {
+            $h['reservas']      = count($h['reservas']);
+            $h['instalaciones'] = array_keys($h['instalaciones']);
+            sort($h['instalaciones']);
+            $h['dias'] = $this->diasCortos(array_keys($h['dias']));
+        }
+        unset($h);
         ksort($dias);
         uasort($formas, static fn ($x, $y) => $y['total'] <=> $x['total']);
 
         return ['resumen' => $r, 'formas' => $formas, 'horas' => $horas, 'dias' => $dias, 'movimientos' => $movs];
+    }
+
+    /** Una franja del reporte «Ingresos por horario», sin cobros aún. */
+    private function franjaVacia(string $desde, string $hasta, bool $definida): array
+    {
+        return ['desde' => $desde, 'hasta' => $hasta, 'definida' => $definida,
+                'total' => 0.0, 'n' => 0, 'monedero' => 0.0, 'reservas' => [],
+                'instalaciones' => [], 'dias' => []];
+    }
+
+    /*
+    | Las franjas vigentes de Horarios (de la sede elegida, o de todas),
+    | agrupadas por su hora: «18:00-19:00» en varios días o canchas es una
+    | sola fila, con sus días y canchas. Salen aunque no hayan cobrado nada:
+    | una franja sin ingresos también es un dato.
+    */
+    private function franjasDefinidas(int $sede): array
+    {
+        $sql = "SELECT TIME_FORMAT(h.horario_desde, '%H:%i') AS desde, TIME_FORMAT(h.horario_hasta, '%H:%i') AS hasta,
+                       h.horario_dia, i.instalacion_nombre
+                  FROM dsa_horario h
+                  JOIN dsa_instalacion i ON i.instalacion_id = h.horario_instalacionid
+                 WHERE h.horario_estado = 'A' AND i.instalacion_estado = 'A'";
+        $p = [];
+        if ($sede > 0) { $sql .= " AND i.instalacion_sedeid = :s"; $p[':s'] = $sede; }
+
+        $franjas = [];
+        foreach ($this->filas($sql, $p) as $h) {
+            $k = $h['desde'] . '-' . $h['hasta'];
+            $franjas[$k] = $franjas[$k] ?? $this->franjaVacia($h['desde'], $h['hasta'], true);
+            $franjas[$k]['dias'][(int)$h['horario_dia']] = true;
+            $franjas[$k]['instalaciones'][$h['instalacion_nombre']] = true;
+        }
+        return $franjas;
+    }
+
+    /** [1..7] → «Todos los días», «Lun a Vie», «Sáb y Dom» o «Lun, Mié, Vie». */
+    private function diasCortos(array $dias): string
+    {
+        sort($dias);
+        $n = ['', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+        if (!$dias) { return ''; }
+        if ($dias === [1, 2, 3, 4, 5, 6, 7]) { return 'Todos los días'; }
+        if (count($dias) > 2 && $dias === range($dias[0], end($dias))) { return $n[$dias[0]] . ' a ' . $n[end($dias)]; }
+        $nombres = array_map(static fn ($d) => $n[$d], $dias);
+        return count($nombres) === 2 ? implode(' y ', $nombres) : implode(', ', $nombres);
     }
 
     /*

@@ -2,7 +2,7 @@
 /*
 | Reportes › Pagos (2026-11-19, migración 088)
 |
-| Para cerrar el día: cuánto se recaudó, en qué forma, a qué hora, y cuánto
+| Para cerrar el día: cuánto se recaudó, en qué forma, en qué horario, y cuánto
 | efectivo tiene que haber en la caja. Cómo se cuenta cada peso está en
 | arenaController::reportePagos().
 |
@@ -12,7 +12,7 @@
 |   2. Las cifras: recaudado, efectivo, bancos, monedero, número de cobros.
 |   3. El cuadre de la caja: lo que debe haber y, si se escribe lo contado,
 |      la diferencia (no se guarda: es una cuenta en pantalla).
-|   4. Por forma de pago y por hora.
+|   4. Por forma de pago y por horario (las franjas de Arena › Horarios).
 |   5. El detalle de cada cobro, con su recibo.
 |
 | Acceso: permiso «ver» sobre reportePagos (Core › Permisos). Imprimir y
@@ -96,16 +96,17 @@ $atajos = [
     'Este mes'     => [date('Y-m-01'), $hoy],
 ];
 
-/* Las horas, de la primera a la última con cobros y sin huecos: una hora
-   sin ingresos también es un dato (la cancha estuvo parada). */
+/* Ingresos por horario: las franjas de Horarios (horarioList), cada una
+   con lo que pagaron las reservas que se jugaron en ella. Las vigentes
+   salen aunque no hayan cobrado nada: una franja sin ingresos también es
+   un dato (la cancha estuvo parada). */
 $horas = $datos['horas'];
-$maxHora = 0.0; $picoHora = null;
-if ($horas) {
-    $ks = array_keys($horas);
-    for ($h = min($ks); $h <= max($ks); $h++) { $horas[$h] = $horas[$h] ?? ['total' => 0.0, 'n' => 0]; }
-    ksort($horas);
-    foreach ($horas as $h => $v) { if ($v['total'] > $maxHora) { $maxHora = $v['total']; $picoHora = $h; } }
+$maxHora = 0.0; $picoHora = null; $totalHorarios = 0.0;
+foreach ($horas as $k => $v) {
+    $totalHorarios += $v['total'];
+    if ($v['total'] > $maxHora) { $maxHora = $v['total']; $picoHora = $k; }
 }
+$franjaTexto = static fn (array $v) => $v['desde'] . ' – ' . $v['hasta'];
 
 $cajeroNombre = '';
 foreach ($cajeros as $c) { if ((int)$c['usuario_id'] === $f['cajero']) { $cajeroNombre = $c['usuario_usuario']; } }
@@ -314,35 +315,52 @@ require_once __DIR__ . "/inc/layout-top.php";
         </div>
     </div>
 
-    <?php /* ===================== Por hora ===================== */ ?>
+    <?php /* ===================== Por horario ===================== */ ?>
     <?php if ($horas): ?>
     <div class="col-lg-<?php echo count($datos['dias']) > 1 ? '7' : '12'; ?>">
         <div class="card h-100">
             <div class="card-header d-flex flex-wrap align-items-baseline gap-2">
-                <h3 class="card-title mb-0"><i class="far fa-clock me-2" aria-hidden="true"></i>Ingresos por hora</h3>
+                <h3 class="card-title mb-0"><i class="far fa-clock me-2" aria-hidden="true"></i>Ingresos por horario</h3>
                 <?php if ($picoHora !== null): ?>
-                    <small class="text-body-secondary ms-auto">Hora más fuerte: <strong><?php echo sprintf('%02d:00', $picoHora); ?></strong></small>
+                    <small class="text-body-secondary ms-auto">Horario más fuerte: <strong class="text-nowrap"><?php echo $franjaTexto($horas[$picoHora]); ?></strong></small>
                 <?php endif; ?>
             </div>
             <div class="card-body">
-                <?php /* Una barra por hora, en un solo tono. El valor va al lado de
-                         la barra: la lista sirve también de tabla. */ ?>
-                <ol class="ar-rp__horas" aria-label="Dinero recaudado en cada hora<?php echo $unDia ? '' : ', sumando los días del periodo'; ?>">
-                    <?php foreach ($horas as $h => $v):
-                        $ancho = $maxHora > 0 ? max($v['total'] > 0 ? 2 : 0, round($v['total'] / $maxHora * 100, 1)) : 0; ?>
-                        <li class="<?php echo $h === $picoHora ? 'ar-rp__hora--pico' : ''; ?><?php echo $v['n'] === 0 ? ' ar-rp__hora--vacia' : ''; ?>"
-                            title="<?php echo sprintf('%02d:00–%02d:59', $h, $h); ?> · <?php echo $din($v['total']); ?> · <?php echo $v['n']; ?> movimiento<?php echo $v['n'] === 1 ? '' : 's'; ?>"
+                <?php /* Una fila por franja de Horarios, una barra en un solo tono.
+                         El valor va al lado de la barra (debajo, en el teléfono):
+                         la lista sirve también de tabla. */ ?>
+                <ol class="ar-rp__horas" aria-label="Ingresos de cada horario<?php echo $unDia ? '' : ', sumando los días del periodo'; ?>">
+                    <?php foreach ($horas as $k => $v):
+                        $ancho = $maxHora > 0 ? max($v['total'] > 0 ? 2 : 0, round($v['total'] / $maxHora * 100, 1)) : 0;
+                        $meta = array_filter([$v['dias'], implode(', ', $v['instalaciones'])]);
+                        $cuantas = $v['reservas'] . ' reserva' . ($v['reservas'] === 1 ? '' : 's'); ?>
+                        <li class="<?php echo $k === $picoHora ? 'ar-rp__hora--pico' : ''; ?><?php echo $v['n'] === 0 ? ' ar-rp__hora--vacia' : ''; ?>"
+                            title="<?php echo $e($franjaTexto($v) . ' · ' . $din($v['total']) . ($v['n'] ? ' · ' . $cuantas . ' · ' . $v['n'] . ' cobro' . ($v['n'] === 1 ? '' : 's') : ' · sin ingresos')); ?>"
                             tabindex="0">
-                            <span class="ar-rp__hora-etq"><?php echo sprintf('%02d:00', $h); ?></span>
+                            <span class="ar-rp__hora-etq">
+                                <strong><?php echo $franjaTexto($v); ?></strong>
+                                <?php if (!$v['definida']): ?><span class="badge text-bg-warning ar-rp__fuera">Fuera de horario</span><?php endif; ?>
+                                <?php if ($meta): ?><small><?php echo $e(implode(' · ', $meta)); ?></small><?php endif; ?>
+                            </span>
                             <span class="ar-rp__hora-pista"><span class="ar-rp__hora-barra" style="width:<?php echo $ancho; ?>%"></span></span>
-                            <span class="ar-rp__hora-val"><?php echo $v['n'] ? $din($v['total']) : '—'; ?>
-                                <?php if ($v['n']): ?><small><?php echo $v['n']; ?></small><?php endif; ?></span>
+                            <span class="ar-rp__hora-val">
+                                <strong><?php echo $v['n'] ? $din($v['total']) : '—'; ?></strong>
+                                <small><?php echo $v['n'] ? $cuantas : 'sin ingresos'; ?><?php
+                                    echo $v['monedero'] > 0 ? ' · ' . $din($v['monedero']) . ' monedero' : ''; ?></small>
+                            </span>
                         </li>
                     <?php endforeach; ?>
+                    <li class="ar-rp__horas-total">
+                        <span class="ar-rp__hora-etq"><strong>Total en horarios</strong></span>
+                        <span class="ar-rp__hora-pista" aria-hidden="true"></span>
+                        <span class="ar-rp__hora-val"><strong><?php echo $din($totalHorarios); ?></strong></span>
+                    </li>
                 </ol>
                 <p class="small text-body-secondary mb-0 mt-2">
-                    Hora en que se registró cada cobro o depósito<?php echo $unDia ? '' : ', sumando todos los días del periodo'; ?>.
-                    El número pequeño es la cantidad de movimientos.
+                    Lo que pagaron las reservas según el horario (Arena › Horarios) en que se juegan, no la hora en que se cobró<?php echo $unDia ? '' : ', sumando todos los días del periodo'; ?>.
+                    Incluye lo pagado con monedero.
+                    <?php if ($r['depositos'] > 0): ?>Los depósitos al monedero (<?php echo $din($r['depositos']); ?>) no tienen horario y no se cuentan aquí.<?php endif; ?>
+                    <?php if (array_filter($horas, static fn ($v) => !$v['definida'])): ?>«Fuera de horario»: reservas en una hora que no está (o ya no está) en Horarios.<?php endif; ?>
                 </p>
             </div>
         </div>
@@ -512,21 +530,28 @@ require_once __DIR__ . "/inc/layout-top.php";
 .ar-rp__forma--info { color: var(--bs-secondary-color); background: var(--bs-tertiary-bg); }
 .ar-rp__formas-total { border-bottom: 0 !important; font-weight: 700; font-size: 1.05rem; }
 
-/* ---- Por hora: una serie, un tono; barra fina con el extremo redondeado ---- */
-.ar-rp__horas { list-style: none; margin: 0; padding: 0; display: grid; gap: .25rem; }
+/* ---- Por horario: una serie, un tono; barra fina con el extremo redondeado.
+        Escritorio: franja (con días y canchas) · barra · valor. ---- */
+.ar-rp__horas { list-style: none; margin: 0; padding: 0; display: grid; gap: .15rem; }
 .ar-rp__horas li {
-    display: grid; grid-template-columns: 3.2rem minmax(0, 1fr) 6.5rem; align-items: center; gap: .6rem;
-    padding: .2rem .35rem; border-radius: .35rem;
+    display: grid; grid-template-columns: minmax(9rem, 14rem) minmax(0, 1fr) 8.5rem; align-items: center; gap: .75rem;
+    padding: .45rem .5rem; border-radius: .4rem;
 }
 .ar-rp__horas li:hover, .ar-rp__horas li:focus-visible { background: var(--bs-tertiary-bg); outline: none; }
-.ar-rp__hora-etq { font-variant-numeric: tabular-nums; font-size: .85rem; color: var(--bs-secondary-color); }
+.ar-rp__hora-etq { min-width: 0; }
+.ar-rp__hora-etq strong { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.ar-rp__hora-etq small, .ar-rp__hora-val small { display: block; font-size: .78rem; color: var(--bs-secondary-color); line-height: 1.3; }
+.ar-rp__fuera { font-size: .68rem; font-weight: 600; vertical-align: .1em; margin-left: .25rem; }
 .ar-rp__hora-pista { height: .7rem; }
 .ar-rp__hora-barra { display: block; height: 100%; background: var(--rp-tono); border-radius: 0 4px 4px 0; opacity: .75; }
 .ar-rp__hora--pico .ar-rp__hora-barra { opacity: 1; }
-.ar-rp__hora--pico .ar-rp__hora-etq { color: var(--bs-emphasis-color); font-weight: 700; }
-.ar-rp__hora-val { text-align: right; font-variant-numeric: tabular-nums; font-size: .9rem; white-space: nowrap; }
-.ar-rp__hora-val small { color: var(--bs-secondary-color); margin-left: .25rem; }
-.ar-rp__hora--vacia .ar-rp__hora-val { color: var(--bs-secondary-color); }
+.ar-rp__hora--pico .ar-rp__hora-etq strong { color: var(--bs-emphasis-color); font-weight: 700; }
+.ar-rp__hora-val { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ar-rp__hora-val strong { font-weight: 600; }
+.ar-rp__hora--vacia .ar-rp__hora-etq strong, .ar-rp__hora--vacia .ar-rp__hora-val strong { color: var(--bs-secondary-color); font-weight: 400; }
+.ar-rp__horas li.ar-rp__horas-total { border-top: 1px solid var(--bs-border-color); border-radius: 0; margin-top: .25rem; padding-top: .65rem; }
+.ar-rp__horas li.ar-rp__horas-total:hover { background: none; }
+.ar-rp__horas-total strong { font-weight: 700 !important; font-size: 1.05rem; }
 
 /* ---- Detalle ---- */
 .ar-rp__tabla td { vertical-align: top; }
@@ -568,7 +593,23 @@ require_once __DIR__ . "/inc/layout-top.php";
     .ar-rp__exportar { width: 100%; }
     .ar-rp__exportar .btn { flex: 1 1 0; min-height: 2.75rem; }
     .ar-rp__cuadre input { min-height: 2.75rem; font-size: 1rem; }
-    .ar-rp__horas li { grid-template-columns: 2.9rem minmax(0, 1fr) 5.6rem; gap: .45rem; }
+    /* Teléfono: cada franja es una ficha. Arriba la franja y el valor, la
+       barra debajo a lo ancho; los días y canchas, y las reservas, al pie
+       de cada lado. */
+    .ar-rp__horas { gap: .5rem; }
+    .ar-rp__horas li {
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas: "etq val" "pista pista";
+        gap: .35rem .75rem; padding: .7rem .75rem;
+        border: 1px solid var(--bs-border-color-translucent); border-radius: var(--bs-border-radius-lg);
+    }
+    .ar-rp__hora-etq { grid-area: etq; }
+    .ar-rp__hora-val { grid-area: val; }
+    .ar-rp__hora-pista { grid-area: pista; height: .55rem; }
+    .ar-rp__hora-etq strong, .ar-rp__hora-val strong { font-size: 1rem; }
+    .ar-rp__hora-etq small { white-space: normal; }
+    .ar-rp__horas li.ar-rp__horas-total { grid-template-areas: "etq val"; border: 0; border-top: 1px solid var(--bs-border-color); border-radius: 0; }
+    .ar-rp__horas-total .ar-rp__hora-pista { display: none; }
 }
 
 /* ---- Impresión: sólo el reporte ---- */

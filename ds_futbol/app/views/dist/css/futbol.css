@@ -1521,6 +1521,9 @@
 }
 @media (max-width: 991.98px) {
     .ds-cobranza__tabla td.ds-ficha__estado .badge { font-size: .95rem; }
+    /* De qué se compone la mora, en un ancho fijo: «1 pensión asistida sin
+       pagar (Junio 2025)» en una línea apretaba al representante. */
+    .ds-cobranza__tabla td.ds-cobranza__mora .small { max-width: 9.5rem; margin-left: auto; }
     /* En la ficha, las compras pendientes seguidas en la misma línea. */
     .ds-cobranza__conceptos { display: inline; }
     .ds-cobranza__conceptos > span + span::before { content: " · "; }

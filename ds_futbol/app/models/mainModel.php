@@ -376,11 +376,14 @@ class mainModel
 		|
 		| Vive aquí, y no en pagosController, para que la lista de pagos y la
 		| toma de asistencia digan lo mismo sobre quién está en mora.
+		|
+		| $hasta: contar hasta el mes de esa fecha en vez del mes en curso
+		| (lo usa mesesPensionInactivo()).
 		*/
-		protected function mesesPensionAdeudados(?string $ultimoPago): int{
+		protected function mesesPensionAdeudados(?string $ultimoPago, ?string $hasta = null): int{
 			if (!$ultimoPago || str_starts_with($ultimoPago, '0000')) { return 0; }
 			$base  = new \DateTime($ultimoPago);
-			$tope  = new \DateTime(date('Y-m-t'));
+			$tope  = new \DateTime(date('Y-m-t', $hasta ? strtotime($hasta) : time()));
 			$meses = 0;
 			for ($m = 1; $m <= 120; $m++) {
 				$y = (int)$base->format('Y');
@@ -404,6 +407,47 @@ class mainModel
 		| cuenta.
 		*/
 		const SQL_ULTIMA_ASISTENCIA = "MAX(CASE WHEN dia_marca IN ('P','A') AND dia_fecha <= CURDATE() THEN dia_fecha END)";
+
+		/*
+		| Pensiones de un alumno INACTIVO: no se le generan desde que dejó
+		| de venir, pero si asistió después de su último pago de pensión,
+		| los meses hasta su última asistencia los entrenó sin pagar. Sin
+		| asistencia registrada, cero. Misma cuenta que mesesPensionAdeudados
+		| y que la cobranza de inactivos (cobranzaController).
+		*/
+		protected function mesesPensionInactivo(?string $ultimoPago, ?string $ultimaAsistencia): int{
+			if (!$ultimaAsistencia || str_starts_with($ultimaAsistencia, '0000')) { return 0; }
+			return $this->mesesPensionAdeudados($ultimoPago, $ultimaAsistencia);
+		}
+
+		/*
+		| El mes que cubre un pago según su pago_periodo («Junio / 2026»), como
+		| fecha del día 1; NULL si el texto no se entiende («Junioo / 2026»).
+		|
+		| Hace falta para los inactivos: un pago hecho el 25 de mayo por la
+		| pensión de junio tiene pago_fecha en mayo, y si el alumno vino en
+		| junio, contar desde la fecha le cobraría junio otra vez. El último
+		| mes pagado es el mayor entre el de la fecha y el del periodo
+		| (sqlUltimoMesPagado).
+		*/
+		protected static function sqlPeriodoPago(string $col = 'pago_periodo'): string{
+			return "STR_TO_DATE(CONCAT(TRIM(SUBSTRING_INDEX($col, '/', -1)), '-',"
+			     . " NULLIF(FIELD(LOWER(TRIM(SUBSTRING_INDEX($col, '/', 1))), 'enero', 'febrero', 'marzo', 'abril', 'mayo',"
+			     . " 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'), 0), '-01'), '%Y-%c-%d')";
+		}
+
+		/** Agregado: el último mes pagado (fecha o periodo, el mayor) de un grupo de pagos de pensión. */
+		protected static function sqlUltimoMesPagado(): string{
+			return "GREATEST(MAX(pago_fecha), COALESCE(MAX(" . self::sqlPeriodoPago() . "), MAX(pago_fecha)))";
+		}
+
+		/** El último día que vino un alumno (Y-m-d), o null si nunca. */
+		public function ultimaAsistencia(int $alumno): ?string{
+			$f = $this->ejecutarConsulta(
+				"SELECT " . self::SQL_ULTIMA_ASISTENCIA . " FROM insights_v_asistencia_dia WHERE dia_alumnoid = :a",
+				[':a' => $alumno])->fetchColumn();
+			return $f ?: null;
+		}
 
 		/*
 		| Celda «Asistencia» de los listados de Pagos y Cobranza: la fecha

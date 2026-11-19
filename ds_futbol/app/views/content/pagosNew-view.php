@@ -107,12 +107,16 @@
 			$beca = "N";
 		}
 
-		/* Las pensiones no pagadas desde la última se calculan sólo para
-		   alumnos ACTIVOS, como en el listado de pagos: un inactivo no
-		   entrena, y contarle los meses desde que dejó de venir inflaba la
-		   deuda. Lo registrado con saldo (pagosPendintes) se muestra igual. */
-		if($beca != "S" && $datos['alumno_estado'] === 'A'){
-			$pension = $insAlumno->pensionesPendientes($alumno);
+		/* Las pensiones no pagadas desde la última: para un ACTIVO, hasta
+		   el mes en curso. Un INACTIVO no entrena, y contarle los meses
+		   desde que dejó de venir inflaba la deuda; pero si vino después de
+		   su último pago, los meses hasta su última asistencia los entrenó
+		   sin pagar y se le cobran (como en Pagos y en Cobranza › Pensiones
+		   Inactivos). Lo registrado con saldo (pagosPendintes) se muestra
+		   igual. */
+		$ultimaAsistencia = $insAlumno->ultimaAsistencia((int)$alumno);
+		if($beca != "S" && ($datos['alumno_estado'] === 'A' || ($datos['alumno_estado'] === 'I' && $ultimaAsistencia))){
+			$pension = $insAlumno->pensionesPendientes($alumno, $datos['alumno_estado'] === 'I' ? $ultimaAsistencia : null);
 			if($pension != ""){
 				$pendiente = "Pendiente";
 				$clase = '<a class="float-end text-danger">';
@@ -232,7 +236,10 @@ CSS;
 											<b>Fecha de ingreso</b> <a class="float-end"><?php echo $datos['alumno_fechaingreso']; ?></a>
 										</li>
 										<li class="list-group-item">
-											<b>Estado pagos</b> 												
+											<b>Última asistencia</b> <span class="float-end"><?php echo $ultimaAsistencia ? date('d/m/Y', strtotime($ultimaAsistencia)) : '<span class="text-body-secondary">Sin asistencias</span>'; ?></span>
+										</li>
+										<li class="list-group-item">
+											<b>Estado pagos</b>												
 											<?php												
 												echo $clase.$pendiente.'</a>'; 												
 											?>

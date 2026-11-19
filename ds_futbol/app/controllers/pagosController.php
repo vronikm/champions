@@ -70,15 +70,16 @@
 			$filas = $this->ejecutarConsulta("SELECT A.alumno_id, A.alumno_identificacion, A.alumno_primernombre, A.alumno_segundonombre,
 						A.alumno_apellidopaterno, A.alumno_apellidomaterno, A.alumno_estado, A.alumno_fechaingreso,
 						TIMESTAMPDIFF(YEAR, A.alumno_fechanacimiento, CURDATE()) AS edad,
-						S.sede_nombre, S.sede_pension, D.descuento_valor,
-						UP.ultima, UP.periodo, COALESCE(PP.saldo, 0) AS saldo,
+						S.sede_nombre, S.sede_pension, D.descuento_valor, D.descuento_rubroid,
+						UP.ultima, UP.periodo, UP.ultimo_mes, COALESCE(PP.saldo, 0) AS saldo,
 						COALESCE(AS1.dias, 0) AS dias, COALESCE(AS1.asistidos, 0) AS asistidos, AS1.ultima_asis
 					FROM sujeto_alumno A
 					LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
 					LEFT JOIN alumno_pago_descuento D ON D.descuento_alumnoid = A.alumno_id
 					       AND D.descuento_estado = 'S' AND D.descuento_rubroid IN ('DBC', 'DBP', 'DDS')   /* beca 100 %, beca 50 % o descuento: el valor es la pensión que paga (como pagosNew) */
 					LEFT JOIN (SELECT pago_alumnoid, MAX(pago_fecha) AS ultima,
-					                  SUBSTRING_INDEX(GROUP_CONCAT(pago_periodo ORDER BY pago_fecha DESC, pago_id DESC SEPARATOR '|'), '|', 1) AS periodo
+					                  SUBSTRING_INDEX(GROUP_CONCAT(pago_periodo ORDER BY pago_fecha DESC, pago_id DESC SEPARATOR '|'), '|', 1) AS periodo,
+					                  " . self::sqlUltimoMesPagado() . " AS ultimo_mes   /* para los inactivos (mainModel) */
 					             FROM alumno_pago WHERE pago_rubroid = 'RPE' AND pago_estado <> 'E'
 					            GROUP BY pago_alumnoid) UP ON UP.pago_alumnoid = A.alumno_id
 					LEFT JOIN (SELECT pago_alumnoid, SUM(pago_saldo) AS saldo
@@ -105,11 +106,15 @@
 
 				/* Lo que debe. */
 				$pension = $al['descuento_valor'] !== null ? (float)$al['descuento_valor'] : (float)$al['sede_pension'];
-				$meses   = $activo ? $this->mesesPensionAdeudados($al['ultima']) : 0;
+				/* Activo: hasta el mes en curso. Inactivo: hasta su última
+				   asistencia (mainModel::mesesPensionInactivo). */
+				$inactivo = $al['alumno_estado'] === 'I';
+				$meses   = $activo ? $this->mesesPensionAdeudados($al['ultima'])
+				         : ($inactivo && $al['descuento_rubroid'] !== 'DBC' ? $this->mesesPensionInactivo($al['ultimo_mes'], $al['ultima_asis']) : 0);   /* beca del 100 %: nada */
 				$deuda   = round((float)$al['saldo'] + $meses * $pension, 2);
 				$this->totalAdeudado += $deuda;
 				$detalle = [];
-				if ($meses > 0) { $detalle[] = $meses . ($meses === 1 ? ' pensión' : ' pensiones'); }
+				if ($meses > 0) { $detalle[] = $meses . ($meses === 1 ? ' pensión' : ' pensiones') . ($inactivo ? ($meses === 1 ? ' asistida' : ' asistidas') . ' sin pagar' : ''); }
 				if ((float)$al['saldo'] > 0) { $detalle[] = 'saldo ' . $dinero((float)$al['saldo']); }
 				$celdaDeuda = $deuda > 0
 					? '<span class="badge text-bg-danger ds-pagos__deuda">' . $dinero($deuda) . '</span>'
@@ -258,7 +263,10 @@
 			return $tabla;
 		}
 
-		public function pensionesPendientes($alumnoid){
+		/* $hasta: los meses se generan hasta el mes de esa fecha en vez del
+		   mes en curso. pagosNew lo usa con la última asistencia de un
+		   alumno inactivo (mainModel::mesesPensionInactivo). */
+		public function pensionesPendientes($alumnoid, ?string $hasta = null){
 			$valor_pension = 0.0;
 			$descuento=$this->AlumnoDescuento($alumnoid);
 			if($descuento->rowCount()==1){
@@ -277,7 +285,7 @@
 			}
 
 			$tabla="";
-			$ultimafecha = "SELECT MAX(P.pago_fecha) fecha
+			$ultimafecha = "SELECT " . ($hasta ? self::sqlUltimoMesPagado() : 'MAX(P.pago_fecha)') . " fecha
 			FROM sujeto_alumno A
 			INNER JOIN alumno_pago P ON P.pago_alumnoid = A.alumno_id
 			WHERE P.pago_rubroid = 'RPE' AND pago_estado != 'E' AND A.alumno_id = :alumno";
@@ -288,7 +296,7 @@
 				$ultimafecha = $rows["fecha"];
 			}	
 
-			$fecha_final =  date('Y-m-d');
+			$fecha_final =  $hasta ?: date('Y-m-d');
 			// Convertir la fecha a un timestamp
 			$timestamp = strtotime($fecha_final);
 			// Obtener el último día del mes de la fecha dada

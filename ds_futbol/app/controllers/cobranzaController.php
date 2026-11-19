@@ -70,15 +70,42 @@
 		|
 		| 2026-11-19: la misma pantalla sirve para los INACTIVOS
 		| (cobranzaPensionInactivos, «Pensiones Inactivos»). Con $estado 'I'
-		| cambia sólo el filtro del alumno. Un inactivo no acumula pensiones
-		| nuevas —PEN excluye a los inactivos, como hacía la consulta
-		| anterior de esa pantalla: no hay fecha de inactivación desde la que
-		| dejar de contar—, así que su mora son los saldos pendientes de sus
-		| pagos de pensión.
+		| cambia el filtro del alumno y hasta cuándo se cuentan pensiones.
+		| No hay fecha de inactivación, así que no se cuenta hasta hoy; pero
+		| la asistencia dice hasta cuándo vino: si asistió después de su
+		| último pago de pensión, los meses hasta su ÚLTIMA ASISTENCIA los
+		| entrenó sin pagar y entran en la mora, con los saldos pendientes.
+		| La misma cuenta que Pagos y pagosNew (mainModel::
+		| mesesPensionInactivo). Para el inactivo el último pago no cuenta
+		| los pagos eliminados (pago_estado 'E'), como en esas pantallas.
 		|==============================================================*/
+		/** Nombres de los meses para el detalle de la mora. */
+		const MESES = [1 => 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
 		public function pensionesValormora(string $estado = 'A'){
 			$estado = $estado === 'I' ? 'I' : 'A';
 			$vista  = $estado === 'I' ? 'cobranzaPensionInactivos' : 'cobranzaPension';
+
+			/* Hasta cuándo se generan pensiones: hoy para los activos; la
+			   última asistencia para los inactivos (sin asistencia, nada). */
+			if ($estado === 'I') {
+				$fin       = 'BASE.ultima_asis';
+				$joinAsis  = "LEFT JOIN (SELECT dia_alumnoid, " . self::SQL_ULTIMA_ASISTENCIA . " AS ultima_asis
+				                           FROM insights_v_asistencia_dia GROUP BY dia_alumnoid) UA ON UA.dia_alumnoid = alumno_id";
+				$campoAsis = 'MAX(UA.ultima_asis) AS ultima_asis,';
+				$filtroPen = "alumno_estado = 'I' AND pago_estado <> 'E'";
+				$campoFecha = self::sqlUltimoMesPagado();   /* fecha o periodo del pago, el mayor */
+				$sinBeca    = 'BASE.becado = 1 OR ';         /* beca del 100 %: no debe pensiones (como pagosNew) */
+			} else {
+				$fin       = 'CURDATE()';
+				$joinAsis  = '';
+				$campoAsis = '';
+				$filtroPen = "alumno_estado <> 'I'";
+				$campoFecha = 'MAX(pago_fecha)';
+				$sinBeca    = '';
+			}
+			$sqlMeses = "CASE WHEN $sinBeca$fin IS NULL OR BASE.FECHA >= $fin THEN 0 ELSE
+							GREATEST(0, TIMESTAMPDIFF(MONTH, BASE.FECHA, $fin) + (DAY($fin) < DAY(BASE.FECHA))) END";
 			$consulta_datos = "SELECT V.*, UP.ultima, UP.periodo,
 										COALESCE(AS1.dias, 0) AS dias, COALESCE(AS1.asistidos, 0) AS asistidos, AS1.ultima_asis
 									FROM (
@@ -107,22 +134,22 @@
 												LEFT JOIN (
 													SELECT
 													BASE.pago_alumnoid,
-													CASE WHEN BASE.FECHA > CURDATE() THEN 0 ELSE
-														GREATEST(0, TIMESTAMPDIFF(MONTH, BASE.FECHA, CURDATE()) + (DAY(CURDATE()) < DAY(BASE.FECHA))) END AS PENSIONES,
-													CASE WHEN BASE.FECHA > CURDATE() THEN 0 ELSE
-														GREATEST(0, TIMESTAMPDIFF(MONTH, BASE.FECHA, CURDATE()) + (DAY(CURDATE()) < DAY(BASE.FECHA))) * COALESCE(BASE.descuento_valor, BASE.sede_pension) END AS TOTAL
+													$sqlMeses AS PENSIONES,
+													($sqlMeses) * COALESCE(BASE.descuento_valor, BASE.sede_pension) AS TOTAL
 													FROM (
 													SELECT
-														MAX(pago_fecha) AS FECHA,
-														pago_alumnoid,
+														$campoFecha AS FECHA,
+														pago_alumnoid, $campoAsis
 														MAX(descuento_valor) AS descuento_valor,
+														MAX(descuento_rubroid = 'DBC') AS becado,
 														MAX(sede_pension) AS sede_pension
 													FROM
 														sujeto_alumno
 														LEFT JOIN alumno_pago ON pago_alumnoid = alumno_id
 														LEFT JOIN alumno_pago_descuento ON descuento_alumnoid = alumno_id AND descuento_estado = 'S'
 														LEFT JOIN general_sede ON sede_id = alumno_sedeid
-													WHERE pago_rubroid = 'RPE' AND alumno_estado <> 'I'
+														$joinAsis
+													WHERE pago_rubroid = 'RPE' AND $filtroPen
 													GROUP BY
 														pago_alumnoid
 													) BASE
@@ -157,7 +184,19 @@
 				$meses = (int)$rows['MESES'];
 				$saldo = round((float)$rows['SALDO'], 2);
 				$detalleMora = [];
-				if ($meses > 0) { $detalleMora[] = $meses . ($meses === 1 ? ' pensión' : ' pensiones'); }
+				if ($meses > 0) {
+					/* Inactivo: qué meses entrenó sin pagar, del siguiente a su último
+					   pago al de su última asistencia («Mayo a Septiembre 2026»). */
+					$rango = '';
+					if ($estado === 'I' && !empty($rows['ultima_asis'])) {
+						$desde = strtotime(date('Y-m-01', strtotime($rows['ultima_asis'])) . ' -' . ($meses - 1) . ' month');
+						$hasta = strtotime($rows['ultima_asis']);
+						$mes   = static fn(int $t) => self::MESES[(int)date('n', $t)];
+						$rango = date('Y-m', $desde) === date('Y-m', $hasta) ? $mes($hasta) . ' ' . date('Y', $hasta)
+						       : $mes($desde) . (date('Y', $desde) !== date('Y', $hasta) ? ' ' . date('Y', $desde) : '') . ' a ' . $mes($hasta) . ' ' . date('Y', $hasta);
+					}
+					$detalleMora[] = $meses . ($meses === 1 ? ' pensión' : ' pensiones') . ($rango !== '' ? ' asistida' . ($meses === 1 ? '' : 's') . ' sin pagar (' . $rango . ')' : '');
+				}
 				if ($saldo > 0) { $detalleMora[] = 'saldo $' . number_format($saldo, 2, '.', ','); }
 
 				/* Último pago de pensión: la fecha y el mes que cubrió. */

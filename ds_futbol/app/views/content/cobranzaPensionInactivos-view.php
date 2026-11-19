@@ -6,9 +6,10 @@
 	| alumnos INACTIVOS que deben pensiones. Antes existía una versión vieja
 	| fuera del menú (tabla sin ficha en el teléfono y sin «Notificar»).
 	|
-	| Un inactivo no acumula pensiones nuevas: su mora son los saldos
-	| pendientes de sus pagos de pensión (cobranzaController::
-	| pensionesValormora).
+	| Un inactivo no acumula pensiones hasta hoy: su mora son los saldos
+	| pendientes de sus pagos de pensión y, si asistió después de su último
+	| pago, las pensiones de los meses hasta su última asistencia
+	| (cobranzaController::pensionesValormora).
 	*/
 	use app\controllers\cobranzaController;
 	$insMora = new cobranzaController();
@@ -77,8 +78,9 @@
 							</tbody>
 						</table>
 						<p class="small text-body-secondary mb-0 mt-2">
-							<i class="fas fa-circle-info me-1" aria-hidden="true"></i>Sólo alumnos inactivos. Total mora: saldos pendientes de sus pagos de pensión;
-							un alumno inactivo no acumula pensiones nuevas. Los activos están en «Pensiones».
+							<i class="fas fa-circle-info me-1" aria-hidden="true"></i>Sólo alumnos inactivos. Total mora: saldos pendientes de sus pagos de pensión
+							y, si asistió después de su último pago, las pensiones de los meses hasta su última asistencia
+							(entrenó sin pagar). Después de esa fecha no se le cuentan pensiones. Los activos están en «Pensiones».
 							Asistencia: el último día que vino (presente o atraso, según lo que tomaron los profesores) y, debajo, el porcentaje sobre los días registrados.
 						</p>
 					</div>

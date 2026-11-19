@@ -1291,31 +1291,54 @@
 			   Sin esta comprobación quedaban asignaciones apuntando a un
 			   horario inexistente, que es lo que se encontró al declarar las
 			   restricciones. */
+			/* Sólo bloquean los alumnos ACTIVOS: es lo que cuenta la columna
+			   Alumnos y lo que muestra «Ver lista». Antes contaba también los
+			   inactivos y un horario que se veía con «0 alumnos» decía «tiene
+			   2 alumno(s) asignado(s). Retírelos primero», sin forma de verlos
+			   ni retirarlos desde la lista. */
 			$asignados = $this->ejecutarConsulta(
-				"SELECT COUNT(1) AS n FROM asistencia_asignahorario
-				  WHERE asignahorario_horarioid = :h", [':h' => $horarioid])->fetch();
+				"SELECT SUM(A.alumno_estado = 'A') AS activos, COUNT(1) AS total
+				   FROM asistencia_asignahorario G
+				   LEFT JOIN sujeto_alumno A ON A.alumno_id = G.asignahorario_alumnoid
+				  WHERE G.asignahorario_horarioid = :h", [':h' => $horarioid])->fetch();
+			$activos   = (int)($asignados['activos'] ?? 0);
+			$inactivos = (int)($asignados['total'] ?? 0) - $activos;
 
-			if((int)($asignados['n'] ?? 0) > 0){
+			if($activos > 0){
 				return json_encode([
 					"tipo"   => "simple",
 					"titulo" => "Horario con alumnos",
-					"texto"  => "No se puede eliminar: tiene ".$asignados['n']." alumno(s) asignado(s). Retírelos primero.",
+					"texto"  => "No se puede eliminar: tiene ".$activos." alumno(s) activo(s) asignado(s). Retírelos primero desde «Ver lista».",
 					"icono"  => "error"
 				]);
 			}
 
-			/* Los detalles sí se arrastran: no significan nada sin su
-			   horario. La base los borra en cascada (fk_detalle_horario),
-			   pero se eliminan aquí para dejar el flujo explícito. */
-			$this->eliminarRegistro("asistencia_horario_detalle", "detalle_horarioid", $horarioid);
+			/* Todo de una vez: las asignaciones que quedan (alumnos inactivos,
+			   que no se ven en ninguna lista), los detalles y el horario. Los
+			   detalles no significan nada sin su horario; la base los borraría
+			   en cascada (fk_detalle_horario), pero se eliminan aquí para dejar
+			   el flujo explícito. Las asistencias tomadas no apuntan al horario
+			   y se conservan. */
+			$con = $this->conectar();
+			try {
+				$con->beginTransaction();
+				$con->prepare("DELETE FROM asistencia_asignahorario WHERE asignahorario_horarioid = :h")->execute([':h' => $horarioid]);
+				$con->prepare("DELETE FROM asistencia_horario_detalle WHERE detalle_horarioid = :h")->execute([':h' => $horarioid]);
+				$eliminahorario = $con->prepare("DELETE FROM asistencia_horario WHERE horario_id = :h");
+				$eliminahorario->execute([':h' => $horarioid]);
+				$eliminados = $eliminahorario->rowCount();
+				$con->commit();
+			} catch (\PDOException $e) {
+				if ($con->inTransaction()) { $con->rollBack(); }
+				$eliminados = 0;
+			}
 
-			$eliminahorario=$this->eliminarRegistro("asistencia_horario", "horario_id", $horarioid);
-
-			if($eliminahorario->rowCount()>0){
+			if($eliminados > 0){
 				$alerta=[
 					"tipo"=>"recargar",
 					"titulo"=>"Horario eliminado",
-					"texto"=>"El horario fue eliminado correctamente",
+					"texto"=>"El horario fue eliminado correctamente"
+						.($inactivos > 0 ? ". También se retiraron ".$inactivos." alumno(s) inactivo(s) que seguían asignados." : ""),
 					"icono"=>"success"
 				];
 			}else{

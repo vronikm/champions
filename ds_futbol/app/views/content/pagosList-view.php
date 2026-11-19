@@ -142,8 +142,8 @@
 									<th>Alumno</th>
 									<th class="ds-col-opcional">Fecha de ingreso</th>
 									<th>Último pago de pensión</th>
+									<th>Asistencia</th>
 									<th>Valor adeudado</th>
-									<th class="ds-col-opcional">Asistencia</th>
 									<th class="text-end"><span class="visually-hidden">Acciones</span></th>
 								</tr>
 							</thead>
@@ -153,7 +153,7 @@
 						</table>
 						<p class="small text-body-secondary mb-0 mt-2">
 							<i class="fas fa-circle-info me-1" aria-hidden="true"></i>Valor adeudado: saldos pendientes y, para alumnos activos, las pensiones no pagadas desde la última.
-							Asistencia: presentes y atrasos sobre los días registrados.
+							Asistencia: el último día que vino (presente o atraso, según lo que tomaron los profesores) y, debajo, el porcentaje sobre los días registrados.
 						</p>
 					</div>
 				</div>
@@ -191,8 +191,8 @@
 			lengthMenu: [LARGOS, [10, 25, 50, 100, 'Todos']],
 			order: [[0, 'asc']],
 			columnDefs: [
-				{ targets: [1, 2], type: 'string' },     /* data-order: fechas ISO (ingreso, último pago) */
-				{ targets: [3, 4], type: 'num' },        /* data-order: importe y porcentaje */
+				{ targets: [1, 2, 3], type: 'string' },  /* data-order: fechas ISO (ingreso, último pago, última asistencia) */
+				{ targets: 4, type: 'num' },             /* data-order: importe */
 				{ targets: 5, orderable: false, searchable: false }
 			],
 			layout: {

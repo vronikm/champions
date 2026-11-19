@@ -1092,6 +1092,9 @@
 .ds-pagos__asis { display: inline-flex; align-items: center; gap: .45rem; }
 .ds-pagos__barra { display: inline-block; width: 3.5rem; height: .45rem; border-radius: 1rem; background: var(--bs-secondary-bg); overflow: hidden; }
 .ds-pagos__barra > span { display: block; height: 100%; }
+/* Pagos › Asistencia: «95 % de 44 días» en una línea donde cabe; entre
+   992 y 1279 px puede partirse para que la tabla no se desborde. */
+@media (min-width: 1280px) { .ds-pagos__asis-linea { white-space: nowrap; } }
 @media (max-width: 991.98px) {
     .ds-pagos__resumen { flex: 1 1 auto; }
     /* Las columnas numéricas (DataTables las alinea a la derecha), dentro

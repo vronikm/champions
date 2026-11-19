@@ -766,40 +766,56 @@
 			$consulta_datos .= " AND horario_estado <> 'E'"; 
 			$datos = $this->ejecutarConsulta($consulta_datos, $parametros);
 			$datos = $datos->fetchAll();
+			/*
+			| Una fila por horario con el marcado de fichas (.ds-crud, futbol.css):
+			| tabla en escritorio y ficha en el teléfono. ANTES eran seis columnas
+			| con los botones flotando a la derecha (float-end), y en el teléfono
+			| el modo adaptable de DataTables escondía «Ver lista» y «Asignar
+			| alumnos» —lo que más se usa— detrás de un ▶.
+			|
+			| Las dos acciones de uso diario («Ver lista» y «Asignar alumnos») van
+			| con texto; las de mantenimiento (ver, editar, eliminar), en iconos.
+			*/
+			$h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
 			foreach($datos as $rows){
-				if ($rows['horario_estado'] == 'A'){
-					$estado = 'Activo';
-					$class = '';
-				}elseif($rows['horario_estado'] == 'E'){
-					$estado = '<span class="badge bg-danger">ELIMINADO';
-					$class = 'class="text-danger"';
-				}elseif($rows['horario_estado'] == 'I'){
-					$estado = 'Inactivo';
-					$class = 'class="text-primary"';
-				}				
-				$tabla.='
-					<tr '.$class.'>
-						<td>'.$rows['horario_nombre'].'</td>
-						<td>'.$rows['horario_detalle'].'</td>	
-						<td>'.$estado.'</td>
-						<td>'.$rows['ALUMNOS'].'</td>
-						<td>							
-							<a href="'.APP_URL.'asistenciaHorarioJugador/'.$rows['horario_id'].'/'.$horario_sedeid.'/" target="_blank" class="btn float-end btn-warning btn-sm" style="margin-right: 5px;"><i class="fas fa-link me-1"></i>Asignar alumnos</a>
-							<a href="'.APP_URL.'asistenciaHorarioLista/'.$rows['horario_id'].'/" target="_blank" class="btn float-end btn-ver btn-sm" style="margin-right: 5px;"><i class="fas fa-list me-1"></i>Ver lista</a>
-						</td>
-						<td>
-							'.$this->siPuede('eliminar','asistenciaListHorario','<form class="FormularioAjax" action="'.APP_URL.'app/ajax/asistenciaAjax.php" method="POST" autocomplete="off" >
-								<input type="hidden" name="modulo_asistencia" value="eliminar_horario">
-								<input type="hidden" name="horario_id" value="'.$rows['horario_id'].'">						
-								<button type="submit" class="btn float-end btn-danger btn-sm" style="margin-right: 5px;" title="Eliminar" aria-label="Eliminar"><i class="fas fa-trash"></i></button>
-							</form>').'	
+				$id       = (int)$rows['horario_id'];
+				$nombre   = $h($rows['horario_nombre']);
+				$detalle  = trim((string)$rows['horario_detalle']);
+				$alumnos  = (int)$rows['ALUMNOS'];
+				$activo   = $rows['horario_estado'] == 'A';
 
-							<a href="'.APP_URL.'asistenciaHorario/'.$rows['horario_id'].'/" target="_blank" class="btn float-end btn-actualizar btn-sm" style="margin-right: 5px;" title="Editar" aria-label="Editar"><i class="fas fa-pen"></i></a>
-							<a href="'.APP_URL.'asistenciaVerHorario/'.$rows['horario_id'].'/" target="_blank" class="btn float-end btn-ver btn-sm" style="margin-right: 5px;" title="Ver" aria-label="Ver"><i class="fas fa-eye"></i></a>
+				$eliminar = $this->siPuede('eliminar','asistenciaListHorario','<form class="FormularioAjax" action="'.APP_URL.'app/ajax/asistenciaAjax.php" method="POST" autocomplete="off">
+								<input type="hidden" name="modulo_asistencia" value="eliminar_horario">
+								<input type="hidden" name="horario_id" value="'.$id.'">
+								'.ds_boton_eliminar('el horario '.$rows['horario_nombre']).'
+							</form>');
+
+				$tabla.='
+					<tr>
+						<td class="ds-ficha__principal" data-order="'.$nombre.'">
+							<div class="ds-ficha__nombre">'.$nombre.'</div>
+							'.($detalle !== '' ? '<div class="ds-ficha__meta">'.$h($detalle).'</div>' : '').'
 						</td>
-					</tr>';	
+						<td class="ds-ficha__dato ds-horarios__alumnos" data-order="'.$alumnos.'">
+							<i class="fas fa-users" aria-hidden="true"></i><strong>'.$alumnos.'</strong> <span class="ds-horarios__unidad">'.($alumnos === 1 ? 'alumno' : 'alumnos').'</span>
+						</td>
+						<td class="ds-ficha__estado" data-order="'.($activo ? 'A' : 'I').'"><span class="badge '.($activo ? 'text-bg-success' : 'text-bg-secondary').'">'.($activo ? 'Activo' : 'Inactivo').'</span></td>
+						<td class="ds-tabla-acciones ds-ficha__acciones">
+							<div class="ds-horarios__acciones">
+								<div class="ds-horarios__principales">
+									<a href="'.APP_URL.'asistenciaHorarioLista/'.$id.'/" target="_blank" class="btn btn-ver btn-sm"><i class="fas fa-list me-1" aria-hidden="true"></i>Ver lista</a>
+									<a href="'.APP_URL.'asistenciaHorarioJugador/'.$id.'/'.(int)$horario_sedeid.'/" target="_blank" class="btn btn-warning btn-sm" title="Asignar alumnos"><i class="fas fa-link me-1" aria-hidden="true"></i>Asignar<span class="ds-horarios__largo">&nbsp;alumnos</span></a>
+								</div>
+								<div class="ds-ficha__botones">
+									<a href="'.APP_URL.'asistenciaVerHorario/'.$id.'/" target="_blank" class="btn btn-ver btn-sm" title="Ver horario" aria-label="Ver el horario '.$nombre.'"><i class="fas fa-eye" aria-hidden="true"></i></a>
+									<a href="'.APP_URL.'asistenciaHorario/'.$id.'/" target="_blank" class="btn btn-actualizar btn-sm" title="Editar" aria-label="Editar el horario '.$nombre.'"><i class="fas fa-pen" aria-hidden="true"></i></a>
+									'.$eliminar.'
+								</div>
+							</div>
+						</td>
+					</tr>';
 			}
-			return $tabla;			
+			return $tabla;
 		}
 
 		/*----------  Horarios para tomar asistencia (vista asistencia)  ----------*/

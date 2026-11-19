@@ -1673,3 +1673,71 @@ body.layout-fixed .app-main:has(.ds-reporte__tabla),
     /* Filtro de fechas: más bajo en el teléfono. */
     .ds-reporte__filtro > .card-body { padding: .75rem; }
 }
+
+/* =========================================================================
+   HORARIOS (asistenciaListHorario): criterios de búsqueda y lista en fichas.
+
+   La lista usa .ds-crud (tabla en escritorio, ficha por debajo de 992 px).
+   Lo propio de esta pantalla son las acciones: dos de uso diario con texto
+   («Ver lista» y «Asignar alumnos») y tres de mantenimiento en iconos.
+   ========================================================================= */
+.ds-horarios__sede {
+    display: inline-flex;
+    align-items: center;
+    margin-left: .5rem;
+    font-size: .85rem;
+    font-weight: 400;
+    color: var(--bs-secondary-color);
+}
+.ds-horarios__ayuda { color: var(--bs-secondary-color); }
+.ds-horarios__alumnos { white-space: nowrap; }
+.ds-horarios__alumnos > .fas { color: var(--bs-secondary-color); margin-right: .35rem; }
+.ds-horarios__unidad { color: var(--bs-secondary-color); }
+
+/* Escritorio: todo en una línea, a la derecha. */
+.ds-horarios__acciones {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: .35rem;
+}
+.ds-horarios__principales { display: flex; gap: .35rem; }
+.ds-horarios__principales .btn { white-space: nowrap; }
+
+@media (max-width: 991.98px) {
+    /* Ficha: el número de alumnos junto al nombre, sin rótulo delante. */
+    .ds-crud__tabla td.ds-horarios__alumnos { grid-column: 1 / -1; }
+
+    /* Una sola fila de botones de 44 px: las dos acciones diarias se reparten
+       el ancho libre, con su texto, y las de mantenimiento van en iconos a la
+       derecha. Si no caben —con Eliminar, en un teléfono estrecho— los iconos
+       bajan solos a la línea siguiente, sin apretar los de texto. */
+    .ds-horarios__acciones { flex-wrap: wrap; justify-content: stretch; gap: .4rem; }
+    .ds-horarios__principales { flex: 1 1 11rem; display: grid; grid-template-columns: 1fr 1fr; gap: .4rem; }
+    .ds-horarios__principales .btn {
+        min-height: 2.75rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding-inline: .5rem;
+    }
+    td.ds-ficha__acciones .ds-horarios__acciones .ds-ficha__botones { flex: 0 0 auto; margin-left: auto !important; justify-content: flex-end; }
+}
+/* «Asignar alumnos» se queda en «Asignar» en el teléfono (el texto entero
+   sigue en el title). */
+@media (max-width: 575.98px) {
+    .ds-horarios__largo { display: none; }
+}
+
+@media (max-width: 575.98px) {
+    /* Criterios: campos y botón de 44 px y texto de 16 px, que en el iPhone
+       evita el zoom automático al tocar un campo. */
+    .ds-horarios__filtros > .card-body { padding: .75rem; }
+    .ds-horarios__filtros .form-control,
+    .ds-horarios__filtros .form-select,
+    .ds-horarios__filtros .btn { min-height: 2.75rem; font-size: 1rem; }
+    .ds-horarios__filtros .form-label { margin-bottom: .25rem; }
+
+    /* La sede en su propia línea bajo el título del resultado. */
+    .ds-horarios__sede { display: flex; margin: .15rem 0 0; }
+}

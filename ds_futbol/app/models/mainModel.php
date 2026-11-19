@@ -395,4 +395,44 @@ class mainModel
 			}
 			return $meses;
 		}
+
+		/*
+		| SQL del último día que vino cada alumno, para la subconsulta de
+		| asistencia de los listados (Pagos y Cobranza) sobre
+		| insights_v_asistencia_dia: presente o atraso, lo que tomaron los
+		| profesores. Una marca con fecha futura es un error de carga y no
+		| cuenta.
+		*/
+		const SQL_ULTIMA_ASISTENCIA = "MAX(CASE WHEN dia_marca IN ('P','A') AND dia_fecha <= CURDATE() THEN dia_fecha END)";
+
+		/*
+		| Celda «Asistencia» de los listados de Pagos y Cobranza: la fecha
+		| del último día que vino, hace cuánto (en rojo pasados 30 días) y
+		| debajo el porcentaje sobre los días registrados. data-order es la
+		| fecha ISO, así la columna se ordena por ella.
+		*/
+		protected function tdUltimaAsistencia(int $dias, int $asistidos, ?string $ultima, string $clases = 'ds-ficha__dato'): string{
+			$ultima = ($ultima && !str_starts_with($ultima, '0000')) ? $ultima : '';
+			$pct    = $dias > 0 ? (int)round($asistidos / $dias * 100) : null;
+
+			if ($pct === null) {
+				$celda = '<span class="text-body-secondary">Sin registros</span>';
+			} else {
+				if ($ultima !== '') {
+					$hace = (int)(new \DateTime($ultima))->diff(new \DateTime('today'))->format('%r%a');
+					$textoHace = $hace <= 0 ? 'hoy' : ($hace === 1 ? 'ayer' : 'hace ' . $hace . ' días');
+					$celda = '<span class="ds-pagos__ultima-asis">' . date('d/m/Y', strtotime($ultima)) . '</span>'
+					       . '<span class="d-block small ' . ($hace > 30 ? 'text-danger' : 'text-body-secondary') . '">' . $textoHace . '</span>';
+				} else {
+					$celda = '<span class="text-body-secondary">Nunca asistió</span>';
+				}
+				$celda .= '<span class="ds-pagos__asis ds-pagos__asis-linea d-flex small mt-1" title="Presentes y atrasos sobre '
+				        . $dias . ($dias === 1 ? ' día registrado' : ' días registrados') . '">'
+				        . '<span class="ds-pagos__barra" aria-hidden="true"><span style="width:' . $pct . '%" class="'
+				        . ($pct >= 75 ? 'bg-success' : ($pct >= 50 ? 'bg-warning' : 'bg-danger')) . '"></span></span>'
+				        . $pct . ' % de ' . $dias . ($dias === 1 ? ' día' : ' días') . '</span>';
+			}
+
+			return '<td class="' . $clases . '" data-etiqueta="Asistencia" data-order="' . $ultima . '">' . $celda . '</td>';
+		}
 }

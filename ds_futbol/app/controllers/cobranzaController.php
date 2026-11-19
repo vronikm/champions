@@ -80,7 +80,7 @@
 			$estado = $estado === 'I' ? 'I' : 'A';
 			$vista  = $estado === 'I' ? 'cobranzaPensionInactivos' : 'cobranzaPension';
 			$consulta_datos = "SELECT V.*, UP.ultima, UP.periodo,
-										COALESCE(AS1.dias, 0) AS dias, COALESCE(AS1.asistidos, 0) AS asistidos
+										COALESCE(AS1.dias, 0) AS dias, COALESCE(AS1.asistidos, 0) AS asistidos, AS1.ultima_asis
 									FROM (
 										SELECT alumno_id, alumno_repreid AS repre_id, sede_nombre, repre_identificacion, REPRE,
 											   repre_celular, repre_correo, ALUMNO, alumno_identificacion, alumno_estado, edad, alumno_fechaingreso,
@@ -138,7 +138,7 @@
 													  SUBSTRING_INDEX(GROUP_CONCAT(pago_periodo ORDER BY pago_fecha DESC, pago_id DESC SEPARATOR '|'), '|', 1) AS periodo
 												 FROM alumno_pago WHERE pago_rubroid = 'RPE' AND pago_estado <> 'E'
 												GROUP BY pago_alumnoid) UP ON UP.pago_alumnoid = V.alumno_id
-									LEFT JOIN (SELECT dia_alumnoid, COUNT(*) AS dias, SUM(dia_marca IN ('P','A')) AS asistidos
+									LEFT JOIN (SELECT dia_alumnoid, COUNT(*) AS dias, SUM(dia_marca IN ('P','A')) AS asistidos, " . self::SQL_ULTIMA_ASISTENCIA . " AS ultima_asis
 												 FROM insights_v_asistencia_dia GROUP BY dia_alumnoid) AS1 ON AS1.dia_alumnoid = V.alumno_id
 									ORDER BY V.REPRE, V.ALUMNO";
 
@@ -208,9 +208,9 @@
 		 *
 		 * Espera en $rows: REPRE, repre_identificacion, repre_celular,
 		 * repre_correo, ALUMNO, alumno_identificacion, edad, sede_nombre,
-		 * alumno_estado, alumno_fechaingreso, dias y asistidos.
+		 * alumno_estado, alumno_fechaingreso, dias, asistidos y ultima_asis.
 		 */
-		protected function datosCobranza(array $rows): array
+		protected function datosCobranza(array $rows, string $clasesAsistencia = 'ds-ficha__dato'): array
 		{
 			$junta   = static fn($v) => preg_replace('/\s+/', ' ', trim(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8')));
 			$repre   = $junta($rows['REPRE']);
@@ -258,14 +258,6 @@
 				? date('d/m/Y', strtotime($ingreso)) . ($antiguedad !== '' ? '<span class="d-block small text-body-secondary">' . $antiguedad . '</span>' : '')
 				: '<span class="text-body-secondary">—</span>';
 
-			/* Asistencia, con cuántos días la sustentan. */
-			$dias = (int)$rows['dias'];
-			$pct  = $dias > 0 ? round((int)$rows['asistidos'] / $dias * 100) : null;
-			$celdaAsis = $pct === null
-				? '<span class="text-body-secondary">Sin registros</span>'
-				: '<span class="ds-pagos__asis"><span class="ds-pagos__barra" aria-hidden="true"><span style="width:' . $pct . '%" class="' . ($pct >= 75 ? 'bg-success' : ($pct >= 50 ? 'bg-warning' : 'bg-danger')) . '"></span></span>'
-				  . '<strong>' . $pct . ' %</strong></span><span class="d-block small text-body-secondary">de ' . $dias . ($dias === 1 ? ' día' : ' días') . '</span>';
-
 			return [
 				'repre'   => $repre,
 				'alumno'  => $alumno,
@@ -282,7 +274,8 @@
 								. '<i class="fas fa-circle" aria-hidden="true"></i>' . $this->html($textoEstado) . '</span></span>
 						</td>',
 				'tdIngreso' => '<td class="ds-ficha__dato ds-col-opcional" data-etiqueta="Fecha de ingreso" data-order="' . $this->html($ingreso) . '">' . $celdaIngreso . '</td>',
-				'tdAsistencia' => '<td class="ds-ficha__dato ds-col-opcional" data-etiqueta="Asistencia" data-order="' . ($pct ?? -1) . '">' . $celdaAsis . '</td>',
+				/* El último día que vino, hace cuánto y el porcentaje (mainModel). */
+				'tdAsistencia' => $this->tdUltimaAsistencia((int)$rows['dias'], (int)$rows['asistidos'], $rows['ultima_asis'] ?? null, $clasesAsistencia),
 			];
 		}
 
@@ -405,7 +398,7 @@
 										TIMESTAMPDIFF(YEAR, A.alumno_fechanacimiento, CURDATE()) AS edad,
 										P.SALDO AS TOTAL_MORA, P.PENDIENTES, P.DESDE, P.CONCEPTOS,
 										UP.ultima, UP.valor AS ultimo_valor,
-										COALESCE(AS1.dias, 0) AS dias, COALESCE(AS1.asistidos, 0) AS asistidos
+										COALESCE(AS1.dias, 0) AS dias, COALESCE(AS1.asistidos, 0) AS asistidos, AS1.ultima_asis
 									FROM sujeto_alumno A
 									INNER JOIN general_sede S ON S.sede_id = A.alumno_sedeid
 									INNER JOIN alumno_representante R ON R.repre_id = A.alumno_repreid
@@ -431,7 +424,7 @@
 										  ) PAGOS
 										 GROUP BY alumnoid
 									) UP ON UP.alumnoid = A.alumno_id
-									LEFT JOIN (SELECT dia_alumnoid, COUNT(*) AS dias, SUM(dia_marca IN ('P','A')) AS asistidos
+									LEFT JOIN (SELECT dia_alumnoid, COUNT(*) AS dias, SUM(dia_marca IN ('P','A')) AS asistidos, " . self::SQL_ULTIMA_ASISTENCIA . " AS ultima_asis
 												 FROM insights_v_asistencia_dia GROUP BY dia_alumnoid) AS1 ON AS1.dia_alumnoid = A.alumno_id
 									WHERE A.alumno_estado <> 'E'   -- sin eliminados
 									ORDER BY REPRE, ALUMNO";
@@ -442,7 +435,7 @@
 			$this->totalMora = 0.0;
 			$tabla = "";
 			foreach($datos as $rows){
-				$c    = $this->datosCobranza($rows);
+				$c    = $this->datosCobranza($rows, 'ds-ficha__dato ds-col-opcional');   /* una columna más que Pensiones: entre 992 y 1279 px, Asistencia se oculta */
 				$mora = round((float)$rows['TOTAL_MORA'], 2);
 				$this->totalMora += $mora;
 

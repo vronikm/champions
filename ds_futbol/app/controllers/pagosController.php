@@ -85,7 +85,7 @@
 					             FROM alumno_pago WHERE pago_estado = 'P'
 					            GROUP BY pago_alumnoid) PP ON PP.pago_alumnoid = A.alumno_id
 					LEFT JOIN (SELECT dia_alumnoid, COUNT(*) AS dias, SUM(dia_marca IN ('P','A')) AS asistidos,
-					                  MAX(CASE WHEN dia_marca IN ('P','A') AND dia_fecha <= CURDATE() THEN dia_fecha END) AS ultima_asis   /* último día que vino (presente o atraso); una marca con fecha futura es un error de carga y no cuenta */
+					                  " . self::SQL_ULTIMA_ASISTENCIA . " AS ultima_asis   /* último día que vino (mainModel) */
 					             FROM insights_v_asistencia_dia GROUP BY dia_alumnoid) AS1 ON AS1.dia_alumnoid = A.alumno_id
 					WHERE " . implode(" AND ", $condiciones) . "
 					ORDER BY A.alumno_apellidopaterno, A.alumno_apellidomaterno, A.alumno_primernombre", $parametros)->fetchAll();
@@ -134,29 +134,6 @@
 					? date('d/m/Y', strtotime($ultima)) . (trim((string)$al['periodo']) !== '' ? '<span class="d-block small text-body-secondary">' . $h($al['periodo']) . '</span>' : '')
 					: '<span class="text-body-secondary">Sin pagos de pensión</span>';
 
-				/* Asistencia: el último día que vino (lo que tomaron los
-				   profesores: presente o atraso), hace cuánto, y debajo el
-				   porcentaje sobre los días registrados. */
-				$dias = (int)$al['dias'];
-				$pct  = $dias > 0 ? round((int)$al['asistidos'] / $dias * 100) : null;
-				$ultimaAsis = (string)($al['ultima_asis'] ?? '');
-				if ($pct === null) {
-					$celdaAsis = '<span class="text-body-secondary">Sin registros</span>';
-				} else {
-					if ($ultimaAsis !== '') {
-						$hace = (int)(new \DateTime($ultimaAsis))->diff(new \DateTime('today'))->format('%r%a');
-						$textoHace = $hace <= 0 ? 'hoy' : ($hace === 1 ? 'ayer' : 'hace ' . $hace . ' días');
-						$cabeza = '<span class="ds-pagos__ultima-asis">' . date('d/m/Y', strtotime($ultimaAsis)) . '</span>'
-						        . '<span class="d-block small ' . ($hace > 30 ? 'text-danger' : 'text-body-secondary') . '">' . $textoHace . '</span>';
-					} else {
-						$cabeza = '<span class="text-body-secondary">Nunca asistió</span>';
-					}
-					$celdaAsis = $cabeza
-						. '<span class="ds-pagos__asis ds-pagos__asis-linea d-flex small mt-1" title="Presentes y atrasos sobre ' . $dias . ($dias === 1 ? ' día registrado' : ' días registrados') . '">'
-						. '<span class="ds-pagos__barra" aria-hidden="true"><span style="width:' . $pct . '%" class="' . ($pct >= 75 ? 'bg-success' : ($pct >= 50 ? 'bg-warning' : 'bg-danger')) . '"></span></span>'
-						. $pct . ' % de ' . $dias . ($dias === 1 ? ' día' : ' días') . '</span>';
-				}
-
 				$conDescuento = $al['descuento_valor'] !== null;
 				$tabla .= '
 					<tr>
@@ -173,7 +150,7 @@
 						</td>
 						<td class="ds-ficha__dato ds-col-opcional" data-etiqueta="Fecha de ingreso" data-order="' . $h($ingreso) . '">' . $celdaIngreso . '</td>
 						<td class="ds-ficha__dato" data-etiqueta="Último pago de pensión" data-order="' . $h($ultima) . '">' . $celdaUltima . '</td>
-						<td class="ds-ficha__dato" data-etiqueta="Asistencia" data-order="' . $h($ultimaAsis) . '">' . $celdaAsis . '</td>
+						' . $this->tdUltimaAsistencia((int)$al['dias'], (int)$al['asistidos'], $al['ultima_asis']) . '
 						<td class="ds-ficha__dato" data-etiqueta="Valor adeudado" data-order="' . number_format($deuda, 2, '.', '') . '">' . $celdaDeuda . '</td>
 						<td class="ds-tabla-acciones ds-ficha__acciones"><div class="ds-ficha__botones">
 							<a href="' . APP_URL . 'pagosNew/' . $id . '/" class="btn btn-primary btn-sm ds-ficha__primario"><i class="fas fa-dollar-sign me-1" aria-hidden="true"></i>Registrar pago</a>

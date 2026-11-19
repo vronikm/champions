@@ -67,7 +67,7 @@
 									<th>Alumno</th>
 									<th class="ds-col-opcional">Fecha de ingreso</th>
 									<th>Último pago de pensión</th>
-									<th class="ds-col-opcional">Asistencia</th>
+									<th>Asistencia</th>
 									<th class="text-end">Total mora</th>
 									<th class="text-end"><span class="visually-hidden">Acciones</span></th>
 								</tr>
@@ -79,7 +79,7 @@
 						<p class="small text-body-secondary mb-0 mt-2">
 							<i class="fas fa-circle-info me-1" aria-hidden="true"></i>Sólo alumnos inactivos. Total mora: saldos pendientes de sus pagos de pensión;
 							un alumno inactivo no acumula pensiones nuevas. Los activos están en «Pensiones».
-							Asistencia: presentes y atrasos sobre los días registrados.
+							Asistencia: el último día que vino (presente o atraso, según lo que tomaron los profesores) y, debajo, el porcentaje sobre los días registrados.
 						</p>
 					</div>
 				</div>
@@ -113,8 +113,8 @@
 			lengthMenu: [LARGOS, [10, 25, 50, 100, 'Todos']],
 			order: [[0, 'asc']],
 			columnDefs: [
-				{ targets: [0, 1, 2, 3], type: 'string' },   /* data-order: nombres y fechas ISO */
-				{ targets: [4, 5], type: 'num' },            /* data-order: porcentaje e importe */
+				{ targets: [0, 1, 2, 3, 4], type: 'string' },   /* data-order: nombres y fechas ISO (ingreso, último pago, última asistencia) */
+				{ targets: 5, type: 'num' },                    /* data-order: importe */
 				{ targets: 6, orderable: false, searchable: false }
 			],
 			layout: {

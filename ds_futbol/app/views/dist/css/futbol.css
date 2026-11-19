@@ -1502,7 +1502,7 @@
 .ds-cobranza__conceptos { display: flex; flex-direction: column; }
 #notCuerpo { font-size: .92rem; line-height: 1.45; }
 .ds-cobranza__tabla .ds-ficha__botones .btn { white-space: nowrap; }
-.ds-cobranza__tabla .ds-pagos__asis { white-space: nowrap; }
+/* La línea del porcentaje de asistencia no se corta desde 1280 px (.ds-pagos__asis-linea). */
 /* El importe y, debajo, de qué se compone: «19 pensiones + saldo $75.00». */
 .ds-cobranza__tabla td.ds-cobranza__mora { text-align: right; }
 .ds-cobranza__tabla td.ds-cobranza__mora .small { margin-top: .2rem; }

@@ -7,8 +7,10 @@
 
 	/* Guardia: sesion + origen + permiso de rol. «enviar_*» pide editar,
 	   lo mismo que muestra el botón Notificar, sobre la cobranza de la que
-	   viene el aviso: pensiones o uniformes (sólo esas dos). */
-	$GUARD_VISTA = (($_POST['vista'] ?? '') === 'cobranzaUniforme') ? "cobranzaUniforme" : "cobranzaPension";
+	   viene el aviso: pensiones, pensiones de inactivos o uniformes (sólo
+	   esas tres; cualquier otro valor cae en pensiones). */
+	$GUARD_VISTA = in_array($_POST['vista'] ?? '', ['cobranzaUniforme', 'cobranzaPensionInactivos'], true)
+		? $_POST['vista'] : "cobranzaPension";
 	require_once "../views/inc/ajax_guard.php";
 
 	use app\controllers\cobranzaController;

@@ -67,6 +67,9 @@ return [
 
         /* Cobranza */
         'cobranzaDetallePension'   => ['cobranzaPension'],
+        /* Desde la migración 089 es una entrada del menú («Pensiones
+           Inactivos») con permiso propio, que manda sobre esta línea. Se
+           queda sólo para una base que aún no tenga la 089. */
         'cobranzaPensionInactivos' => ['cobranzaPension'],
         'cobranzaDetalleUniforme'  => ['cobranzaUniforme'],
 

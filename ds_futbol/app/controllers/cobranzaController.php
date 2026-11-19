@@ -67,8 +67,18 @@
 		| mostraba, y un alumno con dos abonos parciales salía dos veces en
 		| la suma y duplicaba su mora. Con los datos de hoy no cambiaba
 		| ninguna cifra (99 alumnos, mismo total).
+		|
+		| 2026-11-19: la misma pantalla sirve para los INACTIVOS
+		| (cobranzaPensionInactivos, «Pensiones Inactivos»). Con $estado 'I'
+		| cambia sólo el filtro del alumno. Un inactivo no acumula pensiones
+		| nuevas —PEN excluye a los inactivos, como hacía la consulta
+		| anterior de esa pantalla: no hay fecha de inactivación desde la que
+		| dejar de contar—, así que su mora son los saldos pendientes de sus
+		| pagos de pensión.
 		|==============================================================*/
-		public function pensionesValormora(){
+		public function pensionesValormora(string $estado = 'A'){
+			$estado = $estado === 'I' ? 'I' : 'A';
+			$vista  = $estado === 'I' ? 'cobranzaPensionInactivos' : 'cobranzaPension';
 			$consulta_datos = "SELECT V.*, UP.ultima, UP.periodo,
 										COALESCE(AS1.dias, 0) AS dias, COALESCE(AS1.asistidos, 0) AS asistidos
 									FROM (
@@ -119,7 +129,7 @@
 												) PEN ON PEN.pago_alumnoid = A.alumno_id
 												inner join alumno_representante R on R.repre_id = A.alumno_repreid
 												WHERE (PEN.TOTAL > 0 OR P.SALDO > 0)
-												  AND A.alumno_estado = 'A'  -- CONDICIÓN PARA ALUMNOS ACTIVOS
+												  AND A.alumno_estado = :estado  -- 'A' activos, 'I' inactivos
 										  ) as VALORESMORA
 										 GROUP BY alumno_id, alumno_repreid, sede_nombre, repre_identificacion, REPRE, repre_celular, repre_correo,
 												  ALUMNO, alumno_identificacion, alumno_estado, edad, alumno_fechaingreso
@@ -132,9 +142,9 @@
 												 FROM insights_v_asistencia_dia GROUP BY dia_alumnoid) AS1 ON AS1.dia_alumnoid = V.alumno_id
 									ORDER BY V.REPRE, V.ALUMNO";
 
-			$datos = $this->ejecutarConsulta($consulta_datos)->fetchAll();
+			$datos = $this->ejecutarConsulta($consulta_datos, [':estado' => $estado])->fetchAll();
 
-			$puedeNotificar = puede('editar', 'cobranzaPension');
+			$puedeNotificar = puede('editar', $vista);
 
 			$this->totalMora = 0.0;
 			$tabla = "";
@@ -312,7 +322,11 @@
 		 */
 		public function enviarCorreoControlador(string $vista = 'cobranzaPension') {
 			$alumnoId = intval($_POST['alumno_id'] ?? 0);
-			$estado = $vista === 'cobranzaUniforme' ? "a.alumno_estado <> 'E'" : "a.alumno_estado = 'A'";
+			/* Cada cobranza sólo notifica a los alumnos que lista. */
+			$estado = [
+				'cobranzaUniforme'          => "a.alumno_estado <> 'E'",
+				'cobranzaPensionInactivos'  => "a.alumno_estado = 'I'",
+			][$vista] ?? "a.alumno_estado = 'A'";
 			$fila = $this->ejecutarConsulta(
 				"SELECT r.repre_correo,
 						CONCAT_WS(' ', a.alumno_primernombre, a.alumno_apellidopaterno) AS alumno
@@ -322,8 +336,10 @@
 				[':a' => $alumnoId]
 			)->fetch(\PDO::FETCH_ASSOC);
 			if (!$fila) {
-				return $this->alertaCobranza('No encontrado', $vista === 'cobranzaUniforme'
-					? 'El alumno no existe o fue eliminado.' : 'El alumno no existe o ya no está activo.', 'error');
+				return $this->alertaCobranza('No encontrado', [
+						'cobranzaUniforme'         => 'El alumno no existe o fue eliminado.',
+						'cobranzaPensionInactivos' => 'El alumno no existe o ya no está inactivo.',
+					][$vista] ?? 'El alumno no existe o ya no está activo.', 'error');
 			}
 
 			$destino = trim((string)($_POST['correo'] ?? ''));
@@ -350,95 +366,14 @@
 			return json_encode(['tipo' => 'simple', 'titulo' => $titulo, 'texto' => $texto, 'icono' => $icono], JSON_UNESCAPED_UNICODE);
 		}
 
+		/**
+		 * «Pensiones Inactivos» (cobranzaPensionInactivos): la misma tabla que
+		 * cobranzaPension, con los alumnos inactivos. Antes era una consulta
+		 * aparte con la tabla antigua (sin ficha en el teléfono ni modal
+		 * «Notificar»). Ver pensionesValormora().
+		 */
 		public function pensionesValormoraInactivos(){
-			$tabla="";
-			$consulta_datos = "select alumno_repreid as repre_id, sede_nombre, repre_identificacion, REPRE, repre_celular, ALUMNO,
-                                    SUM(SALDO) + SUM(PENSION) AS TOTAL_MORA
-                                     FROM(
-                                        SELECT  alumno_repreid, 
-                                                repre_identificacion,
-                                                CONCAT_WS(' ',repre_primernombre, repre_segundonombre, repre_apellidopaterno, repre_apellidomaterno) as REPRE,
-                                                IFNULL(P.SALDO,0) AS SALDO, 
-                                                IFNULL(PEN.TOTAL,0) AS PENSION, 
-                                                PEN.FECHA,
-                                                P.FECHASALDOS,
-                                                FECHATRX.FECHATRX,
-                                                sede_nombre,
-                                                repre_celular,
-												CONCAT_WS(' ',alumno_primernombre, alumno_segundonombre, alumno_apellidopaterno, alumno_apellidomaterno) as ALUMNO
-                                            FROM sujeto_alumno A
-                                            inner join general_sede on sede_id = alumno_sedeid
-                                            LEFT JOIN (
-                                                SELECT 
-                                                pago_alumnoid, alumno_repreid as REPRESALDOS,
-                                                MAX(pago_fecha) AS FECHASALDOS,
-                                                COUNT(pago_saldo) AS TOTAL, 
-                                                SUM(pago_saldo) AS SALDO
-                                                FROM alumno_pago
-                                                    INNER JOIN sujeto_alumno ON alumno_id = pago_alumnoid
-                                                WHERE pago_rubroid = 'RPE' AND pago_estado = 'P' AND pago_saldo > 0
-                                                GROUP BY pago_alumnoid, alumno_repreid
-                                            ) P ON P.pago_alumnoid = A.alumno_id
-                                            LEFT JOIN (
-                                                SELECT 
-                                                BASE.FECHA,
-                                                BASE.pago_alumnoid,
-                                                CASE WHEN BASE.FECHA > CURDATE() THEN 0 ELSE
-                                                    GREATEST(0, TIMESTAMPDIFF(MONTH, BASE.FECHA, CURDATE()) + (DAY(CURDATE()) < DAY(BASE.FECHA))) END AS PENSIONES,
-                                                CASE WHEN BASE.FECHA > CURDATE() THEN 0 ELSE
-                                                    GREATEST(0, TIMESTAMPDIFF(MONTH, BASE.FECHA, CURDATE()) + (DAY(CURDATE()) < DAY(BASE.FECHA))) * COALESCE(BASE.descuento_valor, BASE.sede_pension) END AS TOTAL
-                                                FROM (
-                                                SELECT 
-                                                    MAX(pago_fecha) AS FECHA,
-                                                    pago_alumnoid, 
-                                                    MAX(descuento_valor) AS descuento_valor, 
-                                                    MAX(sede_pension) AS sede_pension  
-                                                FROM 
-                                                    sujeto_alumno
-                                                    LEFT JOIN alumno_pago ON pago_alumnoid = alumno_id 
-                                                    LEFT JOIN alumno_pago_descuento ON descuento_alumnoid = alumno_id AND descuento_estado = 'S'
-                                                    LEFT JOIN general_sede ON sede_id = alumno_sedeid
-                                                WHERE pago_rubroid = 'RPE' AND alumno_estado <> 'I' 
-                                                GROUP BY 
-                                                    pago_alumnoid
-                                                ) BASE
-                                            ) PEN ON PEN.pago_alumnoid = A.alumno_id
-                                            inner join alumno_representante R on R.repre_id = A.alumno_repreid
-                                            left join(					
-                                                select pago_alumnoid, transaccion_pagoid, transaccion_estado, max(transaccion_fecha) FECHATRX
-                                                    from alumno_pago_transaccion
-                                                    inner join alumno_pago on pago_id = transaccion_pagoid
-                                                    where transaccion_estado = 'C'
-                                                        and pago_estado = 'P'
-                                                    group by pago_alumnoid, transaccion_pagoid, transaccion_estado						
-                                            ) FECHATRX on FECHATRX.pago_alumnoid = A.alumno_id
-                                            WHERE (PEN.TOTAL > 0 OR P.SALDO > 0) 
-      											  AND A.alumno_estado = 'I'  -- CONDICIÓN PARA ALUMNOS ACTIVOS
-                                        ) as VALORESMORA			
-                                    group by alumno_repreid, repre_identificacion, REPRE, sede_nombre, repre_celular, ALUMNO";
-				
-			$datos = $this->ejecutarConsulta($consulta_datos);
-		
-			if($datos->rowCount()>0){
-				$datos = $datos->fetchAll();
-			}
-
-			foreach($datos as $rows){
-                $celular = substr($rows['repre_celular'], 1);				
-				$tabla.='				
-					<tr>
-                        <td>'.$rows['sede_nombre'].'</td>
-						<td>'.$rows['repre_identificacion'].'</td>
-						<td>'.$rows['REPRE'].'</td>
-						<td>'.$rows['ALUMNO'].'</td>
-						<td>'.$rows['TOTAL_MORA'].'</td>
-						<td>
-							'.$this->siPuede('editar','cobranzaPension',$this->botonWhatsapp($celular, $rows['TOTAL_MORA'], 'pensiones')).'
-                            <a href="'.APP_URL.'cobranzaDetallePension/'.$rows['repre_id'].'/" class="btn float-end btn-ver btn-sm ds-accion-sep"><i class="fas fa-list me-1"></i>Detalle</a>
-						</td>
-					</tr>';	
-			}
-			return $tabla;			
+			return $this->pensionesValormora('I');
 		}
 
 		/*==============================================================

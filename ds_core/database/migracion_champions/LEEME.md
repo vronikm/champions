@@ -147,6 +147,10 @@ en desarrollo y llevar el resultado a producción con un volcado (ver más abajo
     «Reportes» en el menú de Arena y, dentro, «Pagos» (`reportePagos`):
     lo recaudado por forma y por hora y el cuadre del efectivo. No concede
     permisos: se asignan en Core › Permisos. Repetible.
+30. `089_menu_pensiones_inactivos.sql` (de `ds_core/database/`, común):
+    «Pensiones Inactivos» (`cobranzaPensionInactivos`) en Gestión de
+    cobranza, debajo de «Pensiones»; cada rol recibe sobre ella los
+    permisos que ya tiene sobre «Pensiones». Repetible.
 
 ```bash
 mysql -u USUARIO -p --default-character-set=utf8mb4 BASE < ARCHIVO.sql

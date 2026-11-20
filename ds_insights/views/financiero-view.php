@@ -41,7 +41,6 @@ $facturas  = $insInsights->facturacion($p);
 
 $varIngresos = $insInsights->variacion($ing['total'], $ingAnt['total']);
 $totalTrx    = array_sum(array_column($ticket, 'n'));
-$dscTotal    = array_sum(array_map(static fn(array $d): float => (float) $d['v'], $dsc['registrados']));
 
 $tituloVista = 'Financiero';
 $vistaActual = 'financiero';
@@ -101,9 +100,9 @@ require_once __DIR__ . "/inc/layout-top.php";
     <div class="col-12 col-sm-6 col-lg-3">
         <div class="small-box text-bg-danger h-100">
             <div class="inner">
-                <h3 class="text-truncate">$<?php echo number_format($dscTotal, 2); ?></h3>
-                <p class="mb-0">Descuentos vigentes</p>
-                <p class="mb-0 small opacity-75"><span class="opacity-75">sin contar becas del 100 %</span></p>
+                <h3 class="text-truncate">$<?php echo number_format($dsc['beneficio'], 2); ?></h3>
+                <p class="mb-0">Becas y descuentos al mes</p>
+                <p class="mb-0 small opacity-75"><span class="opacity-75">se deja de cobrar a <?php echo number_format($dsc['alumnos']); ?> alumnos activos</span></p>
             </div>
             <i class="fas fa-tags small-box-icon" aria-hidden="true"></i>
         </div>
@@ -250,28 +249,45 @@ require_once __DIR__ . "/inc/layout-top.php";
                 <h3 class="card-title mb-0">Descuentos y becas vigentes</h3>
             </div>
             <div class="card-body">
-                <table class="table table-sm align-middle mb-2">
-                    <tbody>
-                    <?php foreach ($dsc['registrados'] as $d): ?>
-                        <tr>
-                            <td><?php echo htmlspecialchars((string) $d['concepto'], ENT_QUOTES, 'UTF-8'); ?></td>
-                            <td class="text-end text-muted"><?php echo number_format((int) $d['n']); ?></td>
-                            <td class="text-end fw-semibold">$<?php echo number_format((float) $d['v'], 2); ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
-
-                <?php if ($dsc['becaCompleta']['n'] > 0): ?>
-                    <div class="callout mb-0">
-                        <strong><?php echo (int) $dsc['becaCompleta']['n']; ?> beca(s) del 100 %</strong>
-                        suponen <strong>$<?php echo number_format($dsc['becaCompleta']['mensual'], 2); ?></strong>
-                        al mes que la escuela no cobra.
-                        <div class="text-muted small mt-1">
-                            No consta como descuento: se guardan con importe 0,00. Esta cifra es
-                            <em>estimada</em> a partir de la pensión de la sede de cada alumno.
-                        </div>
-                    </div>
+                <?php if (count($dsc['tipos']) === 0): ?>
+                    <p class="text-body-secondary mb-0">Ningún alumno activo tiene beca ni descuento.</p>
+                <?php else: ?>
+                    <!-- Por tipo: alumnos activos y lo que se deja de cobrar al
+                         mes (pensión de la sede - lo que pagan). -->
+                    <table class="table table-sm align-middle mb-2">
+                        <thead>
+                            <tr class="small text-body-secondary">
+                                <th class="fw-normal">Tipo</th>
+                                <th class="fw-normal text-end">Alumnos</th>
+                                <th class="fw-normal text-end">Se deja de cobrar al mes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        <?php foreach ($dsc['tipos'] as $d): ?>
+                            <tr>
+                                <td><?php echo htmlspecialchars($d['tipo'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td class="text-end text-body-secondary"><?php echo number_format($d['alumnos']); ?></td>
+                                <td class="text-end">
+                                    <span class="fw-semibold">$<?php echo number_format($d['beneficio'], 2); ?></span>
+                                    <?php if ($d['porcentaje'] !== null): ?>
+                                        <span class="d-block small text-body-secondary"><?php echo number_format($d['porcentaje'], 0); ?> % de su pensión</span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                        <tfoot>
+                            <tr class="border-top">
+                                <th>Total</th>
+                                <th class="text-end"><?php echo number_format($dsc['alumnos']); ?></th>
+                                <th class="text-end">$<?php echo number_format($dsc['beneficio'], 2); ?></th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    <p class="small text-body-secondary mb-0">
+                        Alumnos activos. Lo que se deja de cobrar es la pensión de su sede menos lo que pagan con el beneficio.
+                        <a href="<?php echo APP_URL; ?>becas/">Ver el detalle en Becas y descuentos</a>
+                    </p>
                 <?php endif; ?>
             </div>
         </div>

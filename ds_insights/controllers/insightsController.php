@@ -650,26 +650,26 @@ class insightsController
         }
 
         /*
-        | Las becas del 100 % se guardan con descuento_valor = 0,00, asi que
-        | el subsidio real que la escuela concede no aparece en ninguna suma.
-        | Se calcula aqui a partir de la pension de la sede del alumno.
+        | Becas del 100 % de alumnos activos: cuántas y cuánto se deja de
+        | cobrar al mes por ellas (la pensión de su sede, porque no pagan).
+        | Por el código DBC y no por la descripción del catálogo, que en
+        | adfpl, cdjg y champions es «Beca» y dejaba el aviso siempre mudo.
+        | Antes decía que «no constan como descuento»: constan, con lo que
+        | pagan (0,00). Ver beneficios().
         */
         $beca = $this->filas(
             "SELECT COUNT(*) n, IFNULL(SUM(s.sede_pension), 0) v
                FROM alumno_pago_descuento d
-               JOIN general_tabla_catalogo c
-                 ON c.catalogo_valor = d.descuento_rubroid AND c.catalogo_tablaid = 7
                JOIN sujeto_alumno a ON a.alumno_id = d.descuento_alumnoid
                JOIN general_sede  s ON s.sede_id   = a.alumno_sedeid
-              WHERE d.descuento_estado = 'S'
-                AND a.alumno_estado = 'A'
-                AND c.catalogo_descripcion LIKE 'Beca 100%'"
+              WHERE d.descuento_estado = 'S' AND d.descuento_rubroid = 'DBC'
+                AND a.alumno_estado = 'A'"
             . $this->sede('a.alumno_sedeid'));
         if ($this->superaUmbral('becas_completas', (float) ($beca[0]['n'] ?? 0))) {
+            $nBecas = (int) $beca[0]['n'];
             $avisos[] = ['tono' => 'info', 'icono' => 'fa-graduation-cap',
-                'texto' => (int) $beca[0]['n'] . ' beca(s) del 100 % suponen $'
-                    . number_format((float) $beca[0]['v'], 2)
-                    . ' al mes que no se cobran y que no constan como descuento'];
+                'texto' => $nBecas . ($nBecas === 1 ? ' beca del 100 %: $' : ' becas del 100 %: $')
+                    . number_format((float) $beca[0]['v'], 2) . ' al mes que no se cobran'];
         }
 
         $sinResultado = (int) $this->escalar(
@@ -805,42 +805,66 @@ class insightsController
 
     /*==============  Descuentos y becas  ==============*/
     /*
-    | OJO CON LAS BECAS DEL 100 %. Se guardan con descuento_valor = 0,00, asi
-    | que el subsidio real que la escuela concede NO aparece en la suma de
-    | descuentos. Se calcula aparte, a partir de la pension de la sede del
-    | alumno, y se devuelve identificado como estimado: no es un importe
-    | registrado sino una consecuencia deducida.
+    | Lo que paga al mes un alumno con beneficio, sobre alumno_pago_descuento
+    | (d) y general_sede (s). descuento_valor es la PENSION QUE PAGA, no el
+    | descuento: «Descuento $25» en una sede de $35 paga $25. La beca del
+    | 100 % paga 0 (aunque tenga un valor viejo). Ver beneficios().
+    */
+    const SQL_PAGA_BENEFICIO = "CASE WHEN d.descuento_rubroid = 'DBC' THEN 0
+                      ELSE LEAST(GREATEST(d.descuento_valor, 0), s.sede_pension) END";
+
+    /** Nombre del tipo: el catálogo llama «Beca» a la del 100 % en algunos sistemas. */
+    private static function nombreBeneficio(string $cod, ?string $catalogo): string
+    {
+        return ['DBC' => 'Beca 100 %', 'DBP' => 'Beca 50 %'][$cod] ?? ($catalogo ?: $cod);
+    }
+
+    /*
+    | Resumen para Financiero: por tipo, cuántos alumnos ACTIVOS lo tienen y
+    | cuánto se deja de cobrar al mes (pensión de la sede - lo que pagan).
+    | El detalle está en beneficios() (Becas y descuentos).
+    |
+    | 2026-11-19: antes sumaba descuento_valor como si fuera el descuento
+    | (era lo que pagan) y estimaba aparte las becas del 100 % como un
+    | subsidio «no registrado», buscando la descripción 'Beca 100%', que en
+    | adfpl, cdjg y champions se llama «Beca».
     */
     public function descuentos(): array
     {
-        $registrados = $this->filas(
-            "SELECT IFNULL(c.catalogo_descripcion, d.descuento_rubroid) concepto,
-                    COUNT(*) n, SUM(d.descuento_valor) v
+        $tipos = [];
+        foreach ($this->filas(
+            "SELECT d.descuento_rubroid cod, MAX(c.catalogo_descripcion) tipo, COUNT(*) n,
+                    SUM(s.sede_pension) pension, SUM(" . self::SQL_PAGA_BENEFICIO . ") paga
                FROM alumno_pago_descuento d
                LEFT JOIN general_tabla_catalogo c
                       ON c.catalogo_valor = d.descuento_rubroid AND c.catalogo_tablaid = 7
                JOIN sujeto_alumno a ON a.alumno_id = d.descuento_alumnoid
+               JOIN general_sede  s ON s.sede_id   = a.alumno_sedeid
               WHERE d.descuento_estado = 'S' AND a.alumno_estado = 'A'"
              . $this->sede('a.alumno_sedeid') . "
-              GROUP BY d.descuento_rubroid ORDER BY v DESC");
+              GROUP BY d.descuento_rubroid") as $f) {
+            $pension = (float) $f['pension'];
+            $paga    = (float) $f['paga'];
+            $tipos[] = [
+                'cod'        => $f['cod'],
+                'tipo'       => self::nombreBeneficio($f['cod'], $f['tipo']),
+                'alumnos'    => (int) $f['n'],
+                'pension'    => $pension,
+                'paga'       => $paga,
+                'beneficio'  => $pension - $paga,
+                'porcentaje' => $pension > 0 ? ($pension - $paga) / $pension * 100 : null,
+            ];
+        }
+        usort($tipos, static fn($x, $y) => $y['beneficio'] <=> $x['beneficio']);
 
-        $beca = $this->filas(
-            "SELECT COUNT(*) n, IFNULL(SUM(s.sede_pension), 0) v
-               FROM alumno_pago_descuento d
-               JOIN general_tabla_catalogo c
-                 ON c.catalogo_valor = d.descuento_rubroid AND c.catalogo_tablaid = 7
-               JOIN sujeto_alumno a ON a.alumno_id = d.descuento_alumnoid
-               JOIN general_sede  s ON s.sede_id   = a.alumno_sedeid
-              WHERE d.descuento_estado = 'S' AND a.alumno_estado = 'A'
-                AND c.catalogo_descripcion LIKE 'Beca 100%'"
-             . $this->sede('a.alumno_sedeid'));
-
+        $pension = array_sum(array_column($tipos, 'pension'));
+        $total   = array_sum(array_column($tipos, 'beneficio'));
         return [
-            'registrados' => $registrados,
-            'becaCompleta' => [
-                'n'     => (int) ($beca[0]['n'] ?? 0),
-                'mensual' => (float) ($beca[0]['v'] ?? 0),
-            ],
+            'tipos'      => $tipos,
+            'alumnos'    => array_sum(array_column($tipos, 'alumnos')),
+            'pension'    => $pension,
+            'beneficio'  => $total,
+            'porcentaje' => $pension > 0 ? $total / $pension * 100 : null,
         ];
     }
 
@@ -910,8 +934,7 @@ class insightsController
     */
     public function beneficios(): array
     {
-        $paga = "CASE WHEN d.descuento_rubroid = 'DBC' THEN 0
-                      ELSE LEAST(GREATEST(d.descuento_valor, 0), s.sede_pension) END";
+        $paga  = self::SQL_PAGA_BENEFICIO;
         $desde = "p.pago_fecha >= IFNULL(d.descuento_fecha, '1900-01-01')";
         $filas = $this->filas(
             "SELECT d.descuento_rubroid cod,
@@ -970,8 +993,7 @@ class insightsController
 
             $r[] = [
                 'cod'        => $f['cod'],
-                /* El catalogo llama «Beca» a la del 100 % en algunos sistemas. */
-                'tipo'       => ['DBC' => 'Beca 100 %', 'DBP' => 'Beca 50 %'][$f['cod']] ?? ($f['tipo'] ?: $f['cod']),
+                'tipo'       => self::nombreBeneficio($f['cod'], $f['tipo']),
                 'activos'    => $activos,
                 'inactivos'  => (int) $f['inactivos'],
                 'pension'    => $pension,                     /* pension normal de sus sedes, al mes */

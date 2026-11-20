@@ -1015,10 +1015,21 @@ class insightsController
     /*
     | Casos que no deberian darse y que conviene mirar. No son errores del
     | sistema: son situaciones reales que el dato deja ver.
+    |
+    | 2026-11-19: antes devolvia frases («El alumno 47 tiene beca del 100 %
+    | y pago $20.00 de pension el 2025-04-14»), una por pago, y nadie sabia
+    | quien era el alumno 47. Ahora devuelve los datos para que la vista
+    | muestre a cada alumno una vez (nombre, cedula, sede, estado), sus
+    | pagos y los enlaces a sus pagos y a su beneficio en ds_futbol:
+    |
+    |   'becaPagada' => alumnos con beca del 100 % que pagaron pension
+    |                   despues de concedida, de mayor a menor importe.
+    |   'sinActivo'  => beneficios vigentes en alumnos que no estan activos.
     */
     public function anomaliasBeneficio(): array
     {
-        $a = [];
+        $alumno = "CONCAT_WS(' ', a.alumno_primernombre, a.alumno_segundonombre, a.alumno_apellidopaterno, a.alumno_apellidomaterno) nombre,
+                   a.alumno_identificacion cedula, a.alumno_estado estado, s.sede_nombre sede";
 
         /*
         | Alguien con beca del 100 % que aun asi pago pension DESPUES de que se
@@ -1033,38 +1044,68 @@ class insightsController
         | Un aviso que grita por lo normal se deja de leer, y con el se dejan
         | de leer los que si importan.
         */
+        $becaPagada = [];
         foreach ($this->filas(
-            "SELECT p.pago_alumnoid alumno, p.pago_fecha fecha, p.pago_valor valor,
-                    d.descuento_fecha concedida
+            "SELECT p.pago_alumnoid alumno, p.pago_fecha fecha, p.pago_valor valor, p.pago_periodo periodo,
+                    d.descuento_fecha concedida, $alumno
                FROM alumno_pago p
                JOIN alumno_pago_descuento d ON d.descuento_alumnoid = p.pago_alumnoid
+               JOIN sujeto_alumno a ON a.alumno_id = p.pago_alumnoid
+               LEFT JOIN general_sede s ON s.sede_id = a.alumno_sedeid
               WHERE d.descuento_rubroid = 'DBC' AND d.descuento_estado = 'S'
                 AND p.pago_estado = 'C' AND p.pago_rubroid = 'RPE'
                 AND (d.descuento_fecha IS NULL OR p.pago_fecha >= d.descuento_fecha)"
              . $this->sede('p.pago_sedeid') . "
-              ORDER BY p.pago_fecha") as $f) {
-            $a[] = [
-                'tono'  => 'warning',
-                'texto' => 'El alumno ' . (int) $f['alumno'] . ' tiene beca del 100 % y pagó $'
-                         . number_format((float) $f['valor'], 2) . ' de pensión el '
-                         . $f['fecha']
-                         . ($f['concedida'] ? ' (beca concedida el ' . $f['concedida'] . ')' : ''),
+              ORDER BY p.pago_fecha, p.pago_id") as $f) {
+            $id = (int) $f['alumno'];
+            $becaPagada[$id] ??= [
+                'id'        => $id,
+                'nombre'    => $this->nombrePersona($f['nombre']),
+                'cedula'    => (string) $f['cedula'],
+                'estado'    => (string) $f['estado'],
+                'sede'      => (string) $f['sede'],
+                'concedida' => $f['concedida'],
+                'pagos'     => [],
+                'total'     => 0.0,
             ];
+            $becaPagada[$id]['pagos'][] = [
+                'fecha'   => $f['fecha'],
+                'valor'   => (float) $f['valor'],
+                'periodo' => trim((string) $f['periodo']),
+            ];
+            $becaPagada[$id]['total'] += (float) $f['valor'];
         }
+        $becaPagada = array_values($becaPagada);
+        usort($becaPagada, static fn($x, $y) => $y['total'] <=> $x['total']);
 
         /* Beneficios activos de alumnos que ya no lo estan: no cuestan
            dinero, pero inflan el recuento de becados. */
-        $huerfanos = (int) $this->escalar(
-            "SELECT COUNT(*) FROM alumno_pago_descuento d
+        $sinActivo = [];
+        foreach ($this->filas(
+            "SELECT a.alumno_id id, $alumno,
+                    d.descuento_rubroid rubro, IFNULL(c.catalogo_descripcion, d.descuento_rubroid) tipo, d.descuento_fecha desde
+               FROM alumno_pago_descuento d
                JOIN sujeto_alumno a ON a.alumno_id = d.descuento_alumnoid
+               LEFT JOIN general_sede s ON s.sede_id = a.alumno_sedeid
+               LEFT JOIN general_tabla_catalogo c
+                      ON c.catalogo_valor = d.descuento_rubroid AND c.catalogo_tablaid = 7
               WHERE d.descuento_estado = 'S' AND a.alumno_estado <> 'A'"
-             . $this->sede('a.alumno_sedeid'));
-        if ($huerfanos > 0) {
-            $a[] = ['tono' => 'info',
-                'texto' => "$huerfanos beneficio(s) siguen activos en alumnos que ya no lo están"];
+             . $this->sede('a.alumno_sedeid') . "
+              ORDER BY a.alumno_apellidopaterno, a.alumno_apellidomaterno, a.alumno_primernombre") as $f) {
+            $f['id']     = (int) $f['id'];
+            /* El catálogo llama «Beca» a la del 100 % en algunos sistemas. */
+            $f['tipo']   = ['DBC' => 'Beca 100 %', 'DBP' => 'Beca 50 %'][$f['rubro']] ?? $f['tipo'];
+            $f['nombre'] = $this->nombrePersona($f['nombre']);
+            $sinActivo[] = $f;
         }
 
-        return $a;
+        return ['becaPagada' => $becaPagada, 'sinActivo' => $sinActivo];
+    }
+
+    /** Nombre de la base listo para mostrar: sin entidades viejas ni espacios de más. */
+    private function nombrePersona($v): string
+    {
+        return preg_replace('/\s+/', ' ', trim(html_entity_decode((string) $v, ENT_QUOTES | ENT_HTML5, 'UTF-8')));
     }
 
     /*==============  Alumnos: el estado hoy  ==============*/

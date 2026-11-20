@@ -110,12 +110,13 @@
 				/* Lo que debe. */
 				$pension = $al['descuento_valor'] !== null ? (float)$al['descuento_valor'] : (float)$al['sede_pension'];
 				/* Desde el último mes pagado (fecha o periodo, sin pagos
-				   eliminados). Activo: hasta el mes en curso. Inactivo: hasta
-				   su última asistencia, y si nunca pagó, desde su ingreso
-				   (mainModel::mesesPensionInactivo). Beca del 100 %: nada. */
+				   eliminados); si nunca pagó, desde su ingreso (mainModel::
+				   baseSinPagos). Activo: hasta el mes en curso. Inactivo: hasta
+				   su última asistencia (mainModel::mesesPensionInactivo).
+				   Beca del 100 %: nada. */
 				$inactivo = $al['alumno_estado'] === 'I';
 				$meses   = $al['descuento_rubroid'] === 'DBC' ? 0
-				         : ($activo ? $this->mesesPensionAdeudados($al['ultimo_mes'])
+				         : ($activo ? $this->mesesPensionAdeudados($al['ultimo_mes'] ?: $this->baseSinPagos($al['alumno_fechaingreso']))
 				         : ($inactivo ? $this->mesesPensionInactivo($al['ultimo_mes'], $al['ultima_asis'], $al['alumno_fechaingreso']) : 0));
 				$deuda   = round((float)$al['saldo'] + $meses * $pension, 2);
 				$this->totalAdeudado += $deuda;
@@ -301,8 +302,8 @@
 
 			$fila = $this->ejecutarConsulta($ultimafecha, [':alumno' => (int)$alumnoid])->fetch();
 			$ultimafecha = $fila ? $fila["fecha"] : null;
-			/* Inactivo que asistió y nunca pagó: desde su ingreso. */
-			if (!$ultimafecha && $hasta && $fila) {
+			/* Nunca pagó una pensión: desde su ingreso. */
+			if (!$ultimafecha && $fila) {
 				$ultimafecha = $this->baseSinPagos($fila["ingreso"]);
 			}
 

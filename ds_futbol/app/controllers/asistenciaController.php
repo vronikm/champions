@@ -1859,9 +1859,12 @@
 		| «beca»: tiene beca completa (DBC) y no debe nada. No paga pensión,
 		| así que «sin pagos» o «al día» dirían algo que no es.
 		|
-		| «sinpagos»: nunca pagó una pensión y no tiene saldo. La lista de
-		| pagos lo pinta «Al día» porque no hay deuda calculable, pero aquí
-		| decir «al día» de quien nunca pagó confundiría al profesor.
+		| Quien nunca pagó una pensión las debe desde su ingreso
+		| (mainModel::baseSinPagos), como en Pagos y Cobranza.
+		|
+		| «sinpagos»: nunca pagó una pensión y aún no debe ninguna (por
+		| ejemplo, ingresa el mes que viene). Decir «al día» de quien nunca
+		| pagó confundiría al profesor.
 		|
 		| Devuelve [alumno_id => ['estado' => mora|beca|aldia|sinpagos,
 		|                         'meses' => pensiones, 'deuda' => importe]].
@@ -1871,7 +1874,7 @@
 			if (!$ids) { return []; }
 			$en = implode(',', $ids);   /* enteros: se pueden escribir en la consulta */
 
-			$filas = $this->ejecutarConsulta("SELECT A.alumno_id, S.sede_pension, D.descuento_valor, D.descuento_rubroid,
+			$filas = $this->ejecutarConsulta("SELECT A.alumno_id, A.alumno_fechaingreso, S.sede_pension, D.descuento_valor, D.descuento_rubroid,
 						UP.ultima, COALESCE(PP.saldo, 0) AS saldo
 					FROM sujeto_alumno A
 					LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
@@ -1888,10 +1891,12 @@
 			$estado = [];
 			foreach ($filas as $f) {
 				$pension = $f['descuento_valor'] !== null ? (float)$f['descuento_valor'] : (float)$f['sede_pension'];
-				$meses   = $pension > 0 && $f['descuento_rubroid'] !== 'DBC' ? $this->mesesPensionAdeudados($f['ultima']) : 0;
+				$sinPago = !$f['ultima'] || str_starts_with((string)$f['ultima'], '0000');
+				/* Nunca pagó una pensión: desde su ingreso (mainModel::baseSinPagos). */
+				$meses   = $pension > 0 && $f['descuento_rubroid'] !== 'DBC'
+				         ? $this->mesesPensionAdeudados($sinPago ? $this->baseSinPagos($f['alumno_fechaingreso']) : $f['ultima']) : 0;
 				$saldo   = (float)$f['saldo'];
 				$deuda   = round($saldo + $meses * $pension, 2);
-				$sinPago = !$f['ultima'] || str_starts_with((string)$f['ultima'], '0000');
 				$estado[(int)$f['alumno_id']] = [
 					'estado' => match (true) {
 						$deuda > 0                         => 'mora',

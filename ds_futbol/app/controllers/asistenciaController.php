@@ -1877,7 +1877,7 @@
 					LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
 					LEFT JOIN alumno_pago_descuento D ON D.descuento_alumnoid = A.alumno_id
 					       AND D.descuento_estado = 'S' AND D.descuento_rubroid IN ('DBC', 'DBP', 'DDS')   /* beca 100 %, beca 50 % o descuento: el valor es la pensión que paga (como pagosNew) */
-					LEFT JOIN (SELECT pago_alumnoid, MAX(pago_fecha) AS ultima
+					LEFT JOIN (SELECT pago_alumnoid, " . self::sqlUltimoMesPagado() . " AS ultima   /* fecha o periodo del pago, el mayor (mainModel) */
 					             FROM alumno_pago WHERE pago_rubroid = 'RPE' AND pago_estado <> 'E' AND pago_alumnoid IN ($en)
 					            GROUP BY pago_alumnoid) UP ON UP.pago_alumnoid = A.alumno_id
 					LEFT JOIN (SELECT pago_alumnoid, SUM(pago_saldo) AS saldo
@@ -1888,7 +1888,7 @@
 			$estado = [];
 			foreach ($filas as $f) {
 				$pension = $f['descuento_valor'] !== null ? (float)$f['descuento_valor'] : (float)$f['sede_pension'];
-				$meses   = $pension > 0 ? $this->mesesPensionAdeudados($f['ultima']) : 0;
+				$meses   = $pension > 0 && $f['descuento_rubroid'] !== 'DBC' ? $this->mesesPensionAdeudados($f['ultima']) : 0;
 				$saldo   = (float)$f['saldo'];
 				$deuda   = round($saldo + $meses * $pension, 2);
 				$sinPago = !$f['ultima'] || str_starts_with((string)$f['ultima'], '0000');

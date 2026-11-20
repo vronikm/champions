@@ -152,7 +152,7 @@
 							</tbody>
 						</table>
 						<p class="small text-body-secondary mb-0 mt-2">
-							<i class="fas fa-circle-info me-1" aria-hidden="true"></i>Valor adeudado: saldos pendientes y, para alumnos activos, las pensiones no pagadas desde la última; para inactivos, las de los meses que asistieron después de su último pago.
+							<i class="fas fa-circle-info me-1" aria-hidden="true"></i>Valor adeudado: saldos pendientes y, para alumnos activos, las pensiones no pagadas desde la última; para inactivos, las de los meses que asistieron después de su último pago (o desde su ingreso, si nunca pagaron una). Un pago adelantado cubre el mes que indica y los pagos eliminados no cuentan.
 							Asistencia: el último día que vino (presente o atraso, según lo que tomaron los profesores) y, debajo, el porcentaje sobre los días registrados.
 						</p>
 					</div>

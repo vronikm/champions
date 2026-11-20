@@ -76,8 +76,14 @@
 		| último pago de pensión, los meses hasta su ÚLTIMA ASISTENCIA los
 		| entrenó sin pagar y entran en la mora, con los saldos pendientes.
 		| La misma cuenta que Pagos y pagosNew (mainModel::
-		| mesesPensionInactivo). Para el inactivo el último pago no cuenta
-		| los pagos eliminados (pago_estado 'E'), como en esas pantallas.
+		| mesesPensionInactivo). El inactivo que asistió y nunca pagó una
+		| pensión las debe desde su ingreso (mainModel::baseSinPagos).
+		|
+		| Activos e inactivos: el último mes pagado es el mayor entre la
+		| fecha y el periodo del pago (un pago adelantado cubre su mes), los
+		| pagos de pensión eliminados (pago_estado 'E') no cuentan y la beca
+		| del 100 % no debe pensiones. Igual en Pagos, pagosNew y la toma de
+		| asistencia.
 		|==============================================================*/
 		/** Nombres de los meses para el detalle de la mora. */
 		const MESES = [1 => 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -87,24 +93,26 @@
 			$vista  = $estado === 'I' ? 'cobranzaPensionInactivos' : 'cobranzaPension';
 
 			/* Hasta cuándo se generan pensiones: hoy para los activos; la
-			   última asistencia para los inactivos (sin asistencia, nada). */
+			   última asistencia para los inactivos (sin asistencia, nada).
+			   Desde cuándo: el último mes pagado (fecha o periodo del pago,
+			   el mayor; sin pagos eliminados). El inactivo que nunca pagó,
+			   desde su ingreso (mainModel::baseSinPagos). */
+			$params = [':estado' => $estado, ':estado2' => $estado];
 			if ($estado === 'I') {
 				$fin       = 'BASE.ultima_asis';
 				$joinAsis  = "LEFT JOIN (SELECT dia_alumnoid, " . self::SQL_ULTIMA_ASISTENCIA . " AS ultima_asis
 				                           FROM insights_v_asistencia_dia GROUP BY dia_alumnoid) UA ON UA.dia_alumnoid = alumno_id";
 				$campoAsis = 'MAX(UA.ultima_asis) AS ultima_asis,';
-				$filtroPen = "alumno_estado = 'I' AND pago_estado <> 'E'";
-				$campoFecha = self::sqlUltimoMesPagado();   /* fecha o periodo del pago, el mayor */
-				$sinBeca    = 'BASE.becado = 1 OR ';         /* beca del 100 %: no debe pensiones (como pagosNew) */
+				$campoFecha = 'COALESCE(' . self::sqlUltimoMesPagado() . ', MAX(' . self::sqlBaseSinPagos() . '))';
+				$params[':inicio'] = $params[':inicio2'] = $this->inicioAsistencia() ?? date('Y-m-d');
 			} else {
 				$fin       = 'CURDATE()';
 				$joinAsis  = '';
 				$campoAsis = '';
-				$filtroPen = "alumno_estado <> 'I'";
-				$campoFecha = 'MAX(pago_fecha)';
-				$sinBeca    = '';
+				$campoFecha = self::sqlUltimoMesPagado();
 			}
-			$sqlMeses = "CASE WHEN $sinBeca$fin IS NULL OR BASE.FECHA >= $fin THEN 0 ELSE
+			/* Beca del 100 % (DBC): no debe pensiones, como en pagosNew. */
+			$sqlMeses = "CASE WHEN BASE.becado = 1 OR BASE.FECHA IS NULL OR $fin IS NULL OR BASE.FECHA >= $fin THEN 0 ELSE
 							GREATEST(0, TIMESTAMPDIFF(MONTH, BASE.FECHA, $fin) + (DAY($fin) < DAY(BASE.FECHA))) END";
 			$consulta_datos = "SELECT V.*, UP.ultima, UP.periodo,
 										COALESCE(AS1.dias, 0) AS dias, COALESCE(AS1.asistidos, 0) AS asistidos, AS1.ultima_asis
@@ -139,19 +147,20 @@
 													FROM (
 													SELECT
 														$campoFecha AS FECHA,
-														pago_alumnoid, $campoAsis
+														alumno_id AS pago_alumnoid, $campoAsis
 														MAX(descuento_valor) AS descuento_valor,
-														MAX(descuento_rubroid = 'DBC') AS becado,
+														COALESCE(MAX(descuento_rubroid = 'DBC'), 0) AS becado,
 														MAX(sede_pension) AS sede_pension
 													FROM
 														sujeto_alumno
 														LEFT JOIN alumno_pago ON pago_alumnoid = alumno_id
+														       AND pago_rubroid = 'RPE' AND pago_estado <> 'E'   -- los pagos eliminados no cuentan
 														LEFT JOIN alumno_pago_descuento ON descuento_alumnoid = alumno_id AND descuento_estado = 'S'
 														LEFT JOIN general_sede ON sede_id = alumno_sedeid
 														$joinAsis
-													WHERE pago_rubroid = 'RPE' AND $filtroPen
+													WHERE alumno_estado = :estado2
 													GROUP BY
-														pago_alumnoid
+														alumno_id
 													) BASE
 												) PEN ON PEN.pago_alumnoid = A.alumno_id
 												inner join alumno_representante R on R.repre_id = A.alumno_repreid
@@ -169,7 +178,7 @@
 												 FROM insights_v_asistencia_dia GROUP BY dia_alumnoid) AS1 ON AS1.dia_alumnoid = V.alumno_id
 									ORDER BY V.REPRE, V.ALUMNO";
 
-			$datos = $this->ejecutarConsulta($consulta_datos, [':estado' => $estado])->fetchAll();
+			$datos = $this->ejecutarConsulta($consulta_datos, $params)->fetchAll();
 
 			$puedeNotificar = puede('editar', $vista);
 
@@ -558,7 +567,7 @@
 										GREATEST(0, TIMESTAMPDIFF(MONTH, BASE.FECHA, CURDATE()) + (DAY(CURDATE()) < DAY(BASE.FECHA))) * COALESCE(BASE.descuento_valor, BASE.sede_pension) END AS TOTAL
 									FROM (
 									SELECT 
-										MAX(pago_fecha) AS FECHA, 
+										" . self::sqlUltimoMesPagado() . " AS FECHA,   -- fecha o periodo del pago, el mayor (mainModel)
 										pago_alumnoid, 
 										MAX(descuento_valor) AS descuento_valor, 
 										MAX(sede_pension) AS sede_pension  
@@ -567,7 +576,7 @@
 										LEFT JOIN alumno_pago ON pago_alumnoid = alumno_id 
 										LEFT JOIN alumno_pago_descuento ON descuento_alumnoid = alumno_id AND descuento_estado = 'S'
 										LEFT JOIN general_sede ON sede_id = alumno_sedeid
-									WHERE pago_rubroid = 'RPE' AND alumno_estado <> 'I' AND alumno_repreid = :repre 
+									WHERE pago_rubroid = 'RPE' AND pago_estado <> 'E' AND alumno_estado <> 'I' AND alumno_repreid = :repre 
 									GROUP BY 
 										pago_alumnoid
 									) BASE

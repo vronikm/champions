@@ -414,21 +414,59 @@ class mainModel
 		| los meses hasta su última asistencia los entrenó sin pagar. Sin
 		| asistencia registrada, cero. Misma cuenta que mesesPensionAdeudados
 		| y que la cobranza de inactivos (cobranzaController).
+		|
+		| Si nunca pagó una pensión, desde el mes de su ingreso
+		| (baseSinPagos), pasando $ingreso.
 		*/
-		protected function mesesPensionInactivo(?string $ultimoPago, ?string $ultimaAsistencia): int{
+		protected function mesesPensionInactivo(?string $ultimoPago, ?string $ultimaAsistencia, ?string $ingreso = null): int{
 			if (!$ultimaAsistencia || str_starts_with($ultimaAsistencia, '0000')) { return 0; }
+			if (!$ultimoPago || str_starts_with($ultimoPago, '0000')) { $ultimoPago = $this->baseSinPagos($ingreso); }
 			return $this->mesesPensionAdeudados($ultimoPago, $ultimaAsistencia);
+		}
+
+		/*
+		| Inactivo que asistió y NUNCA pagó una pensión: se le cuentan desde
+		| el mes de su ingreso. No antes del primer día con asistencia
+		| registrada en el sistema: quien entró antes pagaba en el sistema
+		| anterior y esos meses no están aquí. Sin fecha de ingreso, desde
+		| ese primer día.
+		|
+		| Devuelve el día 1 del mes ANTERIOR al de inicio: la base que
+		| esperan mesesPensionAdeudados() y pensionesPendientes(), que
+		| cuentan los meses DESPUÉS del último pagado. La cobranza hace la
+		| misma cuenta en SQL (sqlBaseSinPagos).
+		*/
+		protected function baseSinPagos(?string $ingreso): ?string{
+			$inicio = $this->inicioAsistencia();
+			if ($inicio === null) { return null; }
+			$desde = ($ingreso && $ingreso >= '1900-01-01' && $ingreso > $inicio) ? $ingreso : $inicio;
+			return date('Y-m-01', strtotime(date('Y-m-01', strtotime($desde)) . ' -1 month'));
+		}
+
+		/** SQL de baseSinPagos() sobre alumno_fechaingreso; :inicio = inicioAsistencia(). */
+		protected static function sqlBaseSinPagos(string $col = 'alumno_fechaingreso'): string{
+			return "DATE_SUB(DATE_FORMAT(GREATEST(CASE WHEN $col >= '1900-01-01' THEN $col ELSE :inicio END, :inicio2), '%Y-%m-01'), INTERVAL 1 MONTH)";
+		}
+
+		/** El primer día con asistencia registrada en el sistema (Y-m-d), o null si no hay. */
+		public function inicioAsistencia(): ?string{
+			static $inicio = false;
+			if ($inicio === false) {
+				$inicio = $this->ejecutarConsulta("SELECT MIN(dia_fecha) FROM insights_v_asistencia_dia")->fetchColumn() ?: null;
+			}
+			return $inicio;
 		}
 
 		/*
 		| El mes que cubre un pago según su pago_periodo («Junio / 2026»), como
 		| fecha del día 1; NULL si el texto no se entiende («Junioo / 2026»).
 		|
-		| Hace falta para los inactivos: un pago hecho el 25 de mayo por la
-		| pensión de junio tiene pago_fecha en mayo, y si el alumno vino en
-		| junio, contar desde la fecha le cobraría junio otra vez. El último
+		| Un pago hecho el 25 de mayo por la pensión de junio tiene pago_fecha
+		| en mayo: contar desde la fecha le cobraría junio otra vez. El último
 		| mes pagado es el mayor entre el de la fecha y el del periodo
-		| (sqlUltimoMesPagado).
+		| (sqlUltimoMesPagado). Desde 2026-11-19 vale para activos e
+		| inactivos, y nunca cuentan los pagos eliminados (pago_estado 'E'):
+		| quien la use filtra pago_estado <> 'E'.
 		*/
 		protected static function sqlPeriodoPago(string $col = 'pago_periodo'): string{
 			return "STR_TO_DATE(CONCAT(TRIM(SUBSTRING_INDEX($col, '/', -1)), '-',"
@@ -436,9 +474,20 @@ class mainModel
 			     . " 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'), 0), '-01'), '%Y-%c-%d')";
 		}
 
-		/** Agregado: el último mes pagado (fecha o periodo, el mayor) de un grupo de pagos de pensión. */
+		/*
+		| Agregado: el último mes pagado (fecha o periodo, el mayor) de un
+		| grupo de pagos de pensión.
+		|
+		| El periodo sólo cuenta hasta 3 meses después del mes del pago: los
+		| adelantos reales son de 1 a 3 meses, y más allá es un año mal
+		| escrito («Diciembre / 2026» pagado en enero de 2026 por diciembre
+		| de 2025), que dejaría al alumno «al día» casi un año. En ese caso
+		| vale la fecha del pago.
+		*/
 		protected static function sqlUltimoMesPagado(): string{
-			return "GREATEST(MAX(pago_fecha), COALESCE(MAX(" . self::sqlPeriodoPago() . "), MAX(pago_fecha)))";
+			$periodo = self::sqlPeriodoPago();
+			return "GREATEST(MAX(pago_fecha), COALESCE(MAX(CASE WHEN $periodo < DATE_FORMAT(pago_fecha, '%Y-%m-01') + INTERVAL 4 MONTH"
+			     . " THEN $periodo END), MAX(pago_fecha)))";
 		}
 
 		/** El último día que vino un alumno (Y-m-d), o null si nunca. */

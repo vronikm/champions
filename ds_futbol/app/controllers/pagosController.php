@@ -33,9 +33,12 @@
 		| rubro) + pensiones no pagadas desde la última (mesesPensionAdeudados)
 		| por el valor de la pensión: el del descuento activo si lo tiene (beca
 		| 100 % DBC, beca 50 % DBP o descuento DDS, como cobra pagosNew), si no
-		| la de su sede. Con beca completa la pensión es 0 y no corre deuda. Las pensiones sin pagar sólo corren para alumnos
-		| ACTIVOS: un inactivo no entrena, y contarle los meses desde que dejó
-		| de venir inflaba la deuda con meses que nadie va a cobrar.
+		| la de su sede. Con beca completa (DBC) no corre deuda. Al ACTIVO
+		| las pensiones le corren hasta el mes en curso. Al INACTIVO, sólo
+		| hasta su última asistencia (contarle los meses desde que dejó de
+		| venir inflaba la deuda), y si nunca pagó, desde su ingreso.
+		| El último mes pagado es el mayor entre la fecha y el periodo del
+		| pago, sin pagos eliminados (mainModel::sqlUltimoMesPagado).
 		|
 		| ASISTENCIA = (presentes + atrasos) / días marcados, la fórmula de
 		| Insights (el justificado cuenta como inasistencia), sobre todo lo
@@ -79,7 +82,7 @@
 					       AND D.descuento_estado = 'S' AND D.descuento_rubroid IN ('DBC', 'DBP', 'DDS')   /* beca 100 %, beca 50 % o descuento: el valor es la pensión que paga (como pagosNew) */
 					LEFT JOIN (SELECT pago_alumnoid, MAX(pago_fecha) AS ultima,
 					                  SUBSTRING_INDEX(GROUP_CONCAT(pago_periodo ORDER BY pago_fecha DESC, pago_id DESC SEPARATOR '|'), '|', 1) AS periodo,
-					                  " . self::sqlUltimoMesPagado() . " AS ultimo_mes   /* para los inactivos (mainModel) */
+					                  " . self::sqlUltimoMesPagado() . " AS ultimo_mes   /* desde dónde se cuentan las pensiones (mainModel) */
 					             FROM alumno_pago WHERE pago_rubroid = 'RPE' AND pago_estado <> 'E'
 					            GROUP BY pago_alumnoid) UP ON UP.pago_alumnoid = A.alumno_id
 					LEFT JOIN (SELECT pago_alumnoid, SUM(pago_saldo) AS saldo
@@ -106,11 +109,14 @@
 
 				/* Lo que debe. */
 				$pension = $al['descuento_valor'] !== null ? (float)$al['descuento_valor'] : (float)$al['sede_pension'];
-				/* Activo: hasta el mes en curso. Inactivo: hasta su última
-				   asistencia (mainModel::mesesPensionInactivo). */
+				/* Desde el último mes pagado (fecha o periodo, sin pagos
+				   eliminados). Activo: hasta el mes en curso. Inactivo: hasta
+				   su última asistencia, y si nunca pagó, desde su ingreso
+				   (mainModel::mesesPensionInactivo). Beca del 100 %: nada. */
 				$inactivo = $al['alumno_estado'] === 'I';
-				$meses   = $activo ? $this->mesesPensionAdeudados($al['ultima'])
-				         : ($inactivo && $al['descuento_rubroid'] !== 'DBC' ? $this->mesesPensionInactivo($al['ultimo_mes'], $al['ultima_asis']) : 0);   /* beca del 100 %: nada */
+				$meses   = $al['descuento_rubroid'] === 'DBC' ? 0
+				         : ($activo ? $this->mesesPensionAdeudados($al['ultimo_mes'])
+				         : ($inactivo ? $this->mesesPensionInactivo($al['ultimo_mes'], $al['ultima_asis'], $al['alumno_fechaingreso']) : 0));
 				$deuda   = round((float)$al['saldo'] + $meses * $pension, 2);
 				$this->totalAdeudado += $deuda;
 				$detalle = [];
@@ -265,7 +271,8 @@
 
 		/* $hasta: los meses se generan hasta el mes de esa fecha en vez del
 		   mes en curso. pagosNew lo usa con la última asistencia de un
-		   alumno inactivo (mainModel::mesesPensionInactivo). */
+		   alumno inactivo (mainModel::mesesPensionInactivo); si ese alumno
+		   nunca pagó una pensión, se cuentan desde su ingreso. */
 		public function pensionesPendientes($alumnoid, ?string $hasta = null){
 			$valor_pension = 0.0;
 			$descuento=$this->AlumnoDescuento($alumnoid);
@@ -285,16 +292,19 @@
 			}
 
 			$tabla="";
-			$ultimafecha = "SELECT " . ($hasta ? self::sqlUltimoMesPagado() : 'MAX(P.pago_fecha)') . " fecha
+			/* Último mes pagado: fecha o periodo del pago, el mayor; sin
+			   pagos eliminados (mainModel::sqlUltimoMesPagado). */
+			$ultimafecha = "SELECT " . self::sqlUltimoMesPagado() . " fecha, MAX(A.alumno_fechaingreso) ingreso
 			FROM sujeto_alumno A
-			INNER JOIN alumno_pago P ON P.pago_alumnoid = A.alumno_id
-			WHERE P.pago_rubroid = 'RPE' AND pago_estado != 'E' AND A.alumno_id = :alumno";
+			LEFT JOIN alumno_pago P ON P.pago_alumnoid = A.alumno_id AND P.pago_rubroid = 'RPE' AND P.pago_estado <> 'E'
+			WHERE A.alumno_id = :alumno";
 
-			$datos = $this->ejecutarConsulta($ultimafecha, [':alumno' => (int)$alumnoid]);
-			$datos = $datos->fetchAll();
-			foreach($datos as $rows){	
-				$ultimafecha = $rows["fecha"];
-			}	
+			$fila = $this->ejecutarConsulta($ultimafecha, [':alumno' => (int)$alumnoid])->fetch();
+			$ultimafecha = $fila ? $fila["fecha"] : null;
+			/* Inactivo que asistió y nunca pagó: desde su ingreso. */
+			if (!$ultimafecha && $hasta && $fila) {
+				$ultimafecha = $this->baseSinPagos($fila["ingreso"]);
+			}
 
 			$fecha_final =  $hasta ?: date('Y-m-d');
 			// Convertir la fecha a un timestamp

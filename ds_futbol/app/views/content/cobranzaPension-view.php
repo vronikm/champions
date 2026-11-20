@@ -66,7 +66,7 @@
 							</tbody>
 						</table>
 						<p class="small text-body-secondary mb-0 mt-2">
-							<i class="fas fa-circle-info me-1" aria-hidden="true"></i>Total mora: saldos pendientes de pensión y las pensiones no pagadas desde la última. Sólo alumnos activos.
+							<i class="fas fa-circle-info me-1" aria-hidden="true"></i>Total mora: saldos pendientes de pensión y las pensiones no pagadas desde la última. Un pago adelantado cubre el mes que indica y los pagos eliminados no cuentan. Sólo alumnos activos.
 							Asistencia: el último día que vino (presente o atraso, según lo que tomaron los profesores) y, debajo, el porcentaje sobre los días registrados.
 						</p>
 					</div>

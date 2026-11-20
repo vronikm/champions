@@ -80,7 +80,8 @@
 						<p class="small text-body-secondary mb-0 mt-2">
 							<i class="fas fa-circle-info me-1" aria-hidden="true"></i>Sólo alumnos inactivos. Total mora: saldos pendientes de sus pagos de pensión
 							y, si asistió después de su último pago, las pensiones de los meses hasta su última asistencia
-							(entrenó sin pagar). Después de esa fecha no se le cuentan pensiones. Los activos están en «Pensiones».
+							(entrenó sin pagar); si nunca pagó una pensión, desde su ingreso. Después de esa fecha no se le cuentan pensiones.
+							Los pagos eliminados no cuentan. Los activos están en «Pensiones».
 							Asistencia: el último día que vino (presente o atraso, según lo que tomaron los profesores) y, debajo, el porcentaje sobre los días registrados.
 						</p>
 					</div>

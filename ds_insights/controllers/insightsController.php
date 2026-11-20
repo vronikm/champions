@@ -884,56 +884,65 @@ class insightsController
 
     /*==============  Becas y descuentos  ==============*/
     /*
-    | Cuanto cuesta el beneficio, a cuantos alcanza, cuanto pagaron aun asi y
-    | como asisten. Cuatro preguntas que hasta ahora no se podian responder de
-    | una vez.
+    | Cuanto cuesta el beneficio, a cuantos alcanza, cuanto pagaron y como
+    | asisten, por tipo (Beca 100 % DBC, Beca 50 % DBP, Descuento DDS).
     |
-    | EL VALOR REAL NO ES EL REGISTRADO, Y HAY QUE DECIRLO
+    | QUE GUARDA descuento_valor (corregido el 2026-11-19)
     |
-    | La Beca 50 % guarda su importe correctamente: 15,00 sobre una pension de
-    | 30,00, la mitad exacta. Pero la Beca 100 % se guarda con
-    | descuento_valor = 0,00, asi que el subsidio que la escuela concede NO
-    | esta en ninguna suma.
+    | Es la PENSION QUE PAGA el alumno con el beneficio, no el descuento:
+    | un «Descuento» de $25,00 en una sede de $35,00 paga $25,00 (asi lo
+    | cobran pagosNew, Pagos y Cobranza, y asi lo confirman los pagos: 127
+    | de 136 cuotas de esos alumnos son de $25,00). Antes esta pantalla
+    | sumaba ese valor como «lo que la escuela deja de cobrar» y contaba la
+    | beca completa (0,00) como un subsidio «no registrado»: las dos cosas
+    | eran una lectura equivocada del campo.
     |
-    | Aqui se calcula: para la beca completa, el valor es la pension de la
-    | sede del alumno; para el resto, el importe registrado. Y se devuelven
-    | las dos cifras por separado, porque una es un hecho y la otra una
-    | deduccion, y presentarlas mezcladas seria repetir el error que corrigio
-    | la migracion 044.
+    |   paga      = descuento_valor, sin pasar de la pension de la sede;
+    |               la beca del 100 % paga 0 (aunque tenga un valor viejo).
+    |   beneficio = pension de la sede - paga: lo que se deja de cobrar.
+    |
+    | SOLO ALUMNOS ACTIVOS. Un inactivo no paga pension, asi que su beneficio
+    | no le cuesta nada a la escuela; se cuentan aparte (inactivos) para
+    | que se vea cuantos beneficios quedaron vigentes sin uso.
+    |
+    | PAGADO = pensiones cobradas DESDE que se concedio el beneficio (antes
+    | pagaban la tarifa completa y eso no dice nada del beneficio).
     */
     public function beneficios(): array
     {
+        $paga = "CASE WHEN d.descuento_rubroid = 'DBC' THEN 0
+                      ELSE LEAST(GREATEST(d.descuento_valor, 0), s.sede_pension) END";
+        $desde = "p.pago_fecha >= IFNULL(d.descuento_fecha, '1900-01-01')";
         $filas = $this->filas(
-            "SELECT c.catalogo_valor cod,
-                    c.catalogo_descripcion tipo,
-                    COUNT(*) alumnos,
+            "SELECT d.descuento_rubroid cod,
+                    MAX(c.catalogo_descripcion) tipo,
                     SUM(a.alumno_estado = 'A')  activos,
                     SUM(a.alumno_estado <> 'A') inactivos,
-                    SUM(d.descuento_valor) registrado,
-                    SUM(CASE WHEN c.catalogo_valor = 'DBC'
-                             THEN s.sede_pension ELSE d.descuento_valor END) mensual,
-                    IFNULL(SUM((SELECT SUM(p.pago_valor) FROM alumno_pago p
+                    SUM(IF(a.alumno_estado = 'A', s.sede_pension, 0)) pension,
+                    SUM(IF(a.alumno_estado = 'A', $paga, 0)) paga,
+                    MIN(IF(a.alumno_estado = 'A', $paga, NULL)) paga_min,
+                    MAX(IF(a.alumno_estado = 'A', $paga, NULL)) paga_max,
+                    SUM(a.alumno_estado = 'A' AND $paga >= s.sede_pension) sin_rebaja,
+                    IFNULL(SUM(IF(a.alumno_estado = 'A', (SELECT SUM(p.pago_valor) FROM alumno_pago p
                                  WHERE p.pago_alumnoid = a.alumno_id
-                                   AND p.pago_estado = 'C'
-                                   AND p.pago_rubroid = 'RPE')), 0) pagado,
-                    IFNULL(SUM((SELECT COUNT(*) FROM alumno_pago p
+                                   AND p.pago_estado = 'C' AND p.pago_rubroid = 'RPE' AND $desde), 0)), 0) pagado,
+                    IFNULL(SUM(IF(a.alumno_estado = 'A', (SELECT COUNT(*) FROM alumno_pago p
                                  WHERE p.pago_alumnoid = a.alumno_id
-                                   AND p.pago_estado = 'C'
-                                   AND p.pago_rubroid = 'RPE')), 0) cuotas
+                                   AND p.pago_estado = 'C' AND p.pago_rubroid = 'RPE' AND $desde), 0)), 0) cuotas
                FROM alumno_pago_descuento d
-               JOIN general_tabla_catalogo c
-                 ON c.catalogo_valor = d.descuento_rubroid AND c.catalogo_tablaid = 7
+               LEFT JOIN general_tabla_catalogo c
+                      ON c.catalogo_valor = d.descuento_rubroid AND c.catalogo_tablaid = 7
                JOIN sujeto_alumno a ON a.alumno_id = d.descuento_alumnoid
                JOIN general_sede  s ON s.sede_id   = a.alumno_sedeid
-              WHERE d.descuento_estado = 'S'"
+              WHERE d.descuento_estado = 'S' AND a.alumno_estado IN ('A', 'I')"
              . $this->sede('a.alumno_sedeid') . "
-              GROUP BY c.catalogo_valor, c.catalogo_descripcion
-              ORDER BY mensual DESC");
+              GROUP BY d.descuento_rubroid");
 
         /* La asistencia va en consulta aparte: cruzarla en la de arriba
            multiplicaria las filas de pago por las marcas de asistencia y
            inflaria los importes. Es el error clasico de unir dos hechos de
-           distinto grano en la misma consulta. */
+           distinto grano en la misma consulta. Solo activos, como el grupo
+           de comparacion (sinBeneficio). */
         $asis = [];
         foreach ($this->filas(
             "SELECT d.descuento_rubroid cod,
@@ -944,7 +953,7 @@ class insightsController
                FROM alumno_pago_descuento d
                JOIN sujeto_alumno a ON a.alumno_id = d.descuento_alumnoid
                LEFT JOIN insights_v_asistencia_dia v ON v.dia_alumnoid = a.alumno_id
-              WHERE d.descuento_estado = 'S'"
+              WHERE d.descuento_estado = 'S' AND a.alumno_estado = 'A'"
              . $this->sede('a.alumno_sedeid') . "
               GROUP BY d.descuento_rubroid") as $f) {
             $asis[$f['cod']] = $f;
@@ -953,20 +962,26 @@ class insightsController
         $r = [];
         foreach ($filas as $f) {
             $a = $asis[$f['cod']] ?? ['marcas' => 0, 'asistidas' => 0, 'faltadas' => 0, 'avisadas' => 0];
-            $marcas = (int) $a['marcas'];
-            $faltas = (int) $a['faltadas'];
+            $marcas  = (int) $a['marcas'];
+            $faltas  = (int) $a['faltadas'];
+            $activos = (int) $f['activos'];
+            $pension = (float) $f['pension'];
+            $paga    = (float) $f['paga'];
 
             $r[] = [
                 'cod'        => $f['cod'],
-                'tipo'       => $f['tipo'],
-                'alumnos'    => (int) $f['alumnos'],
-                'activos'    => (int) $f['activos'],
+                /* El catalogo llama «Beca» a la del 100 % en algunos sistemas. */
+                'tipo'       => ['DBC' => 'Beca 100 %', 'DBP' => 'Beca 50 %'][$f['cod']] ?? ($f['tipo'] ?: $f['cod']),
+                'activos'    => $activos,
                 'inactivos'  => (int) $f['inactivos'],
-                'registrado' => (float) $f['registrado'],
-                'mensual'    => (float) $f['mensual'],
-                /* Deducido = la diferencia entre lo que vale y lo que consta.
-                   Sólo la beca completa la tiene. */
-                'deducido'   => (float) $f['mensual'] - (float) $f['registrado'],
+                'pension'    => $pension,                     /* pension normal de sus sedes, al mes */
+                'paga'       => $paga,                        /* lo que se les cobra al mes */
+                'beneficio'  => $pension - $paga,             /* lo que se deja de cobrar al mes */
+                'porcentaje' => $pension > 0 ? ($pension - $paga) / $pension * 100 : null,
+                'pagaMedia'  => $activos > 0 ? $paga / $activos : null,
+                'pagaMin'    => $f['paga_min'] === null ? null : (float) $f['paga_min'],
+                'pagaMax'    => $f['paga_max'] === null ? null : (float) $f['paga_max'],
+                'sinRebaja'  => (int) $f['sin_rebaja'],
                 'pagado'     => (float) $f['pagado'],
                 'cuotas'     => (int) $f['cuotas'],
                 'marcas'     => $marcas,
@@ -974,6 +989,8 @@ class insightsController
                 'avisadas'   => $faltas > 0 ? (int) $a['avisadas'] / $faltas * 100 : null,
             ];
         }
+        /* El que más cuesta primero; los que no tienen activos, al final. */
+        usort($r, static fn($x, $y) => [$y['activos'] > 0, $y['beneficio']] <=> [$x['activos'] > 0, $x['beneficio']]);
 
         return $r;
     }
@@ -2477,7 +2494,7 @@ class insightsController
             ],
             'becas' => [
                 'titulo'   => 'Becas y descuentos',
-                'resumen'  => 'Cuántos alumnos, cuánto vale el beneficio, cuánto pagaron aun así y cómo asisten. Incluye el subsidio de las becas del 100 %, que no consta como descuento.',
+                'resumen'  => 'Por tipo de beca o descuento: cuántos alumnos activos lo tienen, cuánto se deja de cobrar al mes, cuánto pagaron desde que lo tienen y cómo asisten.',
                 'categoria'=> 'Financiero',
                 'icono'    => 'fas fa-user-graduate',
                 'vista'    => 'becas',
@@ -2737,17 +2754,21 @@ class insightsController
             case 'becas':
                 $filas = [];
                 foreach ($this->beneficios() as $b) {
-                    $filas[] = [$b['tipo'], $b['alumnos'], $b['activos'], $b['registrado'],
-                                $b['mensual'], $b['pagado'], $b['cuotas'],
+                    $filas[] = [$b['tipo'], $b['activos'], $b['inactivos'], $b['pension'],
+                                $b['paga'], $b['beneficio'],
+                                $b['porcentaje'] === null ? '' : round($b['porcentaje'], 1),
+                                $b['pagado'], $b['cuotas'],
                                 $b['asistencia'] === null ? '' : round($b['asistencia'], 1)];
                 }
                 return [
-                    'titulo'    => 'Becas y descuentos vigentes',
+                    'titulo'    => 'Becas y descuentos vigentes (alumnos activos, valores al mes)',
                     'vista'     => 'becas',
-                    'cabeceras' => ['Tipo', 'Alumnos', 'Activos', 'Registrado',
-                                    'Valor real mensual', 'Pagado', 'Cuotas', 'Asistencia %'],
+                    'cabeceras' => ['Tipo', 'Activos', 'Inactivos con el beneficio', 'Pensión normal',
+                                    'Se les cobra', 'Se deja de cobrar', 'Descuento %',
+                                    'Pagado desde el beneficio', 'Cuotas', 'Asistencia %'],
                     'tipos'     => ['texto', 'entero', 'entero', 'dinero',
-                                    'dinero', 'dinero', 'entero', 'decimal'],
+                                    'dinero', 'dinero', 'decimal',
+                                    'dinero', 'entero', 'decimal'],
                     'filas'     => $filas,
                 ];
 

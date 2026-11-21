@@ -1840,6 +1840,39 @@
 			}
 			unset($hn);
 
+			/*
+			| Torneos en los que participó: los de un equipo en el que está
+			| inscrito (torneo_jugador → torneo_equipo) y los que pagó (rubro
+			| RPC «Campeonato», pago_campeonatoid = torneo). Hacen falta los
+			| dos: en champions 705 pagos son de alumnos que no figuran en el
+			| equipo de ese torneo, y hay inscritos sin pago.
+			|
+			| De la inscripción: lo pagado (completos y abonos, sin eliminados),
+			| el saldo pendiente y la fecha del último pago; el valor de la
+			| inscripción es el del equipo (0: sin costo fijado).
+			*/
+			$torneos = $this->ejecutarConsulta("SELECT T.torneo_id, T.torneo_nombre, T.torneo_ciudad, T.torneo_lugar,
+						T.torneo_fechainicio, T.torneo_fechafin,
+						MAX(E.equipo_nombre) AS equipo, MAX(E.equipo_categoria) AS categoria,
+						MAX(E.equipo_valorinscripcion) AS valor_inscripcion,
+						MAX(PO.catalogo_descripcion) AS posicion, MAX(TP.catalogo_descripcion) AS tipo,
+						MAX(J.jugador_alumnoid IS NOT NULL) AS inscrito,
+						MAX(PG.pagado) AS pagado, MAX(PG.saldo) AS saldo, MAX(PG.pagos) AS pagos, MAX(PG.ultimo) AS ultimo_pago
+					FROM torneo_torneo T
+					LEFT JOIN (torneo_jugador J INNER JOIN torneo_equipo E ON E.equipo_id = J.jugador_equipoid)
+					       ON E.equipo_torneoid = T.torneo_id AND J.jugador_alumnoid = :a1
+					" . $catalogo('PO', 'posicion_juego', 'J.jugador_posicioncod') . "
+					" . $catalogo('TP', 'tipo_participacion', 'J.jugador_tipocod') . "
+					LEFT JOIN (SELECT pago_campeonatoid, SUM(pago_valor) AS pagado,
+					                  SUM(IF(pago_estado = 'P', pago_saldo, 0)) AS saldo, COUNT(*) AS pagos, MAX(pago_fecha) AS ultimo
+					             FROM alumno_pago
+					            WHERE pago_alumnoid = :a2 AND pago_rubroid = 'RPC' AND pago_estado IN ('C','P')
+					            GROUP BY pago_campeonatoid) PG ON PG.pago_campeonatoid = T.torneo_id
+					WHERE J.jugador_alumnoid IS NOT NULL OR PG.pagos IS NOT NULL
+					GROUP BY T.torneo_id, T.torneo_nombre, T.torneo_ciudad, T.torneo_lugar, T.torneo_fechainicio, T.torneo_fechafin
+					ORDER BY T.torneo_fechainicio DESC, T.torneo_id DESC",
+					[':a1' => (int)$alumnoid, ':a2' => (int)$alumnoid])->fetchAll(\PDO::FETCH_ASSOC);
+
 			return [
 				'alumno'        => $alumno,
 				'representante' => $representante ?: null,
@@ -1847,6 +1880,7 @@
 				'medica'        => $medica ?: null,
 				'horarios'      => $horarios,
 				'hermanos'      => $hermanos,
+				'torneos'       => $torneos,
 			];
 		}
 

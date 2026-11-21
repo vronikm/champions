@@ -366,6 +366,102 @@
 							</div>
 							<?php endif; ?>
 
+							<!-- Torneos: en los que participó y si pagó la inscripción -->
+							<?php
+								$torneos = $ficha['torneos'] ?? [];
+								$TORNEOS_VISIBLES = 4;
+								$hoyT = date('Y-m-d');
+								/* Estado de la inscripción de cada torneo: [clase, icono, texto, detalle]. */
+								$inscripcion = static function (array $t): array {
+									$pagado = (float)$t['pagado'];
+									$saldo  = (float)$t['saldo'];
+									$valor  = (float)$t['valor_inscripcion'];
+									$cuando = $t['ultimo_pago'] ? ' el ' . date('d/m/Y', strtotime($t['ultimo_pago'])) : '';
+									if ($saldo > 0) {
+										return ['mora', 'fa-triangle-exclamation', 'Saldo pendiente $' . number_format($saldo, 2), 'Abonó $' . number_format($pagado, 2) . $cuando];
+									}
+									if ((int)$t['pagos'] > 0 && ($valor <= 0 || $pagado >= $valor)) {
+										return ['aldia', 'fa-circle-check', 'Inscripción pagada', '$' . number_format($pagado, 2) . $cuando];
+									}
+									if ((int)$t['pagos'] > 0) {
+										return ['mora', 'fa-triangle-exclamation', 'Falta $' . number_format($valor - $pagado, 2), 'Pagó $' . number_format($pagado, 2) . ' de $' . number_format($valor, 2) . $cuando];
+									}
+									return $valor > 0
+										? ['mora', 'fa-triangle-exclamation', 'Inscripción sin pagar', 'Debe $' . number_format($valor, 2)]
+										: ['pendiente', 'fa-circle-question', 'Sin pago registrado', 'El equipo no tiene valor de inscripción'];
+								};
+								$estados = array_map($inscripcion, $torneos);
+								$tPagados = count(array_filter($estados, static fn($e) => $e[0] === 'aldia'));
+							?>
+							<div class="col-12">
+								<div class="card">
+									<div class="card-header d-flex flex-wrap align-items-center gap-2">
+										<h3 class="card-title me-auto"><i class="fas fa-trophy me-2" aria-hidden="true"></i>Torneos</h3>
+										<?php if ($torneos): ?>
+											<span class="small text-body-secondary"><?php echo count($torneos) . (count($torneos) === 1 ? ' torneo' : ' torneos') . ' · ' . $tPagados . ($tPagados === 1 ? ' pagado' : ' pagados'); ?></span>
+										<?php endif; ?>
+									</div>
+									<div class="card-body">
+										<?php if (!$torneos): ?>
+											<p class="text-body-secondary mb-0">No ha participado en torneos.</p>
+										<?php else: ?>
+											<ul class="ds-torneos">
+												<?php foreach ($torneos as $i => $t):
+													[$tClase, $tIcono, $tTexto, $tDetalle] = $estados[$i];
+													$tIni = $fecha($t['torneo_fechainicio']);
+													$tFin = $fecha($t['torneo_fechafin']);
+													/* Próximo, en curso o jugado, según sus fechas. */
+													$tCuando = !$tIni ? '' : ($tIni->format('Y-m-d') > $hoyT ? 'Próximo'
+														: (($tFin ? $tFin->format('Y-m-d') : $tIni->format('Y-m-d')) >= $hoyT ? 'En curso' : 'Jugado'));
+													$tLugar = implode(', ', array_filter([trim(html_entity_decode((string)$t['torneo_ciudad'])), trim(html_entity_decode((string)$t['torneo_lugar']))],
+														static fn($x) => $x !== ''));
+													if (strcasecmp(trim((string)$t['torneo_ciudad']), trim((string)$t['torneo_lugar'])) === 0) { $tLugar = trim(html_entity_decode((string)$t['torneo_ciudad'])); }
+													$tJuego = array_filter([trim((string)$t['posicion']), trim((string)$t['tipo'])]);
+													/* Los 4 más recientes a la vista; el resto, plegado (en el
+													   teléfono, 16 torneos empujaban el resto de la ficha). */
+													if ($i === $TORNEOS_VISIBLES): ?>
+													</ul>
+													<details class="ds-torneos__mas">
+														<summary>Ver <?php echo count($torneos) - $TORNEOS_VISIBLES === 1 ? 'el otro torneo' : 'los otros ' . (count($torneos) - $TORNEOS_VISIBLES) . ' torneos'; ?></summary>
+														<ul class="ds-torneos">
+													<?php endif; ?>
+													<li class="ds-torneo">
+														<div class="ds-torneo__cab">
+															<strong><?php echo $h($t['torneo_nombre']); ?></strong>
+															<?php if ($tCuando !== ''): ?>
+																<span class="badge <?php echo ['Próximo' => 'text-bg-primary', 'En curso' => 'text-bg-info', 'Jugado' => 'text-bg-light border'][$tCuando]; ?>"><?php echo $tCuando; ?></span>
+															<?php endif; ?>
+														</div>
+														<ul class="ds-torneo__meta">
+															<?php if ($tIni): ?>
+																<li><i class="fas fa-calendar-days" aria-hidden="true"></i><span><?php echo $tIni->format('d/m/Y') . ($tFin && $tFin != $tIni ? ' – ' . $tFin->format('d/m/Y') : ''); ?></span></li>
+															<?php endif; ?>
+															<?php if ($tLugar !== ''): ?>
+																<li><i class="fas fa-location-dot" aria-hidden="true"></i><span><?php echo $h($tLugar); ?></span></li>
+															<?php endif; ?>
+															<li><i class="fas fa-people-group" aria-hidden="true"></i>
+																<?php if ((int)$t['inscrito']): ?>
+																	<span><?php echo $h(implode(' · ', array_filter([trim((string)$t['equipo']), trim((string)$t['categoria']) !== '' ? 'Cat. ' . trim((string)$t['categoria']) : '']))); ?>
+																	<?php if ($tJuego): ?><span class="ds-torneo__juego"><?php echo $h(implode(' · ', $tJuego)); ?></span><?php endif; ?></span>
+																<?php else: ?>
+																	<span class="text-body-secondary">Sin equipo asignado</span>
+																<?php endif; ?>
+															</li>
+														</ul>
+														<div class="ds-torneo__pago ds-torneo__pago--<?php echo $tClase; ?>">
+															<i class="fas <?php echo $tIcono; ?>" aria-hidden="true"></i>
+															<strong><?php echo $h($tTexto); ?></strong>
+															<span><?php echo $h($tDetalle); ?></span>
+														</div>
+													</li>
+												<?php endforeach; ?>
+											</ul>
+											<?php if (count($torneos) > $TORNEOS_VISIBLES): ?></details><?php endif; ?>
+										<?php endif; ?>
+									</div>
+								</div>
+							</div>
+
 							<!-- Datos personales -->
 							<div class="col-12">
 								<div class="card">

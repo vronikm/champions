@@ -958,6 +958,29 @@
 .ds-repre__alumno-datos .ds-perfil__hermano-deuda span { color: inherit; font-size: inherit; }
 .ds-repre__alumno-datos .ds-perfil__hermano-deuda--mora  { border-color: var(--bs-danger-border-subtle);  background: var(--bs-danger-bg-subtle);  color: var(--bs-danger-text-emphasis); }
 .ds-repre__alumno-datos .ds-perfil__hermano-deuda--aldia { border-color: var(--bs-success-border-subtle); background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
+/* Ficha del alumno › Torneos: una ficha por torneo; abajo, la inscripción
+   (verde pagada, rojo con deuda, ámbar sin pago registrado; con icono y texto). */
+.ds-torneos { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
+@media (min-width: 768px) { .ds-torneos { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ds-torneo { display: flex; flex-direction: column; gap: .45rem; padding: .7rem .8rem; border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius-lg); background: var(--bs-body-bg); }
+.ds-torneo__cab { display: flex; align-items: flex-start; justify-content: space-between; gap: .5rem; }
+.ds-torneo__cab strong { color: var(--bs-emphasis-color); line-height: 1.3; overflow-wrap: anywhere; }
+.ds-torneo__cab .badge { flex: none; }
+.ds-torneo__meta { list-style: none; margin: 0; padding: 0; display: grid; gap: .2rem; font-size: .825rem; color: var(--bs-secondary-color); }
+/* Icono a la izquierda y el texto a su lado, aunque ocupe dos líneas. */
+.ds-torneo__meta li { display: grid; grid-template-columns: 1rem minmax(0, 1fr); align-items: baseline; column-gap: .45rem; }
+.ds-torneo__meta i { text-align: center; }
+.ds-torneo__meta span { overflow-wrap: anywhere; }
+.ds-torneo__juego { display: block; font-size: .78rem; }
+/* Los demás torneos, plegados bajo «Ver los otros N torneos». */
+.ds-torneos__mas { margin-top: .6rem; }
+.ds-torneos__mas > summary { cursor: pointer; padding: .55rem 0; font-weight: 600; color: var(--bs-link-color); min-height: 2.75rem; }
+.ds-torneos__mas[open] > summary { margin-bottom: .4rem; }
+.ds-torneo__pago { display: flex; flex-wrap: wrap; align-items: center; gap: .1rem .45rem; margin-top: auto; padding: .4rem .6rem; border: 1px solid; border-radius: var(--bs-border-radius); font-size: .825rem; }
+.ds-torneo__pago span { opacity: .85; }
+.ds-torneo__pago--aldia     { border-color: var(--bs-success-border-subtle); background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
+.ds-torneo__pago--mora      { border-color: var(--bs-danger-border-subtle);  background: var(--bs-danger-bg-subtle);  color: var(--bs-danger-text-emphasis); }
+.ds-torneo__pago--pendiente { border-color: var(--bs-warning-border-subtle); background: var(--bs-warning-bg-subtle); color: var(--bs-warning-text-emphasis); }
 /* El mismo resumen en la ficha del alumno, dentro de la tarjeta de quién es. */
 .ds-perfil__cuenta { margin: 1rem 0; padding-top: .75rem; border-top: 1px solid var(--bs-border-color-translucent); }
 .ds-perfil__cuenta .ds-repre__resumen { padding: 0; border-top: 0; }

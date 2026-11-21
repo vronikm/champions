@@ -946,6 +946,14 @@
 .ds-repre__deuda--aldia { border-color: var(--bs-success-border-subtle); background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
 .ds-repre__resumen .ds-repre__deuda dd { color: inherit; }
 .ds-repre__ficha-acciones { display: flex; justify-content: flex-end; padding: 0 .75rem .75rem; margin-top: auto; }
+/* El mismo resumen en la ficha del alumno, dentro de la tarjeta de quién es. */
+.ds-perfil__cuenta { margin: 1rem 0; padding-top: .75rem; border-top: 1px solid var(--bs-border-color-translucent); }
+.ds-perfil__cuenta .ds-repre__resumen { padding: 0; border-top: 0; }
+/* Desde 992 px la tarjeta va en una columna estrecha (col-lg-4 / col-xl-3):
+   un dato por fila, para que las etiquetas no se partan. */
+@media (min-width: 992px) {
+    .ds-perfil__cuenta .ds-repre__resumen { grid-template-columns: 1fr; }
+}
 .ds-repre__ficha--inactivo .ds-repre__resumen dd { color: var(--bs-body-color); }
 @media (max-width: 575.98px) {
     /* Teléfono: botón a todo lo ancho, fácil de tocar. */

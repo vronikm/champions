@@ -853,63 +853,19 @@
 					" . $catalogo('TI', 'tipo_documento', 'C.conyuge_tipoidentificacion') . "
 					WHERE C.conyuge_repid = :repre ORDER BY C.conyuge_id DESC LIMIT 1", $p)->fetch();
 
-			/*
-			| Por cada representado, además de quién es: su beneficio vigente
-			| (beca o descuento: descuento_valor es la pensión que PAGA), su
-			| último pago de pensión y el último pago de cualquier concepto
-			| (pagos efectivos: completos, o pendientes con algo abonado; sin
-			| eliminados) y el último día que vino (presente o atraso, como en
-			| Pagos y Cobranza: mainModel::SQL_ULTIMA_ASISTENCIA).
-			*/
-			$ultimoPago = static fn(string $campo, string $rubro = '') =>
-				"(SELECT $campo FROM alumno_pago P
-				   WHERE P.pago_alumnoid = A.alumno_id AND P.pago_estado IN ('C','P') AND P.pago_valor > 0"
-				   . ($rubro !== '' ? " AND P.pago_rubroid = '$rubro'" : '') . "
-				   ORDER BY P.pago_fecha DESC, P.pago_id DESC LIMIT 1)";
 			$alumnos = $this->ejecutarConsulta("SELECT A.alumno_id, A.alumno_identificacion, A.alumno_primernombre, A.alumno_segundonombre,
 						A.alumno_apellidopaterno, A.alumno_apellidomaterno, A.alumno_fechanacimiento, A.alumno_fechaingreso,
-						A.alumno_estado, A.alumno_imagen, S.sede_nombre, S.sede_pension,
-						D.descuento_rubroid, D.descuento_valor, D.descuento_fecha, DC.catalogo_descripcion AS descuento_nombre,
-						" . $ultimoPago('P.pago_fecha', 'RPE') . " AS pension_fecha,
-						" . $ultimoPago('P.pago_periodo', 'RPE') . " AS pension_periodo,
-						" . $ultimoPago('P.pago_valor', 'RPE') . " AS pension_valor,
-						" . $ultimoPago('P.pago_fecha') . " AS pago_fecha,
-						" . $ultimoPago('P.pago_valor') . " AS pago_valor,
-						" . $ultimoPago('P.pago_rubroid') . " AS pago_rubroid,
-						" . $ultimoPago('P.pago_periodo') . " AS pago_periodo,
-						(SELECT " . self::SQL_ULTIMA_ASISTENCIA . " FROM insights_v_asistencia_dia WHERE dia_alumnoid = A.alumno_id) AS ultima_asis,
-						(SELECT " . self::sqlUltimoMesPagado() . " FROM alumno_pago
-						  WHERE pago_alumnoid = A.alumno_id AND pago_rubroid = 'RPE' AND pago_estado <> 'E') AS ultimo_mes,
-						(SELECT IFNULL(SUM(pago_saldo), 0) FROM alumno_pago
-						  WHERE pago_alumnoid = A.alumno_id AND pago_estado = 'P') AS saldo
+						A.alumno_estado, A.alumno_imagen, S.sede_nombre
 					FROM sujeto_alumno A
 					LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
-					LEFT JOIN alumno_pago_descuento D ON D.descuento_alumnoid = A.alumno_id AND D.descuento_estado = 'S'
-					LEFT JOIN general_tabla_catalogo DC ON DC.catalogo_valor = D.descuento_rubroid AND DC.catalogo_tablaid = 7
 					WHERE A.alumno_repreid = :repre AND A.alumno_estado IN ('A','I')
-					ORDER BY A.alumno_estado = 'A' DESC, A.alumno_fechanacimiento", $p)->fetchAll();
-			/* Nombre del concepto del último pago (catálogo de rubros). */
-			$rubros = [];
-			foreach ($this->ejecutarConsulta("SELECT C.catalogo_valor, C.catalogo_descripcion FROM general_tabla_catalogo C
-					INNER JOIN general_tabla T ON T.tabla_id = C.catalogo_tablaid AND T.tabla_nombre = 'rubros'")->fetchAll() as $f) {
-				$rubros[$f['catalogo_valor']] = $f['catalogo_descripcion'];
-			}
+					ORDER BY A.alumno_estado = 'A' DESC, A.alumno_fechanacimiento", $p)->fetchAll(\PDO::FETCH_ASSOC);
+			/* Por cada representado, su beneficio, sus últimos pagos, su
+			   última asistencia y lo que debe (mainModel::resumenCuentaAlumnos,
+			   la misma cuenta que Pagos y Cobranza). */
+			$cuenta = $this->resumenCuentaAlumnos(array_column($alumnos, 'alumno_id'));
 			foreach ($alumnos as &$al) {
-				$al['pago_concepto'] = $rubros[$al['pago_rubroid'] ?? ''] ?? (string)($al['pago_rubroid'] ?? '');
-
-				/* Lo que debe: la misma cuenta que Pagos (pagosController::
-				   listarAlumnosPagos), Cobranza y pagosNew. Saldos pendientes
-				   + pensiones desde el último mes pagado (si nunca pagó, desde
-				   su ingreso); al inactivo, sólo hasta su última asistencia.
-				   Beca del 100 %: no debe pensiones. */
-				$becado  = $al['descuento_rubroid'] === 'DBC';
-				$pension = $al['descuento_valor'] !== null ? (float)$al['descuento_valor'] : (float)$al['sede_pension'];
-				$meses   = $becado ? 0
-				         : ($al['alumno_estado'] === 'A'
-				            ? $this->mesesPensionAdeudados($al['ultimo_mes'] ?: $this->baseSinPagos($al['alumno_fechaingreso']))
-				            : $this->mesesPensionInactivo($al['ultimo_mes'], $al['ultima_asis'], $al['alumno_fechaingreso']));
-				$al['meses_deuda'] = $meses;
-				$al['deuda']       = round((float)$al['saldo'] + $meses * $pension, 2);
+				$al += $cuenta[(int)$al['alumno_id']] ?? [];
 			}
 			unset($al);
 

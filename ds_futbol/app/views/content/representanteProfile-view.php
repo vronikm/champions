@@ -44,26 +44,6 @@
 		return $a . ($a === 1 ? ' año' : ' años');
 	};
 
-	/* «Representa a»: ingreso, beneficio, último pago y última asistencia. */
-	$fechaOk = static fn($f) => ($f && !str_starts_with((string)$f, '0000')) ? substr((string)$f, 0, 10) : '';
-	$antiguedad = static function (string $f): string {
-		$d = (new DateTime($f))->diff(new DateTime('today'));
-		if ($d->invert) { return 'ingresa más adelante'; }
-		if ($d->y > 0)  { return 'hace ' . $d->y . ($d->y === 1 ? ' año' : ' años') . ($d->m > 0 ? ' y ' . $d->m . ($d->m === 1 ? ' mes' : ' meses') : ''); }
-		if ($d->m > 0)  { return 'hace ' . $d->m . ($d->m === 1 ? ' mes' : ' meses'); }
-		return 'este mes';
-	};
-	/* descuento_valor es la pensión que PAGA con el beneficio (como lo cobra pagosNew). */
-	$beneficio = static function (array $a) use ($h): string {
-		$cod = $a['descuento_rubroid'] ?? '';
-		if ($cod === '') { return '<span class="text-body-secondary">No tiene</span>'; }
-		$sede  = (float)$a['sede_pension'];
-		$paga  = $cod === 'DBC' ? 0.0 : min(max((float)$a['descuento_valor'], 0), $sede);
-		$nombre = ['DBC' => 'Beca 100 %', 'DBP' => 'Beca 50 %'][$cod] ?? (trim($a['descuento_nombre']) !== '' ? $a['descuento_nombre'] : $cod);
-		$detalle = $cod === 'DBC' ? 'no paga pensión' : 'paga $' . number_format($paga, 2) . ($sede > 0 ? ' de $' . number_format($sede, 2) : '');
-		return '<span class="badge ds-repre__beneficio">' . $h($nombre) . '</span><small>' . $h($detalle) . '</small>';
-	};
-
 	$puedePagos  = function_exists('puede') ? puede('ver', 'pagosList') : true;
 	$puedeEditar = function_exists('puede') ? puede('editar', 'representanteList') : true;
 	$puedeCrear  = function_exists('puede') ? puede('crear', 'representanteList') : true;
@@ -199,14 +179,7 @@
 													$inic = mb_strtoupper(mb_substr($a['alumno_primernombre'], 0, 1) . mb_substr($a['alumno_apellidopaterno'], 0, 1));
 													$activo = $a['alumno_estado'] === 'A';
 													$anio = $a['alumno_fechanacimiento'] && !str_starts_with($a['alumno_fechanacimiento'], '0000') ? substr($a['alumno_fechanacimiento'], 0, 4) : '';
-													$meta = array_filter([$edad($a['alumno_fechanacimiento']), $anio !== '' ? 'Cat. ' . $anio : '', $a['sede_nombre']]);
-													$ingreso = $fechaOk($a['alumno_fechaingreso']);
-													$asis    = $fechaOk($a['ultima_asis']);
-													$diasAsis = $asis !== '' ? (int)(new DateTime($asis))->diff(new DateTime('today'))->days : null;
-													$penFecha = $fechaOk($a['pension_fecha']);
-													$pagoFecha = $fechaOk($a['pago_fecha']);
-													/* Un pago de otro concepto posterior al de pensión: también se muestra. */
-													$otroPago = $pagoFecha !== '' && $a['pago_rubroid'] !== 'RPE' && $pagoFecha >= $penFecha; ?>
+													$meta = array_filter([$edad($a['alumno_fechanacimiento']), $anio !== '' ? 'Cat. ' . $anio : '', $a['sede_nombre']]); ?>
 													<li class="ds-repre__ficha<?php echo $activo ? '' : ' ds-repre__ficha--inactivo'; ?>">
 														<a class="ds-repre__alumno<?php echo $activo ? '' : ' ds-repre__alumno--inactivo'; ?>" href="<?php echo APP_URL; ?>alumnoProfile/<?php echo (int)$a['alumno_id']; ?>/">
 															<?php if ($foto !== ''): ?>
@@ -227,71 +200,8 @@
 															<span class="badge <?php echo $activo ? 'text-bg-success' : 'text-bg-secondary'; ?>"><?php echo $activo ? 'Activo' : 'Inactivo'; ?></span>
 															<i class="fas fa-chevron-right ds-repre__alumno-ir" aria-hidden="true"></i>
 														</a>
-														<dl class="ds-repre__resumen">
-															<div>
-																<dt><i class="fas fa-right-to-bracket" aria-hidden="true"></i>Ingreso</dt>
-																<dd>
-																	<?php if ($ingreso !== ''): ?>
-																		<?php echo date('d/m/Y', strtotime($ingreso)); ?>
-																		<?php if ($ant = $antiguedad($ingreso)): ?><small><?php echo $h($ant); ?></small><?php endif; ?>
-																	<?php else: ?>
-																		<span class="text-body-secondary">Sin fecha</span>
-																	<?php endif; ?>
-																</dd>
-															</div>
-															<?php if ($activo): /* Al inactivo no se le cobra pensión: su beneficio no aplica. */ ?>
-															<div>
-																<dt><i class="fas fa-award" aria-hidden="true"></i>Beca o descuento</dt>
-																<dd><?php echo $beneficio($a); ?></dd>
-															</div>
-															<?php endif; ?>
-															<div>
-																<dt><i class="fas fa-money-bill-wave" aria-hidden="true"></i>Último pago de pensión</dt>
-																<dd>
-																	<?php if ($penFecha !== ''): ?>
-																		<?php echo date('d/m/Y', strtotime($penFecha)); ?>
-																		<small><?php echo $h(implode(' · ', array_filter([trim($a['pension_periodo']), '$' . number_format((float)$a['pension_valor'], 2)]))); ?></small>
-																	<?php else: ?>
-																		<span class="text-body-secondary">Sin pagos de pensión</span>
-																	<?php endif; ?>
-																	<?php if ($otroPago): ?>
-																		<small class="ds-repre__otro-pago">Después: <?php echo $h(trim($a['pago_concepto']) !== '' ? $a['pago_concepto'] : 'otro concepto'); ?> $<?php echo number_format((float)$a['pago_valor'], 2); ?> el <?php echo date('d/m/Y', strtotime($pagoFecha)); ?></small>
-																	<?php endif; ?>
-																</dd>
-															</div>
-															<div>
-																<dt><i class="fas fa-clipboard-check" aria-hidden="true"></i>Última asistencia</dt>
-																<dd>
-																	<?php if ($asis !== ''): ?>
-																		<?php echo date('d/m/Y', strtotime($asis)); ?>
-																		<small class="<?php echo $diasAsis > 30 ? 'text-danger' : ''; ?>"><?php echo $diasAsis === 0 ? 'hoy' : ($diasAsis === 1 ? 'ayer' : ($diasAsis <= 60 ? 'hace ' . $diasAsis . ' días' : $antiguedad($asis))); ?></small>
-																	<?php else: ?>
-																		<span class="text-body-secondary">Sin asistencias</span>
-																	<?php endif; ?>
-																</dd>
-															</div>
-															<?php
-																/* Lo que debe (representanteController::fichaRepresentante:
-																   la misma cuenta que Pagos y Cobranza). */
-																$deuda  = (float)$a['deuda'];
-																$mesesD = (int)$a['meses_deuda'];
-																$saldoD = (float)$a['saldo'];
-																$detalleD = [];
-																if ($mesesD > 0) { $detalleD[] = $mesesD . ($mesesD === 1 ? ' pensión' : ' pensiones') . ($activo ? '' : ($mesesD === 1 ? ' asistida' : ' asistidas') . ' sin pagar'); }
-																if ($saldoD > 0) { $detalleD[] = 'saldo $' . number_format($saldoD, 2); }
-															?>
-															<div class="ds-repre__deuda <?php echo $deuda > 0 ? 'ds-repre__deuda--mora' : 'ds-repre__deuda--aldia'; ?>">
-																<dt><i class="fas <?php echo $deuda > 0 ? 'fa-triangle-exclamation' : 'fa-circle-check'; ?>" aria-hidden="true"></i>Valor adeudado</dt>
-																<dd>
-																	<?php if ($deuda > 0): ?>
-																		$<?php echo number_format($deuda, 2); ?> <span class="ds-repre__deuda-estado">en mora</span>
-																		<small><?php echo $h(implode(' + ', $detalleD)); ?></small>
-																	<?php else: ?>
-																		Al día
-																	<?php endif; ?>
-																</dd>
-															</div>
-														</dl>
+														<?php /* Beneficio, último pago, última asistencia y lo que debe: el mismo parcial que la ficha del alumno. */
+															$rcAlumno = $a; $rcIngreso = true; include "app/views/inc/resumenCuenta.php"; ?>
 														<?php if ($puedePagos): ?>
 															<div class="ds-repre__ficha-acciones">
 																<a class="btn btn-sm btn-outline-secondary" href="<?php echo APP_URL; ?>pagosNew/<?php echo (int)$a['alumno_id']; ?>/"

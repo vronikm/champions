@@ -1780,8 +1780,7 @@
 			$alumno = $this->ejecutarConsulta("SELECT A.*, S.sede_nombre,
 						TI.catalogo_descripcion AS tipo_identificacion,
 						NA.catalogo_descripcion AS nacionalidad,
-						PJ.catalogo_descripcion AS posicion_juego,
-						(SELECT COUNT(*) FROM alumno_pago WHERE pago_alumnoid = A.alumno_id AND pago_estado = 'P') AS pagos_pendientes
+						PJ.catalogo_descripcion AS posicion_juego
 					FROM sujeto_alumno A
 					LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
 					" . $catalogo('TI', 'tipo_documento', 'A.alumno_tipoidentificacion') . "
@@ -1791,6 +1790,11 @@
 			if (!$alumno) {
 				return null;
 			}
+			/* Beneficio, últimos pagos, última asistencia y lo que debe, con
+			   la misma cuenta que Pagos y Cobranza (mainModel). Antes la ficha
+			   sólo contaba los pagos con saldo: quien debía pensiones sin
+			   generar salía «Pagos al día». */
+			$alumno += $this->resumenCuentaAlumnos([(int)$alumnoid])[(int)$alumnoid] ?? [];
 
 			$representante = $this->ejecutarConsulta("SELECT R.*, PA.catalogo_descripcion AS parentesco
 					FROM sujeto_alumno A

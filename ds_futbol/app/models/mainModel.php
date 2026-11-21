@@ -490,6 +490,82 @@ class mainModel
 			     . " THEN $periodo END), MAX(pago_fecha)))";
 		}
 
+		/*
+		| Estado de cuenta de varios alumnos, para las fichas (alumnoProfile y
+		| «Representa a» de representanteProfile). Por alumno_id:
+		|
+		|   descuento_rubroid, descuento_valor, descuento_nombre, sede_pension
+		|       su beneficio vigente (descuento_valor es la pensión que PAGA)
+		|   pension_fecha, pension_periodo, pension_valor
+		|       su último pago de pensión
+		|   pago_fecha, pago_valor, pago_rubroid, pago_concepto, pago_periodo
+		|       su último pago de cualquier concepto
+		|       (pagos efectivos: completos, o pendientes con algo abonado;
+		|       nunca los eliminados)
+		|   ultima_asis   el último día que vino (SQL_ULTIMA_ASISTENCIA)
+		|   saldo, meses_deuda, deuda
+		|       lo que debe, con la MISMA cuenta que Pagos (pagosController::
+		|       listarAlumnosPagos), Cobranza y pagosNew: saldos pendientes +
+		|       pensiones desde el último mes pagado (si nunca pagó, desde su
+		|       ingreso); al inactivo, sólo hasta su última asistencia; la
+		|       beca del 100 % no debe pensiones.
+		*/
+		public function resumenCuentaAlumnos(array $ids): array{
+			$ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn($i) => $i > 0)));
+			if (!$ids) { return []; }
+			$en = implode(',', $ids);   /* enteros: se pueden escribir en la consulta */
+
+			$ultimoPago = static fn(string $campo, string $rubro = '') =>
+				"(SELECT $campo FROM alumno_pago P
+				   WHERE P.pago_alumnoid = A.alumno_id AND P.pago_estado IN ('C','P') AND P.pago_valor > 0"
+				   . ($rubro !== '' ? " AND P.pago_rubroid = '$rubro'" : '') . "
+				   ORDER BY P.pago_fecha DESC, P.pago_id DESC LIMIT 1)";
+			$filas = $this->ejecutarConsulta("SELECT A.alumno_id, A.alumno_estado, A.alumno_fechaingreso, S.sede_pension,
+						D.descuento_rubroid, D.descuento_valor, D.descuento_fecha, DC.catalogo_descripcion AS descuento_nombre,
+						" . $ultimoPago('P.pago_fecha', 'RPE') . " AS pension_fecha,
+						" . $ultimoPago('P.pago_periodo', 'RPE') . " AS pension_periodo,
+						" . $ultimoPago('P.pago_valor', 'RPE') . " AS pension_valor,
+						" . $ultimoPago('P.pago_fecha') . " AS pago_fecha,
+						" . $ultimoPago('P.pago_valor') . " AS pago_valor,
+						" . $ultimoPago('P.pago_rubroid') . " AS pago_rubroid,
+						" . $ultimoPago('P.pago_periodo') . " AS pago_periodo,
+						(SELECT " . self::SQL_ULTIMA_ASISTENCIA . " FROM insights_v_asistencia_dia WHERE dia_alumnoid = A.alumno_id) AS ultima_asis,
+						(SELECT " . self::sqlUltimoMesPagado() . " FROM alumno_pago
+						  WHERE pago_alumnoid = A.alumno_id AND pago_rubroid = 'RPE' AND pago_estado <> 'E') AS ultimo_mes,
+						(SELECT IFNULL(SUM(pago_saldo), 0) FROM alumno_pago
+						  WHERE pago_alumnoid = A.alumno_id AND pago_estado = 'P') AS saldo
+					FROM sujeto_alumno A
+					LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
+					LEFT JOIN alumno_pago_descuento D ON D.descuento_alumnoid = A.alumno_id AND D.descuento_estado = 'S'
+					LEFT JOIN general_tabla_catalogo DC ON DC.catalogo_valor = D.descuento_rubroid AND DC.catalogo_tablaid = 7
+					WHERE A.alumno_id IN ($en)")->fetchAll(\PDO::FETCH_ASSOC);
+
+			/* Nombre del concepto del último pago (catálogo de rubros). */
+			$rubros = [];
+			foreach ($this->ejecutarConsulta("SELECT C.catalogo_valor, C.catalogo_descripcion FROM general_tabla_catalogo C
+					INNER JOIN general_tabla T ON T.tabla_id = C.catalogo_tablaid AND T.tabla_nombre = 'rubros'")->fetchAll() as $f) {
+				$rubros[$f['catalogo_valor']] = $f['catalogo_descripcion'];
+			}
+
+			$r = [];
+			foreach ($filas as $al) {
+				$al['pago_concepto'] = $rubros[$al['pago_rubroid'] ?? ''] ?? (string)($al['pago_rubroid'] ?? '');
+				$becado  = $al['descuento_rubroid'] === 'DBC';
+				$pension = $al['descuento_valor'] !== null ? (float)$al['descuento_valor'] : (float)$al['sede_pension'];
+				$meses   = $becado ? 0
+				         : ($al['alumno_estado'] === 'A'
+				            ? $this->mesesPensionAdeudados($al['ultimo_mes'] ?: $this->baseSinPagos($al['alumno_fechaingreso']))
+				            : ($al['alumno_estado'] === 'I'
+				               ? $this->mesesPensionInactivo($al['ultimo_mes'], $al['ultima_asis'], $al['alumno_fechaingreso'])
+				               : 0));
+				$al['meses_deuda'] = $meses;
+				$al['deuda']       = round((float)$al['saldo'] + $meses * $pension, 2);
+				unset($al['alumno_estado'], $al['alumno_fechaingreso']);   /* ya los trae quien llama */
+				$r[(int)$al['alumno_id']] = $al;
+			}
+			return $r;
+		}
+
 		/** El último día que vino un alumno (Y-m-d), o null si nunca. */
 		public function ultimaAsistencia(int $alumno): ?string{
 			$f = $this->ejecutarConsulta(

@@ -50,7 +50,10 @@
 	$nacimiento = $fecha($al['alumno_fechanacimiento']);
 	$ingreso    = $fecha($al['alumno_fechaingreso']);
 	$activo     = $al['alumno_estado'] === 'A';
-	$pendientes = (int)$al['pagos_pendientes'];
+	/* Lo que debe (mainModel::resumenCuentaAlumnos, la misma cuenta que Pagos
+	   y Cobranza). Antes sólo se contaban los pagos con saldo y quien debía
+	   pensiones sin generar salía «Pagos al día». */
+	$deudaAl  = (float)($al['deuda'] ?? 0);
 
 	/* Teléfonos: «Llamar» y «WhatsApp» los arma ds_botones_contacto()
 	   (ds_core/inc/ui.php), común a las fichas. */
@@ -131,8 +134,8 @@
 										<span class="text-body-secondary"><?php echo $h($al['alumno_identificacion']); ?></span>
 										<div class="ds-perfil__insignias">
 											<span class="badge <?php echo $activo ? 'text-bg-success' : 'text-bg-secondary'; ?>"><?php echo $activo ? 'Activo' : 'Inactivo'; ?></span>
-											<span class="badge <?php echo $pendientes ? 'text-bg-danger' : 'text-bg-success'; ?>">
-												<?php echo $pendientes ? $pendientes . ($pendientes === 1 ? ' pago pendiente' : ' pagos pendientes') : 'Pagos al día'; ?>
+											<span class="badge <?php echo $deudaAl > 0 ? 'text-bg-danger' : 'text-bg-success'; ?>">
+												<?php echo $deudaAl > 0 ? 'Debe $' . number_format($deudaAl, 2) : 'Pagos al día'; ?>
 											</span>
 										</div>
 									</div>
@@ -147,6 +150,12 @@
 									<div><dt>Ingreso</dt><dd><?php echo $ingreso ? $ingreso->format('d/m/Y') : $vacio; ?></dd></div>
 									<div><dt>En la escuela</dt><dd><?php echo $ingreso && $tiempo($ingreso) !== '' ? $h($tiempo($ingreso)) : $vacio; ?></dd></div>
 								</dl>
+
+								<!-- Pagos y asistencia: el mismo resumen que «Representa a» -->
+								<section class="ds-perfil__cuenta" aria-labelledby="perfil-cuenta">
+									<h4 class="ds-perfil__subtitulo" id="perfil-cuenta">Pagos y asistencia</h4>
+									<?php $rcAlumno = $al; $rcIngreso = false; include "app/views/inc/resumenCuenta.php"; ?>
+								</section>
 
 								<div class="ds-perfil__acciones">
 									<?php if ($puedeEditar): ?>

@@ -291,6 +291,65 @@
 								</div>
 							</div>
 
+							<!-- Hermanos: los demás alumnos de su representante -->
+							<?php if ($hermanos = $ficha['hermanos'] ?? []):
+								$herActivos = count(array_filter($hermanos, static fn($x) => $x['alumno_estado'] === 'A')); ?>
+							<div class="col-12">
+								<div class="card">
+									<div class="card-header d-flex align-items-center gap-2">
+										<h3 class="card-title me-auto"><i class="fas fa-children me-2" aria-hidden="true"></i>Hermanos</h3>
+										<span class="small text-body-secondary"><?php echo count($hermanos) . (count($hermanos) === 1 ? ' hermano' : ' hermanos') . ' · ' . $herActivos . ($herActivos === 1 ? ' activo' : ' activos'); ?></span>
+									</div>
+									<div class="card-body">
+										<ul class="ds-repre__alumnos">
+											<?php foreach ($hermanos as $hn):
+												$hnNombre = preg_replace('/\s+/', ' ', trim(html_entity_decode($hn['alumno_primernombre'] . ' ' . $hn['alumno_segundonombre'] . ' ' . $hn['alumno_apellidopaterno'] . ' ' . $hn['alumno_apellidomaterno'], ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+												$hnActivo = $hn['alumno_estado'] === 'A';
+												$hnFoto   = $hn['alumno_imagen'] != '' ? media_url('alumno', $hn['alumno_imagen']) : '';
+												if (str_contains($hnFoto, '/dist/img/foto.jpg')) { $hnFoto = ''; }
+												$hnInic   = mb_strtoupper(mb_substr(html_entity_decode((string)$hn['alumno_primernombre']), 0, 1) . mb_substr(html_entity_decode((string)$hn['alumno_apellidopaterno']), 0, 1));
+												$hnNac    = $fecha($hn['alumno_fechanacimiento']);
+												$hnMeta   = array_filter([$hnNac ? $tiempo($hnNac) : '', $hnNac ? 'Cat. ' . $hnNac->format('Y') : '', html_entity_decode((string)$hn['sede_nombre'])]);
+												/* Beca o descuento: sólo del hermano activo (al inactivo no se le cobra).
+												   descuento_valor es la pensión que PAGA. */
+												$hnCod = $hnActivo ? (string)$hn['descuento_rubroid'] : '';
+												if ($hnCod !== '') {
+													$hnSede  = (float)$hn['sede_pension'];
+													$hnPaga  = $hnCod === 'DBC' ? 0.0 : min(max((float)$hn['descuento_valor'], 0), $hnSede);
+													$hnBenef = ['DBC' => 'Beca 100 %', 'DBP' => 'Beca 50 %'][$hnCod] ?? (trim((string)$hn['descuento_nombre']) !== '' ? $hn['descuento_nombre'] : $hnCod);
+													$hnDet   = $hnCod === 'DBC' ? 'no paga pensión' : 'paga $' . number_format($hnPaga, 2) . ($hnSede > 0 ? ' de $' . number_format($hnSede, 2) : '');
+												} ?>
+												<li>
+													<a class="ds-repre__alumno<?php echo $hnActivo ? '' : ' ds-repre__alumno--inactivo'; ?>" href="<?php echo APP_URL; ?>alumnoProfile/<?php echo (int)$hn['alumno_id']; ?>/">
+														<?php if ($hnFoto !== ''): ?>
+															<img class="ds-repre__alumno-foto" src="<?php echo $h($hnFoto); ?>" alt="" loading="lazy">
+														<?php else: ?>
+															<span class="ds-repre__alumno-foto" aria-hidden="true"><?php echo $h($hnInic); ?></span>
+														<?php endif; ?>
+														<span class="ds-repre__alumno-datos">
+															<strong><?php echo $h($hnNombre); ?></strong>
+															<span><?php echo $h(implode(' · ', $hnMeta)); ?></span>
+															<?php if ($hnActivo): ?>
+																<span class="ds-perfil__hermano-benef">
+																	<?php if ($hnCod !== ''): ?>
+																		<span class="badge ds-repre__beneficio"><?php echo $h($hnBenef); ?></span> <?php echo $h($hnDet); ?>
+																	<?php else: ?>
+																		Sin beca ni descuento
+																	<?php endif; ?>
+																</span>
+															<?php endif; ?>
+														</span>
+														<span class="badge <?php echo $hnActivo ? 'text-bg-success' : 'text-bg-secondary'; ?>"><?php echo $hnActivo ? 'Activo' : 'Inactivo'; ?></span>
+														<i class="fas fa-chevron-right ds-repre__alumno-ir" aria-hidden="true"></i>
+													</a>
+												</li>
+											<?php endforeach; ?>
+										</ul>
+									</div>
+								</div>
+							</div>
+							<?php endif; ?>
+
 							<!-- Datos personales -->
 							<div class="col-12">
 								<div class="card">

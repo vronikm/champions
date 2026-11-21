@@ -1814,12 +1814,30 @@
 					WHERE asignahorario_alumnoid = :alumno ORDER BY 1", $p)->fetchAll(\PDO::FETCH_COLUMN);
 			$horarios = array_values(array_filter(array_map(fn($id) => $this->horarioDias($id), $ids)));
 
+			/* Hermanos: los demás alumnos (activos e inactivos) del mismo
+			   representante, con su beneficio vigente (descuento_valor es la
+			   pensión que PAGA). Los activos primero. */
+			$hermanos = (int)($alumno['alumno_repreid'] ?? 0) > 0
+				? $this->ejecutarConsulta("SELECT A.alumno_id, A.alumno_primernombre, A.alumno_segundonombre,
+							A.alumno_apellidopaterno, A.alumno_apellidomaterno, A.alumno_fechanacimiento,
+							A.alumno_estado, A.alumno_imagen, S.sede_nombre, S.sede_pension,
+							D.descuento_rubroid, D.descuento_valor, DC.catalogo_descripcion AS descuento_nombre
+						FROM sujeto_alumno A
+						LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
+						LEFT JOIN alumno_pago_descuento D ON D.descuento_alumnoid = A.alumno_id AND D.descuento_estado = 'S'
+						LEFT JOIN general_tabla_catalogo DC ON DC.catalogo_valor = D.descuento_rubroid AND DC.catalogo_tablaid = 7
+						WHERE A.alumno_repreid = :repre AND A.alumno_id <> :alumno AND A.alumno_estado IN ('A','I')
+						ORDER BY A.alumno_estado = 'A' DESC, A.alumno_fechanacimiento",
+						[':repre' => (int)$alumno['alumno_repreid'], ':alumno' => (int)$alumnoid])->fetchAll(\PDO::FETCH_ASSOC)
+				: [];
+
 			return [
 				'alumno'        => $alumno,
 				'representante' => $representante ?: null,
 				'emergencia'    => $emergencia ?: null,
 				'medica'        => $medica ?: null,
 				'horarios'      => $horarios,
+				'hermanos'      => $hermanos,
 			];
 		}
 

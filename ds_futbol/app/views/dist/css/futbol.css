@@ -896,6 +896,44 @@
 @media (min-width: 1200px) {
     .ds-repre__alumnos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+/* 2026-11-21: cada representado es una ficha. Arriba, la fila que abre
+   la ficha del alumno; debajo, ingreso, beca o descuento, último pago y
+   última asistencia; al final, «Ver pagos». */
+.ds-repre__ficha {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius-lg);
+    background: var(--bs-body-bg);
+    overflow: hidden;
+}
+.ds-repre__ficha .ds-repre__alumno { border: 0; border-radius: 0; }
+.ds-repre__ficha .ds-repre__alumno:hover { background: var(--bs-tertiary-bg); }
+.ds-repre__resumen {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .6rem .9rem;
+    margin: 0;
+    padding: .65rem .75rem .75rem;
+    border-top: 1px solid var(--bs-border-color-translucent);
+}
+.ds-repre__resumen dt { display: flex; align-items: center; gap: .35rem; font-size: .75rem; font-weight: 400; color: var(--bs-secondary-color); }
+.ds-repre__resumen dt i { width: .9rem; text-align: center; }
+.ds-repre__resumen dd { margin: .1rem 0 0; font-size: .9rem; font-weight: 600; color: var(--bs-emphasis-color); overflow-wrap: anywhere; }
+.ds-repre__resumen dd small { display: block; font-size: .75rem; font-weight: 400; color: var(--bs-secondary-color); }
+.ds-repre__resumen dd small.text-danger { color: var(--bs-danger-text-emphasis) !important; }
+.ds-repre__resumen dd .text-body-secondary { font-weight: 400; }
+.ds-repre__resumen .ds-repre__otro-pago { margin-top: .15rem; }
+.ds-repre__beneficio { font-size: .75rem; font-weight: 600; color: var(--bs-warning-text-emphasis); background: var(--bs-warning-bg-subtle); border: 1px solid var(--bs-warning-border-subtle); }
+.ds-repre__ficha-acciones { display: flex; justify-content: flex-end; padding: 0 .75rem .75rem; margin-top: auto; }
+.ds-repre__ficha--inactivo .ds-repre__resumen dd { color: var(--bs-body-color); }
+@media (max-width: 575.98px) {
+    /* Teléfono: botón a todo lo ancho, fácil de tocar. */
+    .ds-repre__ficha-acciones .btn { width: 100%; min-height: 2.75rem; display: inline-flex; align-items: center; justify-content: center; }
+}
+@media (max-width: 359.98px) {
+    .ds-repre__resumen { grid-template-columns: 1fr; }
+}
 /* En la edición: la identificación escrita es de OTRO representante. */
 .ds-repre__aviso--otro {
     padding: .6rem .75rem;

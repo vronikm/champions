@@ -239,10 +239,12 @@
 																	<?php endif; ?>
 																</dd>
 															</div>
+															<?php if ($activo): /* Al inactivo no se le cobra pensión: su beneficio no aplica. */ ?>
 															<div>
 																<dt><i class="fas fa-award" aria-hidden="true"></i>Beca o descuento</dt>
 																<dd><?php echo $beneficio($a); ?></dd>
 															</div>
+															<?php endif; ?>
 															<div>
 																<dt><i class="fas fa-money-bill-wave" aria-hidden="true"></i>Último pago de pensión</dt>
 																<dd>
@@ -265,6 +267,27 @@
 																		<small class="<?php echo $diasAsis > 30 ? 'text-danger' : ''; ?>"><?php echo $diasAsis === 0 ? 'hoy' : ($diasAsis === 1 ? 'ayer' : ($diasAsis <= 60 ? 'hace ' . $diasAsis . ' días' : $antiguedad($asis))); ?></small>
 																	<?php else: ?>
 																		<span class="text-body-secondary">Sin asistencias</span>
+																	<?php endif; ?>
+																</dd>
+															</div>
+															<?php
+																/* Lo que debe (representanteController::fichaRepresentante:
+																   la misma cuenta que Pagos y Cobranza). */
+																$deuda  = (float)$a['deuda'];
+																$mesesD = (int)$a['meses_deuda'];
+																$saldoD = (float)$a['saldo'];
+																$detalleD = [];
+																if ($mesesD > 0) { $detalleD[] = $mesesD . ($mesesD === 1 ? ' pensión' : ' pensiones') . ($activo ? '' : ($mesesD === 1 ? ' asistida' : ' asistidas') . ' sin pagar'); }
+																if ($saldoD > 0) { $detalleD[] = 'saldo $' . number_format($saldoD, 2); }
+															?>
+															<div class="ds-repre__deuda <?php echo $deuda > 0 ? 'ds-repre__deuda--mora' : 'ds-repre__deuda--aldia'; ?>">
+																<dt><i class="fas <?php echo $deuda > 0 ? 'fa-triangle-exclamation' : 'fa-circle-check'; ?>" aria-hidden="true"></i>Valor adeudado</dt>
+																<dd>
+																	<?php if ($deuda > 0): ?>
+																		$<?php echo number_format($deuda, 2); ?> <span class="ds-repre__deuda-estado">en mora</span>
+																		<small><?php echo $h(implode(' + ', $detalleD)); ?></small>
+																	<?php else: ?>
+																		Al día
 																	<?php endif; ?>
 																</dd>
 															</div>

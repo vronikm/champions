@@ -877,7 +877,11 @@
 						" . $ultimoPago('P.pago_valor') . " AS pago_valor,
 						" . $ultimoPago('P.pago_rubroid') . " AS pago_rubroid,
 						" . $ultimoPago('P.pago_periodo') . " AS pago_periodo,
-						(SELECT " . self::SQL_ULTIMA_ASISTENCIA . " FROM insights_v_asistencia_dia WHERE dia_alumnoid = A.alumno_id) AS ultima_asis
+						(SELECT " . self::SQL_ULTIMA_ASISTENCIA . " FROM insights_v_asistencia_dia WHERE dia_alumnoid = A.alumno_id) AS ultima_asis,
+						(SELECT " . self::sqlUltimoMesPagado() . " FROM alumno_pago
+						  WHERE pago_alumnoid = A.alumno_id AND pago_rubroid = 'RPE' AND pago_estado <> 'E') AS ultimo_mes,
+						(SELECT IFNULL(SUM(pago_saldo), 0) FROM alumno_pago
+						  WHERE pago_alumnoid = A.alumno_id AND pago_estado = 'P') AS saldo
 					FROM sujeto_alumno A
 					LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
 					LEFT JOIN alumno_pago_descuento D ON D.descuento_alumnoid = A.alumno_id AND D.descuento_estado = 'S'
@@ -892,6 +896,20 @@
 			}
 			foreach ($alumnos as &$al) {
 				$al['pago_concepto'] = $rubros[$al['pago_rubroid'] ?? ''] ?? (string)($al['pago_rubroid'] ?? '');
+
+				/* Lo que debe: la misma cuenta que Pagos (pagosController::
+				   listarAlumnosPagos), Cobranza y pagosNew. Saldos pendientes
+				   + pensiones desde el último mes pagado (si nunca pagó, desde
+				   su ingreso); al inactivo, sólo hasta su última asistencia.
+				   Beca del 100 %: no debe pensiones. */
+				$becado  = $al['descuento_rubroid'] === 'DBC';
+				$pension = $al['descuento_valor'] !== null ? (float)$al['descuento_valor'] : (float)$al['sede_pension'];
+				$meses   = $becado ? 0
+				         : ($al['alumno_estado'] === 'A'
+				            ? $this->mesesPensionAdeudados($al['ultimo_mes'] ?: $this->baseSinPagos($al['alumno_fechaingreso']))
+				            : $this->mesesPensionInactivo($al['ultimo_mes'], $al['ultima_asis'], $al['alumno_fechaingreso']));
+				$al['meses_deuda'] = $meses;
+				$al['deuda']       = round((float)$al['saldo'] + $meses * $pension, 2);
 			}
 			unset($al);
 

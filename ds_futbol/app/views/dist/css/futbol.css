@@ -925,6 +925,26 @@
 .ds-repre__resumen dd .text-body-secondary { font-weight: 400; }
 .ds-repre__resumen .ds-repre__otro-pago { margin-top: .15rem; }
 .ds-repre__beneficio { font-size: .75rem; font-weight: 600; color: var(--bs-warning-text-emphasis); background: var(--bs-warning-bg-subtle); border: 1px solid var(--bs-warning-border-subtle); }
+/* Valor adeudado: a todo lo ancho, en rojo si debe y en verde si está al día
+   (con icono y texto: el color no es lo único que lo dice). */
+.ds-repre__deuda {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: .25rem .75rem;
+    padding: .5rem .65rem;
+    border: 1px solid;
+    border-radius: var(--bs-border-radius);
+}
+.ds-repre__deuda dt { color: inherit; font-size: .8rem; font-weight: 600; }
+.ds-repre__deuda dd { margin: 0; text-align: right; color: inherit; font-size: 1rem; }
+.ds-repre__deuda dd small { color: inherit; opacity: .85; }
+.ds-repre__deuda-estado { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; }
+.ds-repre__deuda--mora  { border-color: var(--bs-danger-border-subtle);  background: var(--bs-danger-bg-subtle);  color: var(--bs-danger-text-emphasis); }
+.ds-repre__deuda--aldia { border-color: var(--bs-success-border-subtle); background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
+.ds-repre__resumen .ds-repre__deuda dd { color: inherit; }
 .ds-repre__ficha-acciones { display: flex; justify-content: flex-end; padding: 0 .75rem .75rem; margin-top: auto; }
 .ds-repre__ficha--inactivo .ds-repre__resumen dd { color: var(--bs-body-color); }
 @media (max-width: 575.98px) {

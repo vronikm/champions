@@ -129,10 +129,15 @@ require_once __DIR__ . "/inc/layout-top.php";
 
     /* «Por tipo de beneficio»: una ficha por tipo, la misma en el
        teléfono y en el escritorio (antes era una tabla de 9 columnas). */
+    /* Barra de lo cobrado en las tarjetas de color: blanca sobre un riel
+       translúcido (el texto de al lado da la cifra). */
+    .ds-kpi-barra { height: .5rem; margin-top: .45rem; border-radius: 999px; background: rgba(255, 255, 255, .3); overflow: hidden; }
+    .ds-kpi-barra > span { display: block; height: 100%; border-radius: 999px; background: #fff; }
     .ds-benef { border: 1px solid var(--bs-border-color); border-radius: .5rem; padding: 1rem; display: flex; flex-direction: column; gap: .75rem; }
     .ds-benef--control { background: var(--bs-tertiary-bg); border-style: dashed; }
     .ds-benef__cab { display: flex; align-items: center; gap: .5rem; }
     .ds-benef__cab h4 { font-size: 1.0625rem; font-weight: 600; margin: 0 auto 0 0; }
+    .ds-benef__alumnos { font-size: .875rem; font-weight: 600; padding: .35em .7em; }
     .ds-benef__cab h4 small { font-size: .8125rem; font-weight: 400; color: var(--bs-secondary-color); }
     .ds-benef__vacio { margin: 0; font-size: .875rem; color: var(--bs-secondary-color); }
     .ds-benef__cifra strong { display: block; font-size: 1.75rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
@@ -141,7 +146,8 @@ require_once __DIR__ . "/inc/layout-top.php";
        separación entre tramos. El texto de la leyenda lleva las cifras. */
     .ds-benef__barra { display: flex; gap: 2px; height: .625rem; border-radius: 999px; overflow: hidden; }
     .ds-benef__paga { background: var(--bs-secondary-bg); box-shadow: inset 0 0 0 1px var(--bs-border-color); }
-    .ds-benef__desc { background: #d97706; }
+    /* Rojo: es lo que se deja de cobrar, como la tarjeta roja de arriba. */
+    .ds-benef__desc { background: #dc3545; }
     .ds-benef__barra > span { display: block; height: 100%; }
     .ds-benef__barra > span:first-child { border-radius: 999px 0 0 999px; }
     .ds-benef__barra > span:last-child { border-radius: 0 999px 999px 0; }
@@ -155,11 +161,6 @@ require_once __DIR__ . "/inc/layout-top.php";
     .ds-benef__datos dd small { display: block; font-weight: 400; font-size: .75rem; color: var(--bs-secondary-color); }
     .ds-benef__notas { list-style: none; margin: auto 0 0; padding: .5rem 0 0; border-top: 1px dashed var(--bs-border-color); font-size: .8125rem; display: grid; gap: .375rem; }
     .ds-benef__notas li { display: grid; grid-template-columns: 1rem 1fr; gap: .5rem; align-items: baseline; }
-    .ds-benef__ayuda { margin-top: 1rem; font-size: .875rem; }
-    .ds-benef__ayuda summary { cursor: pointer; color: var(--bs-link-color); padding: .25rem 0; }
-    .ds-benef__ayuda dl { margin: .5rem 0 0; display: grid; gap: .125rem; }
-    .ds-benef__ayuda dt { font-weight: 600; margin-top: .5rem; }
-    .ds-benef__ayuda dd { margin: 0; color: var(--bs-secondary-color); }
 
     @media (max-width: 575.98px) {
         /* Teléfono: el mes debajo de la fecha y botones anchos, fáciles de tocar. */
@@ -237,6 +238,12 @@ require_once __DIR__ . "/inc/layout-top.php";
                 <?php /* Lo cobrado de ese mes a los beneficiarios: la suma de
                          «Pagado de <mes>» de cada tipo (pensiones de ese mes). */ ?>
                 <p class="mb-0 small fw-semibold">cobrado <?php echo $bfDinero($totPagado); ?><?php echo $totPaga > 0 ? ' (' . $bfPct($totPagado / $totPaga * 100) . ')' : ''; ?></p>
+                <?php $kpiPct = $totPaga > 0 ? $totPagado / $totPaga * 100 : null; ?>
+                <?php if ($kpiPct !== null): ?>
+                    <div class="ds-kpi-barra" role="progressbar" aria-label="Cobrado" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?php echo (int) round(min(100, $kpiPct)); ?>">
+                        <span style="width:<?php echo round(min(100, $kpiPct), 1); ?>%"></span>
+                    </div>
+                <?php endif; ?>
             </div>
             <i class="fas fa-receipt small-box-icon" aria-hidden="true"></i>
         </div>
@@ -246,7 +253,14 @@ require_once __DIR__ . "/inc/layout-top.php";
             <div class="inner">
                 <h3 class="text-truncate"><?php echo $bfDinero($control['deberian']); ?></h3>
                 <p class="mb-0">Debería ingresar sin beneficio</p>
-                <p class="mb-0 small opacity-75">pensión de <?php echo number_format($control['alumnos']); ?> alumnos sin beca ni descuento · cobrado <?php echo $bfDinero($control['pagado']); ?></p>
+                <p class="mb-0 small opacity-75">pensión de <?php echo number_format($control['alumnos']); ?> alumnos sin beca ni descuento</p>
+                <p class="mb-0 small fw-semibold">cobrado <?php echo $bfDinero($control['pagado']); ?><?php echo $control['deberian'] > 0 ? ' (' . $bfPct($control['pagado'] / $control['deberian'] * 100) . ')' : ''; ?></p>
+                <?php $kpiPct = $control['deberian'] > 0 ? $control['pagado'] / $control['deberian'] * 100 : null; ?>
+                <?php if ($kpiPct !== null): ?>
+                    <div class="ds-kpi-barra" role="progressbar" aria-label="Cobrado" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?php echo (int) round(min(100, $kpiPct)); ?>">
+                        <span style="width:<?php echo round(min(100, $kpiPct), 1); ?>%"></span>
+                    </div>
+                <?php endif; ?>
             </div>
             <i class="fas fa-money-bill-wave small-box-icon" aria-hidden="true"></i>
         </div>
@@ -274,8 +288,8 @@ require_once __DIR__ . "/inc/layout-top.php";
                     <div class="col-12 col-md-6 col-xl-4">
                         <article class="ds-benef h-100" aria-labelledby="benef-<?php echo $rvH($b['cod']); ?>">
                             <header class="ds-benef__cab">
-                                <h4 id="benef-<?php echo $rvH($b['cod']); ?>"><?php echo $rvH($b['tipo']); ?></h4>
-                                <span class="badge text-bg-light border"><?php echo number_format($b['activos']) . ($b['activos'] === 1 ? ' activo' : ' activos'); ?></span>
+                                <h4 id="benef-<?php echo $rvH($b['cod']); ?>">Con <?php echo $rvH($b['tipo']); ?></h4>
+                                <span class="badge bg-body-tertiary text-body border ds-benef__alumnos"><?php echo number_format($b['activos']) . ($b['activos'] === 1 ? ' alumno' : ' alumnos'); ?></span>
                             </header>
 
                             <?php if ($b['activos'] === 0): ?>
@@ -364,7 +378,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                     <article class="ds-benef ds-benef--control h-100" aria-labelledby="benef-control">
                         <header class="ds-benef__cab">
                             <h4 id="benef-control">Sin beneficio <small>para comparar</small></h4>
-                            <span class="badge text-bg-light border"><?php echo number_format($control['alumnos']); ?> activos</span>
+                            <span class="badge bg-body-tertiary text-body border ds-benef__alumnos"><?php echo number_format($control['alumnos']) . ($control['alumnos'] === 1 ? ' alumno' : ' alumnos'); ?></span>
                         </header>
                         <div class="ds-benef__cifra">
                             <strong><?php echo $bfDinero($control['deberian']); ?></strong>
@@ -397,28 +411,6 @@ require_once __DIR__ . "/inc/layout-top.php";
                     </article>
                 </div>
             </div>
-
-            <details class="ds-benef__ayuda">
-                <summary><i class="fas fa-circle-question me-1" aria-hidden="true"></i>Cómo se calculan estas cifras</summary>
-                <dl>
-                    <dt>El mes</dt>
-                    <dd>Todo se calcula para el mes elegido arriba (por omisión, el mes en curso). La base no guarda cuándo se quitó un beneficio ni cuándo un alumno pasó a inactivo: para un mes pasado se cuentan los alumnos activos hoy que ya habían ingresado y ya tenían el beneficio concedido. Los inactivos con el beneficio vigente y «Conviene revisar» son de hoy.</dd>
-                    <dt>Alumnos</dt>
-                    <dd>Sólo los activos con el beneficio vigente. A un inactivo no se le cobra pensión, así que su beneficio no cuesta nada; se cuenta aparte.</dd>
-                    <dt>Se deja de cobrar al mes</dt>
-                    <dd>Pensión normal de la sede de cada alumno menos la pensión que paga con el beneficio. En el beneficio se guarda <em>lo que paga</em>: «Descuento $25» en una sede de $35 paga $25 y se dejan de cobrar $10. La beca del 100 % paga $0.</dd>
-                    <dt>Descuento del %</dt>
-                    <dd>Lo que se deja de cobrar sobre la pensión normal de esos alumnos.</dd>
-                    <dt>Pagado del mes</dt>
-                    <dd>Las pensiones de ese mes que se cobraron: por el mes que dice el pago («Mayo / 2026»); si no se entiende, por su fecha. Completos y abonos; nunca los eliminados.</dd>
-                    <dt>Debería ingresar sin beneficio</dt>
-                    <dd>La pensión completa de la sede de cada alumno activo sin beca ni descuento en ese mes: lo que debería cobrarse por ellos. Al lado, lo cobrado de ese mes.</dd>
-                    <dt>Asistencia</dt>
-                    <dd>Días presentes o con atraso sobre los días registrados por los profesores en ese mes (el justificado cuenta como falta). Se compara con los activos sin beneficio. Con pocos días registrados, unas pocas faltas mueven el porcentaje varios puntos.</dd>
-                    <dt>Faltas avisadas</dt>
-                    <dd>De las faltas, cuántas fueron justificadas (avisaron).</dd>
-                </dl>
-            </details>
         <?php endif; ?>
     </div>
 </div>
@@ -586,7 +578,7 @@ document.querySelectorAll('#becasMes, #becasAnio').forEach(function (s) {
         xaxis: { categories: <?php
             $cats = [];
             foreach ($beneficios as $b) {
-                if ($b['asistencia'] !== null) { $cats[] = $b['tipo']; }
+                if ($b['asistencia'] !== null) { $cats[] = 'Con ' . $b['tipo']; }
             }
             if ($control['asistencia'] !== null) { $cats[] = 'Sin beneficio'; }
             echo json_encode($cats, JSON_UNESCAPED_UNICODE);

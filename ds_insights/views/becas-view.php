@@ -131,6 +131,25 @@ require_once __DIR__ . "/inc/layout-top.php";
        teléfono y en el escritorio (antes era una tabla de 9 columnas). */
     /* Barra de lo cobrado en las tarjetas de color: blanca sobre un riel
        translúcido (el texto de al lado da la cifra). */
+    /* Tarjetas de lo cobrado: el texto arriba y «cobrado» con su barra al pie,
+       para que las dos barras queden a la misma altura aunque un texto
+       ocupe más líneas que el otro. */
+    .ds-kpi .inner { display: flex; flex-direction: column; height: 100%; }
+    .ds-kpi__cobrado { margin-top: auto; padding-top: .5rem; }
+    /* Teléfono: dos tarjetas por fila, con la cifra y el texto a su medida
+       y sin el icono de fondo (taparía el texto en media pantalla). */
+    @media (max-width: 575.98px) {
+        .ds-becas__kpis { margin-bottom: 1rem; }
+        /* digisports.css da 1.5rem bajo cada columna de una fila; aquí el
+           espacio lo da el gutter de la fila. */
+        .app-content .container-fluid > .row.ds-becas__kpis > [class*="col-"] { margin-bottom: 0; }
+        .ds-becas__kpis .small-box { margin-bottom: 0; }
+        .ds-becas__kpis .small-box .inner { padding: .75rem; text-align: left; }
+        .ds-becas__kpis .small-box h3 { font-size: 1.3rem; margin-bottom: .25rem; }
+        .ds-becas__kpis .small-box p { font-size: .78rem; line-height: 1.3; }
+        .ds-becas__kpis .small-box .small { font-size: .72rem; }
+        .ds-becas__kpis .small-box-icon { display: none; }
+    }
     .ds-kpi-barra { height: .5rem; margin-top: .45rem; border-radius: 999px; background: rgba(255, 255, 255, .3); overflow: hidden; }
     .ds-kpi-barra > span { display: block; height: 100%; border-radius: 999px; background: #fff; }
     .ds-benef { border: 1px solid var(--bs-border-color); border-radius: .5rem; padding: 1rem; display: flex; flex-direction: column; gap: .75rem; }
@@ -208,8 +227,8 @@ require_once __DIR__ . "/inc/layout-top.php";
 </form>
 
 <!-- ==================== Las cifras ==================== -->
-<div class="row">
-    <div class="col-12 col-sm-6 col-lg-3">
+<div class="row g-2 g-sm-3 ds-becas__kpis">
+    <div class="col-6 col-lg-3">
         <div class="small-box text-bg-primary h-100">
             <div class="inner">
                 <h3 class="text-truncate"><?php echo number_format($totActivos); ?></h3>
@@ -219,7 +238,7 @@ require_once __DIR__ . "/inc/layout-top.php";
             <i class="fas fa-user-graduate small-box-icon" aria-hidden="true"></i>
         </div>
     </div>
-    <div class="col-12 col-sm-6 col-lg-3">
+    <div class="col-6 col-lg-3">
         <div class="small-box text-bg-danger h-100">
             <div class="inner">
                 <h3 class="text-truncate"><?php echo $bfDinero($totBeneficio); ?></h3>
@@ -229,38 +248,43 @@ require_once __DIR__ . "/inc/layout-top.php";
             <i class="fas fa-tags small-box-icon" aria-hidden="true"></i>
         </div>
     </div>
-    <div class="col-12 col-sm-6 col-lg-3">
-        <div class="small-box text-bg-secondary h-100">
+    <div class="col-6 col-lg-3">
+        <div class="small-box text-bg-secondary h-100 ds-kpi">
             <div class="inner">
                 <h3 class="text-truncate"><?php echo $bfDinero($totPaga); ?></h3>
                 <p class="mb-0">Se les cobra en <?php echo $rvH($nombreMes); ?></p>
                 <p class="mb-0 small opacity-75">en vez de <?php echo $bfDinero($totPension); ?> sin beneficio</p>
                 <?php /* Lo cobrado de ese mes a los beneficiarios: la suma de
                          «Pagado de <mes>» de cada tipo (pensiones de ese mes). */ ?>
-                <p class="mb-0 small fw-semibold">cobrado <?php echo $bfDinero($totPagado); ?><?php echo $totPaga > 0 ? ' (' . $bfPct($totPagado / $totPaga * 100) . ')' : ''; ?></p>
-                <?php $kpiPct = $totPaga > 0 ? $totPagado / $totPaga * 100 : null; ?>
-                <?php if ($kpiPct !== null): ?>
-                    <div class="ds-kpi-barra" role="progressbar" aria-label="Cobrado" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?php echo (int) round(min(100, $kpiPct)); ?>">
-                        <span style="width:<?php echo round(min(100, $kpiPct), 1); ?>%"></span>
-                    </div>
-                <?php endif; ?>
+                <div class="ds-kpi__cobrado">
+                    <?php /* Importe y porcentaje sin cortes: si no caben, el porcentaje baja entero. */ ?>
+                    <p class="mb-0 small fw-semibold"><span class="text-nowrap">cobrado <?php echo $bfDinero($totPagado); ?></span><?php if ($totPaga > 0): ?> <span class="text-nowrap">(<?php echo $bfPct($totPagado / $totPaga * 100); ?>)</span><?php endif; ?></p>
+                    <?php $kpiPct = $totPaga > 0 ? $totPagado / $totPaga * 100 : null; ?>
+                    <?php if ($kpiPct !== null): ?>
+                        <div class="ds-kpi-barra" role="progressbar" aria-label="Cobrado" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?php echo (int) round(min(100, $kpiPct)); ?>">
+                            <span style="width:<?php echo round(min(100, $kpiPct), 1); ?>%"></span>
+                        </div>
+                    <?php endif; ?>
+                </div>
             </div>
             <i class="fas fa-receipt small-box-icon" aria-hidden="true"></i>
         </div>
     </div>
-    <div class="col-12 col-sm-6 col-lg-3">
-        <div class="small-box text-bg-success h-100">
+    <div class="col-6 col-lg-3">
+        <div class="small-box text-bg-success h-100 ds-kpi">
             <div class="inner">
                 <h3 class="text-truncate"><?php echo $bfDinero($control['deberian']); ?></h3>
                 <p class="mb-0">Debería ingresar sin beneficio</p>
-                <p class="mb-0 small opacity-75">pensión de <?php echo number_format($control['alumnos']); ?> alumnos sin beca ni descuento</p>
-                <p class="mb-0 small fw-semibold">cobrado <?php echo $bfDinero($control['pagado']); ?><?php echo $control['deberian'] > 0 ? ' (' . $bfPct($control['pagado'] / $control['deberian'] * 100) . ')' : ''; ?></p>
-                <?php $kpiPct = $control['deberian'] > 0 ? $control['pagado'] / $control['deberian'] * 100 : null; ?>
-                <?php if ($kpiPct !== null): ?>
-                    <div class="ds-kpi-barra" role="progressbar" aria-label="Cobrado" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?php echo (int) round(min(100, $kpiPct)); ?>">
-                        <span style="width:<?php echo round(min(100, $kpiPct), 1); ?>%"></span>
-                    </div>
-                <?php endif; ?>
+                <p class="mb-0 small opacity-75"><?php echo number_format($control['alumnos']); ?> alumnos sin beca ni descuento</p>
+                <div class="ds-kpi__cobrado">
+                    <p class="mb-0 small fw-semibold"><span class="text-nowrap">cobrado <?php echo $bfDinero($control['pagado']); ?></span><?php if ($control['deberian'] > 0): ?> <span class="text-nowrap">(<?php echo $bfPct($control['pagado'] / $control['deberian'] * 100); ?>)</span><?php endif; ?></p>
+                    <?php $kpiPct = $control['deberian'] > 0 ? $control['pagado'] / $control['deberian'] * 100 : null; ?>
+                    <?php if ($kpiPct !== null): ?>
+                        <div class="ds-kpi-barra" role="progressbar" aria-label="Cobrado" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?php echo (int) round(min(100, $kpiPct)); ?>">
+                            <span style="width:<?php echo round(min(100, $kpiPct), 1); ?>%"></span>
+                        </div>
+                    <?php endif; ?>
+                </div>
             </div>
             <i class="fas fa-money-bill-wave small-box-icon" aria-hidden="true"></i>
         </div>

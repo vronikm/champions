@@ -45,8 +45,8 @@
 			return [
 				0 => 'repre_apellidopaterno',   // Representante: por apellido
 				1 => 'alumnos',                 // el recuento de representados (alias)
-				                                // 2: Adeudado, no se ordena (se calcula por página)
-				3 => 'repre_firmado',           // Protección de datos
+				/* 2 Adeudado y 3 Protección de datos: valores calculados, se
+				   ordenan en representantesServidor() */
 			];
 		}
 
@@ -273,12 +273,39 @@
 			     . '<div><strong>' . $titulo . '</strong> <span class="ds-repres__info-detalle">' . $detalle . '</span>' . $por . '</div></div>';
 		}
 
+		/*
+		| Lo que deben los representados de cada representante (los de las
+		| sedes del usuario: $sede y $parSede son la condición del recuento de
+		| alumnos), con la misma cuenta que Pagos y Cobranza
+		| (mainModel::resumenCuentaAlumnos).
+		| [repre_id => ['total' => importe, 'en_mora' => alumnos que deben]]
+		*/
+		private function deudasRepresentantes(array $ids, string $sede, array $parSede): array
+		{
+			$ids = array_values(array_filter(array_map('intval', $ids)));
+			if (!$ids) { return []; }
+			$alumnos = $this->ejecutarConsulta("SELECT alumno_id, alumno_repreid FROM sujeto_alumno
+					WHERE alumno_repreid IN (" . implode(',', $ids) . ") AND alumno_estado IN ('A','I') AND {$sede}",
+					$parSede)->fetchAll(\PDO::FETCH_ASSOC);
+			$cuentas = $this->resumenCuentaAlumnos(array_column($alumnos, 'alumno_id'));
+			$deudas = [];
+			foreach ($alumnos as $a) {
+				$deuda = (float)($cuentas[(int)$a['alumno_id']]['deuda'] ?? 0);
+				$rid   = (int)$a['alumno_repreid'];
+				$deudas[$rid]['total']   = ($deudas[$rid]['total'] ?? 0) + $deuda;
+				$deudas[$rid]['en_mora'] = ($deudas[$rid]['en_mora'] ?? 0) + ($deuda > 0 ? 1 : 0);
+			}
+			return $deudas;
+		}
+
 		public function representantesServidor(array $peticion): array
 		{
 			$dibujo  = (int)($peticion['draw'] ?? 1);
 			$inicio  = max(0, (int)($peticion['start'] ?? 0));
 			$largo   = (int)($peticion['length'] ?? 25);
-			$largo   = ($largo < 1 || $largo > 200) ? 25 : $largo;
+			/* «Todos» en «Mostrar» llega como -1: sin límite. */
+			$todos   = $largo === -1;
+			$largo   = $todos ? 0 : (($largo < 1 || $largo > 200) ? 25 : $largo);
 			$buscado = trim((string)($peticion['search']['value'] ?? ''));
 			$estado  = in_array($peticion['estado'] ?? 'A', ['A', 'I', 'S', 'T'], true) ? $peticion['estado'] ?? 'A' : 'A';
 
@@ -361,39 +388,65 @@
 				: (int)$this->ejecutarConsulta("SELECT COUNT(1) {$desde} {$donde}", $parSede + $par)->fetchColumn();
 
 			/*----------  La página  ----------*/
-			$filas = $this->ejecutarConsulta(
-				"SELECT repre_id, repre_identificacion, repre_primernombre, repre_segundonombre,
+			/*
+			| Adeudado (2) y Protección de datos (3) no son columnas de la base:
+			| se calculan (mainModel::resumenCuentaAlumnos y las autorizaciones
+			| LOPDP). Para ordenar por ellos se traen TODOS los representantes
+			| que cumplen la búsqueda, se calcula, se ordena aquí y se corta la
+			| página. Por las demás columnas ordena y pagina la base, como antes.
+			*/
+			$idxCalculado = in_array($idxOrden, [2, 3], true) ? $idxOrden : null;
+			$campos = "SELECT repre_id, repre_identificacion, repre_primernombre, repre_segundonombre,
 				        repre_apellidopaterno, repre_apellidomaterno, repre_celular, repre_firmado,
 				        COALESCE(AC.total, 0) AS alumnos, COALESCE(AC.activos, 0) AS activos
-				 {$desde} {$donde}
-				 ORDER BY {$colOrden} {$dirOrden}, repre_apellidomaterno ASC, repre_id ASC
-				 LIMIT " . (int)$largo . " OFFSET " . (int)$inicio, $parSede + $par)->fetchAll(\PDO::FETCH_ASSOC);
+				 {$desde} {$donde}";
+			if ($idxCalculado === null) {
+				$filas = $this->ejecutarConsulta("$campos
+					 ORDER BY {$colOrden} {$dirOrden}, repre_apellidomaterno ASC, repre_id ASC"
+					 . ($todos ? '' : " LIMIT " . (int)$largo . " OFFSET " . (int)$inicio), $parSede + $par)->fetchAll(\PDO::FETCH_ASSOC);
+				$autorizaciones = $this->autorizacionesRepresentantes(array_column($filas, 'repre_id'));
+				$deudas = $this->deudasRepresentantes(array_column($filas, 'repre_id'), $sede, $parSede);
+			} else {
+				$filas = $this->ejecutarConsulta("$campos
+					 ORDER BY repre_apellidopaterno ASC, repre_apellidomaterno ASC, repre_id ASC", $parSede + $par)->fetchAll(\PDO::FETCH_ASSOC);
+				$ids = array_column($filas, 'repre_id');
+				$autorizaciones = $this->autorizacionesRepresentantes($ids);
+				$deudas = $idxCalculado === 2 ? $this->deudasRepresentantes($ids, $sede, $parSede) : [];
+				/* La clave de cada uno. Adeudado: el importe (sin alumnos, lo
+				   más bajo). Protección: en el orden de lo que hay que atender
+				   (pendiente, revocado, datos sí e imagen no, autorizado, sin
+				   alumnos). A igualdad, el orden alfabético de la consulta. */
+				$clave = static function (array $r) use ($idxCalculado, $deudas, $autorizaciones): float {
+					$id = (int)$r['repre_id'];
+					if ($idxCalculado === 2) {
+						return (int)$r['alumnos'] === 0 ? -1.0 : (float)($deudas[$id]['total'] ?? 0);
+					}
+					$a = $autorizaciones[$id] ?? null;
+					if (!$a) { return 5; }
+					if ($a['DATOS']['estado'] === null || $a['IMAGEN']['estado'] === null) { return 1; }
+					if ($a['DATOS']['estado'] === 'N') { return 2; }
+					return $a['IMAGEN']['estado'] === 'N' ? 3 : 4;
+				};
+				$claves = array_map($clave, $filas);
+				uksort($filas, static function ($x, $y) use ($claves, $dirOrden) {
+					$c = $claves[$x] <=> $claves[$y];
+					return ($dirOrden === 'DESC' ? -$c : $c) ?: $x <=> $y;
+				});
+				$filas = array_values($filas);
+				if (!$todos) {
+					$filas = array_slice($filas, $inicio, $largo);
+				}
+				/* Las deudas de la página, si se ordenó por protección. */
+				if ($idxCalculado === 3) {
+					$deudas = $this->deudasRepresentantes(array_column($filas, 'repre_id'), $sede, $parSede);
+				}
+			}
 
 			$h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
 			$junta = static fn(...$p) => preg_replace('/\s+/', ' ', trim(implode(' ', $p)));
 			$puedeCrear    = puede('crear', 'representanteList');
 			$puedeEditar   = puede('editar', 'representanteList');
 			$puedeEliminar = puede('eliminar', 'representanteList');
-			$autorizaciones = $this->autorizacionesRepresentantes(array_column($filas, 'repre_id'));
-
-			/* Lo que deben los representados de cada uno (los de las sedes del
-			   usuario, como el recuento de alumnos), con la misma cuenta que
-			   Pagos y Cobranza (mainModel::resumenCuentaAlumnos). Sólo los de
-			   esta página: se calcula al vuelo y por eso la columna no se ordena. */
-			$deudas = [];
-			$idsRepre = array_map('intval', array_column($filas, 'repre_id'));
-			if ($idsRepre) {
-				$deLaPagina = $this->ejecutarConsulta("SELECT alumno_id, alumno_repreid FROM sujeto_alumno
-						WHERE alumno_repreid IN (" . implode(',', $idsRepre) . ") AND alumno_estado IN ('A','I') AND {$sede}",
-						$parSede)->fetchAll(\PDO::FETCH_ASSOC);
-				$cuentas = $this->resumenCuentaAlumnos(array_column($deLaPagina, 'alumno_id'));
-				foreach ($deLaPagina as $a) {
-					$deuda = (float)($cuentas[(int)$a['alumno_id']]['deuda'] ?? 0);
-					$rid   = (int)$a['alumno_repreid'];
-					$deudas[$rid]['total']   = ($deudas[$rid]['total'] ?? 0) + $deuda;
-					$deudas[$rid]['en_mora'] = ($deudas[$rid]['en_mora'] ?? 0) + ($deuda > 0 ? 1 : 0);
-				}
-			}
 
 			$datos = [];
 			foreach ($filas as $r) {

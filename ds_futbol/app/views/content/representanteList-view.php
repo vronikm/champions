@@ -122,6 +122,19 @@
 						| escritorio y una ficha por representante en el teléfono.
 						*/
 						?>
+						<?php /* En el teléfono la tabla son fichas y no hay cabecera que
+						         tocar: el orden se elige aquí (el mismo del servidor). */ ?>
+						<div class="ds-repres__orden d-lg-none">
+							<label for="repreOrden" class="form-label small text-body-secondary mb-1">Ordenar por</label>
+							<select id="repreOrden" class="form-select form-select-sm">
+								<option value="0-asc">Apellido (A a Z)</option>
+								<option value="1-desc">Más alumnos</option>
+								<option value="2-desc">Mayor deuda primero</option>
+								<option value="2-asc">Menor deuda primero</option>
+								<option value="3-asc">Protección de datos: pendientes primero</option>
+								<option value="3-desc">Protección de datos: autorizados primero</option>
+							</select>
+						</div>
 						<table id="example1" class="table table-hover align-middle ds-crud__tabla" style="width:100%">
 							<thead>
 								<tr>
@@ -176,14 +189,17 @@
 	<script>
 	document.addEventListener('DOMContentLoaded', function () {
 		var filtro = document.getElementById('filtroRepre');
-		var CLAVE = 'ds-representantes-por-pagina', LARGOS = [10, 25, 50, 100], largo = 25;
+		/* -1 es «Todos»: el servidor lo sirve sin límite. */
+		var CLAVE = 'ds-representantes-por-pagina', LARGOS = [10, 25, 50, 100, -1], largo = 25;
 		try { var g = parseInt(localStorage.getItem(CLAVE), 10); if (LARGOS.indexOf(g) !== -1) { largo = g; } } catch (e) {}
 
 		/*
 		| serverSide: la base pagina, busca y ordena. Cada petición lleva los
 		| criterios del formulario (estado, identificación, apellido, nombre).
 		| Las celdas son fichas; className pone a cada <td> su papel en ellas.
-		| «Mostrar N» hasta 100: el servidor no sirve más de 200 por página.
+		| «Mostrar N» hasta 100, o «Todos». Adeudado y Protección de datos se
+		| calculan: el servidor los ordena sobre todo el resultado y corta la
+		| página (representanteController::representantesServidor).
 		*/
 		var tabla = new DataTable("#example1", {
 			serverSide: true,
@@ -200,14 +216,15 @@
 			   escribir, no una petición por tecla. */
 			searchDelay: 350,
 			pageLength: largo,
-			lengthMenu: LARGOS,
+			lengthMenu: [LARGOS, [10, 25, 50, 100, 'Todos']],
 			order: [[0, "asc"]],
 			columnDefs: [
 				{ targets: 0, className: "ds-ficha__principal" },
 				{ targets: 1, className: "ds-ficha__dato text-center", createdCell: function (td) { td.setAttribute('data-etiqueta', 'Alumnos'); } },
-				/* Adeudado: se calcula por página (no se ordena). */
-				{ targets: 2, className: "ds-ficha__dato text-end ds-repres__col-deuda", orderable: false, createdCell: function (td) { td.setAttribute('data-etiqueta', 'Adeudado'); } },
-				{ targets: 3, className: "ds-ficha__dato", orderable: false, createdCell: function (td) { td.setAttribute('data-etiqueta', 'Protección de datos'); } },
+				/* Adeudado y Protección de datos: valores calculados; los ordena
+				   el servidor. Adeudado empieza por el que más debe. */
+				{ targets: 2, className: "ds-ficha__dato text-end ds-repres__col-deuda", orderSequence: ['desc', 'asc'], createdCell: function (td) { td.setAttribute('data-etiqueta', 'Adeudado'); } },
+				{ targets: 3, className: "ds-ficha__dato", createdCell: function (td) { td.setAttribute('data-etiqueta', 'Protección de datos'); } },
 				{ targets: 4, className: "ds-tabla-acciones ds-ficha__acciones", orderable: false }
 			],
 			layout: {
@@ -242,6 +259,20 @@
 		});
 		tabla.on('length', function (e, s, nuevo) {
 			try { localStorage.setItem(CLAVE, String(nuevo)); } catch (err) {}
+		});
+
+		/* «Ordenar por» del teléfono: ordena la tabla y sigue al orden que se
+		   elija en la cabecera (escritorio), para que digan lo mismo. */
+		var selOrden = document.getElementById('repreOrden');
+		selOrden.addEventListener('change', function () {
+			var p = selOrden.value.split('-');
+			tabla.order([parseInt(p[0], 10), p[1]]).draw();
+		});
+		tabla.on('order', function () {
+			var o = tabla.order()[0];
+			if (!o) { return; }
+			var valor = o[0] + '-' + o[1];
+			if (selOrden.querySelector('option[value="' + valor + '"]')) { selOrden.value = valor; }
 		});
 
 		/* Buscar y Limpiar recargan la tabla, no la página. */

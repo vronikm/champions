@@ -946,6 +946,9 @@
 .ds-repre__deuda--aldia { border-color: var(--bs-success-border-subtle); background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
 .ds-repre__resumen .ds-repre__deuda dd { color: inherit; }
 .ds-repre__ficha-acciones { display: flex; justify-content: flex-end; padding: 0 .75rem .75rem; margin-top: auto; }
+/* Representantes › «Ordenar por» (sólo teléfono y tableta: la tabla son fichas). */
+.ds-repres__orden { margin-bottom: .75rem; }
+.ds-repres__orden .form-select { min-height: 2.5rem; }
 /* Representantes › Adeudado: el total de sus representados en rojo, o
    «Al día» en verde (con icono y texto); debajo, cuántos en mora. */
 .ds-repres__deuda { display: inline-flex; align-items: center; gap: .3rem; padding: .15rem .5rem; border: 1px solid; border-radius: var(--bs-border-radius); font-size: .85rem; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }

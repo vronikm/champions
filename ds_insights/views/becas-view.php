@@ -234,6 +234,9 @@ require_once __DIR__ . "/inc/layout-top.php";
                 <h3 class="text-truncate"><?php echo $bfDinero($totPaga); ?></h3>
                 <p class="mb-0">Se les cobra en <?php echo $rvH($nombreMes); ?></p>
                 <p class="mb-0 small opacity-75">en vez de <?php echo $bfDinero($totPension); ?> sin beneficio</p>
+                <?php /* Lo cobrado de ese mes a los beneficiarios: la suma de
+                         «Pagado de <mes>» de cada tipo (pensiones de ese mes). */ ?>
+                <p class="mb-0 small fw-semibold">cobrado <?php echo $bfDinero($totPagado); ?><?php echo $totPaga > 0 ? ' (' . $bfPct($totPagado / $totPaga * 100) . ')' : ''; ?></p>
             </div>
             <i class="fas fa-receipt small-box-icon" aria-hidden="true"></i>
         </div>

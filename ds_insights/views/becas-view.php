@@ -32,8 +32,16 @@ use insights\controllers\insightsController;
 
 $insInsights = new insightsController();
 
-$beneficios = $insInsights->beneficios();
-$control    = $insInsights->sinBeneficio();
+/* El mes que se mira: ?anio=&mes=, por omisión el mes en curso (nunca uno
+   futuro). Ver insightsController::mesBecas(). */
+$pMes       = $insInsights->mesBecas($_GET['anio'] ?? null, $_GET['mes'] ?? null);
+$MESES      = [1 => 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+$anioSel    = (int) substr($pMes['desde'], 0, 4);
+$mesSel     = (int) substr($pMes['desde'], 5, 2);
+$nombreMes  = $MESES[$mesSel] . ' ' . $anioSel;
+$esActual   = $pMes['desde'] === date('Y-m-01');
+$beneficios = $insInsights->beneficios($pMes);
+$control    = $insInsights->sinBeneficio($pMes);
 $anomalias  = $insInsights->anomaliasBeneficio();
 $becaPagada = $anomalias['becaPagada'];
 $sinActivo  = $anomalias['sinActivo'];
@@ -164,13 +172,47 @@ require_once __DIR__ . "/inc/layout-top.php";
     }
 </style>
 
+<!-- ==================== El mes ==================== -->
+<?php /* GET: el mes queda en la dirección (se puede guardar o compartir) y
+         volver atrás no pide reenviar un formulario. Cambiar el mes o el año
+         lo aplica solo; «Ver» queda para quien navega sin JavaScript. */ ?>
+<form method="get" class="card mb-3 ds-becas__mes" aria-label="Mes de la información">
+    <div class="card-body py-2">
+        <div class="d-flex flex-wrap align-items-end gap-2">
+            <div>
+                <label for="becasMes" class="form-label small text-body-secondary mb-1">Mes</label>
+                <select id="becasMes" name="mes" class="form-select">
+                    <?php foreach ($MESES as $n => $m): ?>
+                        <option value="<?php echo $n; ?>"<?php echo $n === $mesSel ? ' selected' : ''; ?><?php echo $anioSel === (int) date('Y') && $n > (int) date('n') ? ' disabled' : ''; ?>><?php echo $m; ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div>
+                <label for="becasAnio" class="form-label small text-body-secondary mb-1">Año</label>
+                <select id="becasAnio" name="anio" class="form-select">
+                    <?php for ($y = (int) date('Y'); $y >= $insInsights->primerAnioBecas(); $y--): ?>
+                        <option value="<?php echo $y; ?>"<?php echo $y === $anioSel ? ' selected' : ''; ?>><?php echo $y; ?></option>
+                    <?php endfor; ?>
+                </select>
+            </div>
+            <noscript><button type="submit" class="btn btn-primary">Ver</button></noscript>
+            <?php if (!$esActual): ?>
+                <a href="<?php echo APP_URL; ?>becas/" class="btn btn-outline-secondary"><i class="fas fa-rotate-left me-1" aria-hidden="true"></i>Mes en curso</a>
+            <?php endif; ?>
+            <p class="small text-body-secondary mb-0 ms-sm-auto ds-becas__mes-nota">
+                <i class="fas fa-calendar-days me-1" aria-hidden="true"></i>Información de <strong><?php echo $rvH($nombreMes); ?></strong><?php echo $esActual ? ' (mes en curso)' : ''; ?>
+            </p>
+        </div>
+    </div>
+</form>
+
 <!-- ==================== Las cifras ==================== -->
 <div class="row">
     <div class="col-12 col-sm-6 col-lg-3">
         <div class="small-box text-bg-primary h-100">
             <div class="inner">
                 <h3 class="text-truncate"><?php echo number_format($totActivos); ?></h3>
-                <p class="mb-0">Alumnos activos con beneficio</p>
+                <p class="mb-0">Alumnos activos con beneficio en <?php echo $rvH($nombreMes); ?></p>
                 <p class="mb-0 small opacity-75"><?php echo $totInactivos > 0 ? '+ ' . number_format($totInactivos) . ' inactivos con el beneficio vigente' : 'ningún inactivo con beneficio vigente'; ?></p>
             </div>
             <i class="fas fa-user-graduate small-box-icon" aria-hidden="true"></i>
@@ -180,7 +222,7 @@ require_once __DIR__ . "/inc/layout-top.php";
         <div class="small-box text-bg-danger h-100">
             <div class="inner">
                 <h3 class="text-truncate"><?php echo $bfDinero($totBeneficio); ?></h3>
-                <p class="mb-0">Se deja de cobrar al mes</p>
+                <p class="mb-0">Se deja de cobrar en <?php echo $rvH($nombreMes); ?></p>
                 <p class="mb-0 small opacity-75"><?php echo $totPct === null ? '—' : 'el ' . $bfPct($totPct) . ' de su pensión normal'; ?></p>
             </div>
             <i class="fas fa-tags small-box-icon" aria-hidden="true"></i>
@@ -190,7 +232,7 @@ require_once __DIR__ . "/inc/layout-top.php";
         <div class="small-box text-bg-secondary h-100">
             <div class="inner">
                 <h3 class="text-truncate"><?php echo $bfDinero($totPaga); ?></h3>
-                <p class="mb-0">Se les cobra al mes</p>
+                <p class="mb-0">Se les cobra en <?php echo $rvH($nombreMes); ?></p>
                 <p class="mb-0 small opacity-75">en vez de <?php echo $bfDinero($totPension); ?> sin beneficio</p>
             </div>
             <i class="fas fa-receipt small-box-icon" aria-hidden="true"></i>
@@ -199,9 +241,9 @@ require_once __DIR__ . "/inc/layout-top.php";
     <div class="col-12 col-sm-6 col-lg-3">
         <div class="small-box text-bg-success h-100">
             <div class="inner">
-                <h3 class="text-truncate"><?php echo $bfDinero($totPagado); ?></h3>
-                <p class="mb-0">Pagado desde el beneficio</p>
-                <p class="mb-0 small opacity-75"><?php echo number_format($totCuotas) . ($totCuotas === 1 ? ' cuota' : ' cuotas'); ?> de pensión</p>
+                <h3 class="text-truncate"><?php echo $bfDinero($control['deberian']); ?></h3>
+                <p class="mb-0">Debería ingresar sin beneficio</p>
+                <p class="mb-0 small opacity-75">pensión de <?php echo number_format($control['alumnos']); ?> alumnos sin beca ni descuento · cobrado <?php echo $bfDinero($control['pagado']); ?></p>
             </div>
             <i class="fas fa-money-bill-wave small-box-icon" aria-hidden="true"></i>
         </div>
@@ -212,8 +254,8 @@ require_once __DIR__ . "/inc/layout-top.php";
 <div class="card">
     <div class="card-header d-flex flex-wrap align-items-center gap-2">
         <h3 class="card-title mb-0 me-auto">Por tipo de beneficio</h3>
-        <span class="text-body-secondary small">alumnos activos · valores al mes</span>
-        <?php echo ds_botones_exportar('becas', 'becas', $insInsights->periodo()); ?>
+        <span class="text-body-secondary small">alumnos activos · <?php echo $rvH($nombreMes); ?></span>
+        <?php echo ds_botones_exportar('becas', 'becas', $pMes); ?>
     </div>
     <div class="card-body">
         <?php if (count($beneficios) === 0): ?>
@@ -234,11 +276,11 @@ require_once __DIR__ . "/inc/layout-top.php";
                             </header>
 
                             <?php if ($b['activos'] === 0): ?>
-                                <p class="ds-benef__vacio">Ningún alumno activo lo tiene: hoy no cuesta nada.</p>
+                                <p class="ds-benef__vacio">Ningún alumno activo lo tenía en ese mes: no costó nada.</p>
                             <?php else: ?>
                                 <div class="ds-benef__cifra">
                                     <strong><?php echo $bfDinero($b['beneficio']); ?></strong>
-                                    <span>se deja de cobrar al mes</span>
+                                    <span>se deja de cobrar en <?php echo $rvH($nombreMes); ?></span>
                                 </div>
 
                                 <div class="ds-benef__barra" role="img"
@@ -267,10 +309,12 @@ require_once __DIR__ . "/inc/layout-top.php";
                                         </dd>
                                     </div>
                                     <div>
-                                        <dt>Pagado desde que tienen el beneficio</dt>
+                                        <dt>Pagado de <?php echo $rvH($nombreMes); ?></dt>
                                         <dd>
                                             <?php echo $bfDinero($b['pagado']); ?>
-                                            <small><?php echo number_format($b['cuotas']) . ($b['cuotas'] === 1 ? ' cuota' : ' cuotas'); ?> de pensión<?php echo $completa && $b['pagado'] > 0 ? ' · <a href="#rev-beca">no deberían pagar: ver abajo</a>' : ''; ?></small>
+                                            <small><?php echo $completa
+                                                ? ($b['pagado'] > 0 ? 'no deberían pagar · <a href="#rev-beca">ver abajo</a>' : 'no pagan pensión')
+                                                : 'de ' . $bfDinero($b['paga']) . ' que deberían pagar · ' . number_format($b['cuotas']) . ($b['cuotas'] === 1 ? ' cuota' : ' cuotas'); ?></small>
                                         </dd>
                                     </div>
                                     <div>
@@ -319,8 +363,18 @@ require_once __DIR__ . "/inc/layout-top.php";
                             <h4 id="benef-control">Sin beneficio <small>para comparar</small></h4>
                             <span class="badge text-bg-light border"><?php echo number_format($control['alumnos']); ?> activos</span>
                         </header>
-                        <p class="ds-benef__vacio">Pagan la pensión completa de su sede.</p>
+                        <div class="ds-benef__cifra">
+                            <strong><?php echo $bfDinero($control['deberian']); ?></strong>
+                            <span>debería ingresar en <?php echo $rvH($nombreMes); ?>: la pensión completa de su sede</span>
+                        </div>
                         <dl class="ds-benef__datos">
+                            <div>
+                                <dt>Pagado de <?php echo $rvH($nombreMes); ?></dt>
+                                <dd>
+                                    <?php echo $bfDinero($control['pagado']); ?>
+                                    <small><?php echo $control['deberian'] > 0 ? $bfPct($control['pagado'] / $control['deberian'] * 100) . ' de lo que debería ingresar' : '—'; ?></small>
+                                </dd>
+                            </div>
                             <div>
                                 <dt>Asistencia</dt>
                                 <dd>
@@ -344,16 +398,20 @@ require_once __DIR__ . "/inc/layout-top.php";
             <details class="ds-benef__ayuda">
                 <summary><i class="fas fa-circle-question me-1" aria-hidden="true"></i>Cómo se calculan estas cifras</summary>
                 <dl>
+                    <dt>El mes</dt>
+                    <dd>Todo se calcula para el mes elegido arriba (por omisión, el mes en curso). La base no guarda cuándo se quitó un beneficio ni cuándo un alumno pasó a inactivo: para un mes pasado se cuentan los alumnos activos hoy que ya habían ingresado y ya tenían el beneficio concedido. Los inactivos con el beneficio vigente y «Conviene revisar» son de hoy.</dd>
                     <dt>Alumnos</dt>
                     <dd>Sólo los activos con el beneficio vigente. A un inactivo no se le cobra pensión, así que su beneficio no cuesta nada; se cuenta aparte.</dd>
                     <dt>Se deja de cobrar al mes</dt>
                     <dd>Pensión normal de la sede de cada alumno menos la pensión que paga con el beneficio. En el beneficio se guarda <em>lo que paga</em>: «Descuento $25» en una sede de $35 paga $25 y se dejan de cobrar $10. La beca del 100 % paga $0.</dd>
                     <dt>Descuento del %</dt>
                     <dd>Lo que se deja de cobrar sobre la pensión normal de esos alumnos.</dd>
-                    <dt>Pagado desde que tienen el beneficio</dt>
-                    <dd>Pensiones cobradas desde la fecha en que se concedió el beneficio (sin pagos eliminados ni pendientes). Lo pagado antes, con la tarifa completa, no cuenta.</dd>
+                    <dt>Pagado del mes</dt>
+                    <dd>Las pensiones de ese mes que se cobraron: por el mes que dice el pago («Mayo / 2026»); si no se entiende, por su fecha. Completos y abonos; nunca los eliminados.</dd>
+                    <dt>Debería ingresar sin beneficio</dt>
+                    <dd>La pensión completa de la sede de cada alumno activo sin beca ni descuento en ese mes: lo que debería cobrarse por ellos. Al lado, lo cobrado de ese mes.</dd>
                     <dt>Asistencia</dt>
-                    <dd>Días presentes o con atraso sobre los días registrados por los profesores (el justificado cuenta como falta). Se compara con los activos sin beneficio. Con pocos días registrados, unas pocas faltas mueven el porcentaje varios puntos.</dd>
+                    <dd>Días presentes o con atraso sobre los días registrados por los profesores en ese mes (el justificado cuenta como falta). Se compara con los activos sin beneficio. Con pocos días registrados, unas pocas faltas mueven el porcentaje varios puntos.</dd>
                     <dt>Faltas avisadas</dt>
                     <dd>De las faltas, cuántas fueron justificadas (avisaron).</dd>
                 </dl>
@@ -497,6 +555,12 @@ require_once __DIR__ . "/inc/layout-top.php";
     </div>
 </div>
 
+<script>
+/* Cambiar el mes o el año muestra ese mes (el formulario es GET). */
+document.querySelectorAll('#becasMes, #becasAnio').forEach(function (s) {
+    s.addEventListener('change', function () { s.form.submit(); });
+});
+</script>
 <script src="<?php echo DS_INSIGHTS_GRAFICOS_JS; ?>"></script>
 <script src="<?php echo ds_recurso('ds_insights/assets/js/graficos.js'); ?>"></script>
 <script>

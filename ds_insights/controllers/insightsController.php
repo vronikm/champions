@@ -909,49 +909,95 @@ class insightsController
     /*==============  Becas y descuentos  ==============*/
     /*
     | Cuanto cuesta el beneficio, a cuantos alcanza, cuanto pagaron y como
-    | asisten, por tipo (Beca 100 % DBC, Beca 50 % DBP, Descuento DDS).
+    | asisten, por tipo (Beca 100 % DBC, Beca 50 % DBP, Descuento DDS), EN UN
+    | MES ($p: desde = dia 1, hasta = ultimo dia; por omision el mes en
+    | curso, ver mesBecas()).
     |
     | QUE GUARDA descuento_valor (corregido el 2026-11-19)
     |
     | Es la PENSION QUE PAGA el alumno con el beneficio, no el descuento:
     | un «Descuento» de $25,00 en una sede de $35,00 paga $25,00 (asi lo
-    | cobran pagosNew, Pagos y Cobranza, y asi lo confirman los pagos: 127
-    | de 136 cuotas de esos alumnos son de $25,00). Antes esta pantalla
-    | sumaba ese valor como «lo que la escuela deja de cobrar» y contaba la
-    | beca completa (0,00) como un subsidio «no registrado»: las dos cosas
-    | eran una lectura equivocada del campo.
+    | cobran pagosNew, Pagos y Cobranza, y asi lo confirman los pagos).
     |
     |   paga      = descuento_valor, sin pasar de la pension de la sede;
     |               la beca del 100 % paga 0 (aunque tenga un valor viejo).
     |   beneficio = pension de la sede - paga: lo que se deja de cobrar.
     |
-    | SOLO ALUMNOS ACTIVOS. Un inactivo no paga pension, asi que su beneficio
-    | no le cuesta nada a la escuela; se cuentan aparte (inactivos) para
-    | que se vea cuantos beneficios quedaron vigentes sin uso.
-    |
-    | PAGADO = pensiones cobradas DESDE que se concedio el beneficio (antes
-    | pagaban la tarifa completa y eso no dice nada del beneficio).
+    | EL MES (2026-11-21). La base no guarda historia: ni cuando se desactivo
+    | un beneficio ni cuando un alumno paso a inactivo. Para un mes se cuenta
+    | lo que si se sabe: alumnos ACTIVOS que ya habian ingresado y con el
+    | beneficio vigente ya concedido (descuento_fecha hasta fin de mes).
+    |   pagado      pensiones cobradas DE ESE MES (por su periodo «Mayo /
+    |               2026»; si no se entiende o es un año mal escrito, por la
+    |               fecha del pago). Completos y abonos; nunca eliminados.
+    |   asistencia  los dias de ese mes.
+    | Los inactivos con el beneficio vigente son los de hoy.
     */
-    public function beneficios(): array
+
+    /** El mes de la pantalla de becas: ?anio=&mes= o el mes en curso; nunca uno futuro. */
+    public function mesBecas($anio = null, $mes = null): array
     {
-        $paga  = self::SQL_PAGA_BENEFICIO;
-        $desde = "p.pago_fecha >= IFNULL(d.descuento_fecha, '1900-01-01')";
+        $hoy  = new \DateTimeImmutable('first day of this month');
+        $anio = (int) $anio;
+        $mes  = (int) $mes;
+        $d = ($anio >= 2000 && $mes >= 1 && $mes <= 12)
+            ? new \DateTimeImmutable(sprintf('%04d-%02d-01', $anio, $mes))
+            : $hoy;
+        if ($d > $hoy) { $d = $hoy; }
+        return $this->periodo($d->format('Y-m-01'), $d->format('Y-m-t'));
+    }
+
+    /** Primer año con pagos o asistencia, para el selector de año. */
+    public function primerAnioBecas(): int
+    {
+        $a = (int) $this->escalar("SELECT YEAR(MIN(pago_fecha)) FROM alumno_pago WHERE pago_fecha > '2000-01-01'");
+        return $a >= 2000 && $a <= (int) date('Y') ? $a : (int) date('Y');
+    }
+
+    /*
+    | SQL: las pensiones (rubro RPE, alias p) cobradas de un mes. El periodo
+    | escrito manda («Mayo / 2026» → 2026-05-01) si es razonable respecto a
+    | la fecha del pago (hasta 12 meses antes o 3 despues, como en Futbol);
+    | si no, el mes de la fecha del pago.
+    */
+    private static function sqlPensionDelMes(string $mes): string
+    {
+        $periodo = "STR_TO_DATE(CONCAT(TRIM(SUBSTRING_INDEX(p.pago_periodo, '/', -1)), '-',"
+                 . " NULLIF(FIELD(LOWER(TRIM(SUBSTRING_INDEX(p.pago_periodo, '/', 1))), 'enero', 'febrero', 'marzo', 'abril', 'mayo',"
+                 . " 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'), 0), '-01'), '%Y-%c-%d')";
+        $mesPago = "DATE_FORMAT(p.pago_fecha, '%Y-%m-01')";
+        return "p.pago_rubroid = 'RPE' AND p.pago_estado IN ('C','P') AND p.pago_valor > 0
+                AND (CASE WHEN $periodo IS NOT NULL
+                               AND $periodo < $mesPago + INTERVAL 4 MONTH
+                               AND $periodo >= $mesPago - INTERVAL 12 MONTH
+                          THEN $periodo ELSE $mesPago END) = '$mes'";
+    }
+
+    public function beneficios(?array $p = null): array
+    {
+        $p      = $p ?? $this->mesBecas();
+        $mes    = substr($p['desde'], 0, 8) . '01';
+        $hasta  = $p['hasta'];
+        $paga   = self::SQL_PAGA_BENEFICIO;
+        /* Activo, ya ingresado y con el beneficio concedido hasta fin de mes. */
+        $enMes  = "a.alumno_estado = 'A'
+                   AND (a.alumno_fechaingreso IS NULL OR a.alumno_fechaingreso < '1900-01-01' OR a.alumno_fechaingreso <= '$hasta')
+                   AND (d.descuento_fecha IS NULL OR d.descuento_fecha <= '$hasta')";
+        $delMes = self::sqlPensionDelMes($mes);
         $filas = $this->filas(
             "SELECT d.descuento_rubroid cod,
                     MAX(c.catalogo_descripcion) tipo,
-                    SUM(a.alumno_estado = 'A')  activos,
+                    SUM($enMes) activos,
                     SUM(a.alumno_estado <> 'A') inactivos,
-                    SUM(IF(a.alumno_estado = 'A', s.sede_pension, 0)) pension,
-                    SUM(IF(a.alumno_estado = 'A', $paga, 0)) paga,
-                    MIN(IF(a.alumno_estado = 'A', $paga, NULL)) paga_min,
-                    MAX(IF(a.alumno_estado = 'A', $paga, NULL)) paga_max,
-                    SUM(a.alumno_estado = 'A' AND $paga >= s.sede_pension) sin_rebaja,
-                    IFNULL(SUM(IF(a.alumno_estado = 'A', (SELECT SUM(p.pago_valor) FROM alumno_pago p
-                                 WHERE p.pago_alumnoid = a.alumno_id
-                                   AND p.pago_estado = 'C' AND p.pago_rubroid = 'RPE' AND $desde), 0)), 0) pagado,
-                    IFNULL(SUM(IF(a.alumno_estado = 'A', (SELECT COUNT(*) FROM alumno_pago p
-                                 WHERE p.pago_alumnoid = a.alumno_id
-                                   AND p.pago_estado = 'C' AND p.pago_rubroid = 'RPE' AND $desde), 0)), 0) cuotas
+                    SUM(IF($enMes, s.sede_pension, 0)) pension,
+                    SUM(IF($enMes, $paga, 0)) paga,
+                    MIN(IF($enMes, $paga, NULL)) paga_min,
+                    MAX(IF($enMes, $paga, NULL)) paga_max,
+                    SUM(($enMes) AND $paga >= s.sede_pension) sin_rebaja,
+                    IFNULL(SUM(IF($enMes, (SELECT SUM(p.pago_valor) FROM alumno_pago p
+                                 WHERE p.pago_alumnoid = a.alumno_id AND $delMes), 0)), 0) pagado,
+                    IFNULL(SUM(IF($enMes, (SELECT COUNT(*) FROM alumno_pago p
+                                 WHERE p.pago_alumnoid = a.alumno_id AND $delMes), 0)), 0) cuotas
                FROM alumno_pago_descuento d
                LEFT JOIN general_tabla_catalogo c
                       ON c.catalogo_valor = d.descuento_rubroid AND c.catalogo_tablaid = 7
@@ -963,9 +1009,8 @@ class insightsController
 
         /* La asistencia va en consulta aparte: cruzarla en la de arriba
            multiplicaria las filas de pago por las marcas de asistencia y
-           inflaria los importes. Es el error clasico de unir dos hechos de
-           distinto grano en la misma consulta. Solo activos, como el grupo
-           de comparacion (sinBeneficio). */
+           inflaria los importes. Solo los dias del mes y los mismos alumnos
+           (activos con el beneficio en el mes), como el grupo de comparacion. */
         $asis = [];
         foreach ($this->filas(
             "SELECT d.descuento_rubroid cod,
@@ -976,7 +1021,8 @@ class insightsController
                FROM alumno_pago_descuento d
                JOIN sujeto_alumno a ON a.alumno_id = d.descuento_alumnoid
                LEFT JOIN insights_v_asistencia_dia v ON v.dia_alumnoid = a.alumno_id
-              WHERE d.descuento_estado = 'S' AND a.alumno_estado = 'A'"
+                     AND v.dia_fecha BETWEEN '{$p['desde']}' AND '$hasta'
+              WHERE d.descuento_estado = 'S' AND $enMes"
              . $this->sede('a.alumno_sedeid') . "
               GROUP BY d.descuento_rubroid") as $f) {
             $asis[$f['cod']] = $f;
@@ -996,15 +1042,15 @@ class insightsController
                 'tipo'       => self::nombreBeneficio($f['cod'], $f['tipo']),
                 'activos'    => $activos,
                 'inactivos'  => (int) $f['inactivos'],
-                'pension'    => $pension,                     /* pension normal de sus sedes, al mes */
-                'paga'       => $paga,                        /* lo que se les cobra al mes */
-                'beneficio'  => $pension - $paga,             /* lo que se deja de cobrar al mes */
+                'pension'    => $pension,                     /* pension normal de sus sedes, en el mes */
+                'paga'       => $paga,                        /* lo que se les cobra en el mes */
+                'beneficio'  => $pension - $paga,             /* lo que se deja de cobrar en el mes */
                 'porcentaje' => $pension > 0 ? ($pension - $paga) / $pension * 100 : null,
                 'pagaMedia'  => $activos > 0 ? $paga / $activos : null,
                 'pagaMin'    => $f['paga_min'] === null ? null : (float) $f['paga_min'],
                 'pagaMax'    => $f['paga_max'] === null ? null : (float) $f['paga_max'],
                 'sinRebaja'  => (int) $f['sin_rebaja'],
-                'pagado'     => (float) $f['pagado'],
+                'pagado'     => (float) $f['pagado'],          /* pensiones de ese mes cobradas */
                 'cuotas'     => (int) $f['cuotas'],
                 'marcas'     => $marcas,
                 'asistencia' => $marcas > 0 ? (int) $a['asistidas'] / $marcas * 100 : null,
@@ -1019,31 +1065,47 @@ class insightsController
 
     /*==============  Los alumnos sin beneficio, para comparar  ==============*/
     /*
-    | Un porcentaje de asistencia no dice nada sin con que compararlo. Este es
-    | el grupo de control: los que pagan la tarifa completa.
+    | El grupo de control en el mismo mes: activos ya ingresados sin un
+    | beneficio vigente concedido hasta fin de mes. Pagan la tarifa completa,
+    | asi que lo que DEBERIA INGRESAR por ellos es la pension de su sede
+    | (deberian); al lado, lo cobrado de ese mes (pagado) y su asistencia.
     */
-    public function sinBeneficio(): array
+    public function sinBeneficio(?array $p = null): array
     {
-        $r = $this->filas(
-            "SELECT COUNT(DISTINCT a.alumno_id) alumnos,
-                    COUNT(v.dia_marca) marcas,
+        $p     = $p ?? $this->mesBecas();
+        $mes   = substr($p['desde'], 0, 8) . '01';
+        $hasta = $p['hasta'];
+        $donde = "a.alumno_estado = 'A'
+                  AND (a.alumno_fechaingreso IS NULL OR a.alumno_fechaingreso < '1900-01-01' OR a.alumno_fechaingreso <= '$hasta')
+                  AND NOT EXISTS (SELECT 1 FROM alumno_pago_descuento d
+                                   WHERE d.descuento_alumnoid = a.alumno_id AND d.descuento_estado = 'S'
+                                     AND (d.descuento_fecha IS NULL OR d.descuento_fecha <= '$hasta'))"
+               . $this->sede('a.alumno_sedeid');
+
+        $dinero = $this->filas(
+            "SELECT COUNT(*) alumnos, IFNULL(SUM(s.sede_pension), 0) deberian,
+                    IFNULL(SUM((SELECT SUM(p.pago_valor) FROM alumno_pago p
+                                 WHERE p.pago_alumnoid = a.alumno_id AND " . self::sqlPensionDelMes($mes) . ")), 0) pagado
+               FROM sujeto_alumno a
+               JOIN general_sede s ON s.sede_id = a.alumno_sedeid
+              WHERE $donde")[0] ?? [];
+
+        $f = $this->filas(
+            "SELECT COUNT(v.dia_marca) marcas,
                     SUM(v.dia_marca IN ('P','A')) asistidas,
                     SUM(v.dia_marca IN ('F','J')) faltadas,
                     SUM(v.dia_marca = 'J') avisadas
                FROM sujeto_alumno a
-               LEFT JOIN insights_v_asistencia_dia v ON v.dia_alumnoid = a.alumno_id
-              WHERE a.alumno_estado = 'A'
-                AND NOT EXISTS (SELECT 1 FROM alumno_pago_descuento d
-                                 WHERE d.descuento_alumnoid = a.alumno_id
-                                   AND d.descuento_estado = 'S')"
-             . $this->sede('a.alumno_sedeid'));
-
-        $f = $r[0] ?? [];
+               JOIN insights_v_asistencia_dia v ON v.dia_alumnoid = a.alumno_id
+                AND v.dia_fecha BETWEEN '{$p['desde']}' AND '$hasta'
+              WHERE $donde")[0] ?? [];
         $marcas = (int) ($f['marcas'] ?? 0);
         $faltas = (int) ($f['faltadas'] ?? 0);
 
         return [
-            'alumnos'    => (int) ($f['alumnos'] ?? 0),
+            'alumnos'    => (int) ($dinero['alumnos'] ?? 0),
+            'deberian'   => (float) ($dinero['deberian'] ?? 0),   /* pension de su sede, en el mes */
+            'pagado'     => (float) ($dinero['pagado'] ?? 0),     /* pensiones de ese mes cobradas */
             'marcas'     => $marcas,
             'asistencia' => $marcas > 0 ? (int) $f['asistidas'] / $marcas * 100 : null,
             'avisadas'   => $faltas > 0 ? (int) $f['avisadas'] / $faltas * 100 : null,
@@ -2775,7 +2837,7 @@ class insightsController
 
             case 'becas':
                 $filas = [];
-                foreach ($this->beneficios() as $b) {
+                foreach ($this->beneficios($this->mesBecas(substr($p['desde'], 0, 4), substr($p['desde'], 5, 2))) as $b) {
                     $filas[] = [$b['tipo'], $b['activos'], $b['inactivos'], $b['pension'],
                                 $b['paga'], $b['beneficio'],
                                 $b['porcentaje'] === null ? '' : round($b['porcentaje'], 1),
@@ -2783,11 +2845,11 @@ class insightsController
                                 $b['asistencia'] === null ? '' : round($b['asistencia'], 1)];
                 }
                 return [
-                    'titulo'    => 'Becas y descuentos vigentes (alumnos activos, valores al mes)',
+                    'titulo'    => 'Becas y descuentos de ' . $p['desde'] . ' a ' . $p['hasta'] . ' (alumnos activos)',
                     'vista'     => 'becas',
                     'cabeceras' => ['Tipo', 'Activos', 'Inactivos con el beneficio', 'Pensión normal',
                                     'Se les cobra', 'Se deja de cobrar', 'Descuento %',
-                                    'Pagado desde el beneficio', 'Cuotas', 'Asistencia %'],
+                                    'Pagado del mes', 'Cuotas', 'Asistencia %'],
                     'tipos'     => ['texto', 'entero', 'entero', 'dinero',
                                     'dinero', 'dinero', 'decimal',
                                     'dinero', 'entero', 'decimal'],

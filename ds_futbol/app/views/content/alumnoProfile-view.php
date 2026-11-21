@@ -338,6 +338,22 @@
 																	<?php endif; ?>
 																</span>
 															<?php endif; ?>
+															<?php
+																/* Lo que debe (mainModel::resumenCuentaAlumnos): rojo con el
+																   importe y de qué se compone, o «Al día» en verde. */
+																$hnDeuda = (float)$hn['deuda'];
+																$hnPartes = [];
+																if ($hn['meses_deuda'] > 0) { $hnPartes[] = $hn['meses_deuda'] . ($hn['meses_deuda'] === 1 ? ' pensión' : ' pensiones') . ($hnActivo ? '' : ($hn['meses_deuda'] === 1 ? ' asistida' : ' asistidas') . ' sin pagar'); }
+																if ($hn['saldo'] > 0) { $hnPartes[] = 'saldo $' . number_format($hn['saldo'], 2); }
+															?>
+															<span class="ds-perfil__hermano-deuda <?php echo $hnDeuda > 0 ? 'ds-perfil__hermano-deuda--mora' : 'ds-perfil__hermano-deuda--aldia'; ?>">
+																<i class="fas <?php echo $hnDeuda > 0 ? 'fa-triangle-exclamation' : 'fa-circle-check'; ?>" aria-hidden="true"></i>
+																<?php if ($hnDeuda > 0): ?>
+																	<strong>Debe $<?php echo number_format($hnDeuda, 2); ?></strong><?php if ($hnPartes): ?><span>(<?php echo $h(implode(' + ', $hnPartes)); ?>)</span><?php endif; ?>
+																<?php else: ?>
+																	<strong>Al día</strong>
+																<?php endif; ?>
+															</span>
 														</span>
 														<span class="badge <?php echo $hnActivo ? 'text-bg-success' : 'text-bg-secondary'; ?>"><?php echo $hnActivo ? 'Activo' : 'Inactivo'; ?></span>
 														<i class="fas fa-chevron-right ds-repre__alumno-ir" aria-hidden="true"></i>

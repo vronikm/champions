@@ -1830,6 +1830,15 @@
 						ORDER BY A.alumno_estado = 'A' DESC, A.alumno_fechanacimiento",
 						[':repre' => (int)$alumno['alumno_repreid'], ':alumno' => (int)$alumnoid])->fetchAll(\PDO::FETCH_ASSOC)
 				: [];
+			/* Lo que debe cada hermano: la misma cuenta que Pagos y Cobranza. */
+			$cuentas = $this->resumenCuentaAlumnos(array_column($hermanos, 'alumno_id'));
+			foreach ($hermanos as &$hn) {
+				$c = $cuentas[(int)$hn['alumno_id']] ?? [];
+				$hn['deuda']       = (float)($c['deuda'] ?? 0);
+				$hn['meses_deuda'] = (int)($c['meses_deuda'] ?? 0);
+				$hn['saldo']       = (float)($c['saldo'] ?? 0);
+			}
+			unset($hn);
 
 			return [
 				'alumno'        => $alumno,

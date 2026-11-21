@@ -949,6 +949,15 @@
 /* Ficha del alumno › Hermanos: debajo del nombre, su beca o descuento. */
 .ds-repre__alumno-datos .ds-perfil__hermano-benef { display: flex; flex-wrap: wrap; align-items: center; gap: .1rem .4rem; margin-top: .15rem; font-size: .78rem; }
 .ds-repre__alumno-datos .ds-perfil__hermano-benef .ds-repre__beneficio { font-size: .7rem; color: var(--bs-warning-text-emphasis); }
+/* …y lo que debe: rojo con el importe, o «Al día» en verde (con icono y texto). */
+.ds-repre__alumno-datos .ds-perfil__hermano-deuda {
+    display: inline-flex; flex-wrap: wrap; align-items: center; gap: .1rem .35rem; align-self: flex-start;
+    margin-top: .3rem; padding: .1rem .5rem; border: 1px solid; border-radius: var(--bs-border-radius); font-size: .78rem;
+}
+.ds-repre__alumno-datos .ds-perfil__hermano-deuda strong,
+.ds-repre__alumno-datos .ds-perfil__hermano-deuda span { color: inherit; font-size: inherit; }
+.ds-repre__alumno-datos .ds-perfil__hermano-deuda--mora  { border-color: var(--bs-danger-border-subtle);  background: var(--bs-danger-bg-subtle);  color: var(--bs-danger-text-emphasis); }
+.ds-repre__alumno-datos .ds-perfil__hermano-deuda--aldia { border-color: var(--bs-success-border-subtle); background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
 /* El mismo resumen en la ficha del alumno, dentro de la tarjeta de quién es. */
 .ds-perfil__cuenta { margin: 1rem 0; padding-top: .75rem; border-top: 1px solid var(--bs-border-color-translucent); }
 .ds-perfil__cuenta .ds-repre__resumen { padding: 0; border-top: 0; }

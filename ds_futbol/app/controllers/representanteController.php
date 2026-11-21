@@ -45,7 +45,8 @@
 			return [
 				0 => 'repre_apellidopaterno',   // Representante: por apellido
 				1 => 'alumnos',                 // el recuento de representados (alias)
-				2 => 'repre_firmado',           // Protección de datos
+				                                // 2: Adeudado, no se ordena (se calcula por página)
+				3 => 'repre_firmado',           // Protección de datos
 			];
 		}
 
@@ -375,6 +376,25 @@
 			$puedeEliminar = puede('eliminar', 'representanteList');
 			$autorizaciones = $this->autorizacionesRepresentantes(array_column($filas, 'repre_id'));
 
+			/* Lo que deben los representados de cada uno (los de las sedes del
+			   usuario, como el recuento de alumnos), con la misma cuenta que
+			   Pagos y Cobranza (mainModel::resumenCuentaAlumnos). Sólo los de
+			   esta página: se calcula al vuelo y por eso la columna no se ordena. */
+			$deudas = [];
+			$idsRepre = array_map('intval', array_column($filas, 'repre_id'));
+			if ($idsRepre) {
+				$deLaPagina = $this->ejecutarConsulta("SELECT alumno_id, alumno_repreid FROM sujeto_alumno
+						WHERE alumno_repreid IN (" . implode(',', $idsRepre) . ") AND alumno_estado IN ('A','I') AND {$sede}",
+						$parSede)->fetchAll(\PDO::FETCH_ASSOC);
+				$cuentas = $this->resumenCuentaAlumnos(array_column($deLaPagina, 'alumno_id'));
+				foreach ($deLaPagina as $a) {
+					$deuda = (float)($cuentas[(int)$a['alumno_id']]['deuda'] ?? 0);
+					$rid   = (int)$a['alumno_repreid'];
+					$deudas[$rid]['total']   = ($deudas[$rid]['total'] ?? 0) + $deuda;
+					$deudas[$rid]['en_mora'] = ($deudas[$rid]['en_mora'] ?? 0) + ($deuda > 0 ? 1 : 0);
+				}
+			}
+
 			$datos = [];
 			foreach ($filas as $r) {
 				$id      = (int)$r['repre_id'];
@@ -399,6 +419,19 @@
 				   su ficha también lo abre. */
 				$celdaDatos = self::resumenAutorizacion($autorizaciones[$id] ?? null);
 
+				/* Adeudado: el total de sus representados en rojo y cuántos están
+				   en mora, o «Al día» en verde (con icono y texto). */
+				$dRep = $deudas[$id] ?? ['total' => 0, 'en_mora' => 0];
+				if ($nAlumnos === 0) {
+					$celdaDeuda = '<span class="text-body-secondary">—</span>';
+				} elseif ($dRep['total'] > 0) {
+					$celdaDeuda = '<span class="ds-repres__deuda ds-repres__deuda--mora"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i>$'
+					            . number_format($dRep['total'], 2) . '</span>'
+					            . ($nAlumnos > 1 ? '<span class="ds-repres__deuda-detalle">' . $dRep['en_mora'] . ' de ' . $nAlumnos . ' en mora</span>' : '');
+				} else {
+					$celdaDeuda = '<span class="ds-repres__deuda ds-repres__deuda--aldia"><i class="fas fa-circle-check" aria-hidden="true"></i>Al día</span>';
+				}
+
 				$botones = '<a href="' . APP_URL . 'representanteProfile/' . $id . '/" class="btn btn-primary btn-sm ds-ficha__primario" title="Ver ficha" aria-label="Ver la ficha de ' . $h($nombre) . '"><i class="fas fa-id-card me-1" aria-hidden="true"></i><span class="ds-ficha__texto">Ver ficha</span></a>';
 				if ($puedeCrear) {
 					$botones .= '<a href="' . APP_URL . 'alumnoNew/' . $id . '/" class="btn btn-success btn-sm" title="Nuevo alumno" aria-label="Registrar un alumno de ' . $h($nombre) . '"><i class="fas fa-user-plus" aria-hidden="true"></i></a>'
@@ -417,6 +450,7 @@
 					. '<div class="ds-ficha__meta"><i class="fas fa-id-card" aria-hidden="true"></i> ' . $h($r['repre_identificacion'])
 					. (trim((string)$r['repre_celular']) !== '' ? ' · <i class="fas fa-phone" aria-hidden="true"></i> ' . $h($r['repre_celular']) : '') . '</div></div></div>',
 					$celdaAlumnos,
+					$celdaDeuda,
 					$celdaDatos,
 					'<div class="ds-ficha__botones">' . $botones . '</div>',
 				];

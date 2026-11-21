@@ -103,6 +103,8 @@
 					</div>
 					<div class="card-body">
 						<p class="small text-body-secondary ds-repres__leyenda">
+							<strong>Adeudado</strong>: lo que deben sus representados, con la misma cuenta que Pagos y Cobranza
+							(saldos pendientes y pensiones sin pagar; de los inactivos, sólo los meses que asistieron).
 							<strong>Protección de datos</strong>: si sus alumnos tienen autorizados el tratamiento de datos y el uso de imagen,
 							y por qué medio: <i class="fas fa-file-signature" aria-hidden="true"></i> formulario firmado (en papel),
 							<i class="fas fa-link" aria-hidden="true"></i> enlace, formulario en línea (al inscribirse) o el sistema.
@@ -125,6 +127,7 @@
 								<tr>
 									<th>Representante</th>
 									<th class="text-center">Alumnos</th>
+									<th class="text-end">Adeudado</th>
 									<th>Protección de datos</th>
 									<th class="text-end"><span class="visually-hidden">Acciones</span></th>
 								</tr>
@@ -202,8 +205,10 @@
 			columnDefs: [
 				{ targets: 0, className: "ds-ficha__principal" },
 				{ targets: 1, className: "ds-ficha__dato text-center", createdCell: function (td) { td.setAttribute('data-etiqueta', 'Alumnos'); } },
-				{ targets: 2, className: "ds-ficha__dato", orderable: false, createdCell: function (td) { td.setAttribute('data-etiqueta', 'Protección de datos'); } },
-				{ targets: 3, className: "ds-tabla-acciones ds-ficha__acciones", orderable: false }
+				/* Adeudado: se calcula por página (no se ordena). */
+				{ targets: 2, className: "ds-ficha__dato text-end ds-repres__col-deuda", orderable: false, createdCell: function (td) { td.setAttribute('data-etiqueta', 'Adeudado'); } },
+				{ targets: 3, className: "ds-ficha__dato", orderable: false, createdCell: function (td) { td.setAttribute('data-etiqueta', 'Protección de datos'); } },
+				{ targets: 4, className: "ds-tabla-acciones ds-ficha__acciones", orderable: false }
 			],
 			layout: {
 				topStart: 'pageLength',

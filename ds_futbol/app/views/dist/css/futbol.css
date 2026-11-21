@@ -946,6 +946,17 @@
 .ds-repre__deuda--aldia { border-color: var(--bs-success-border-subtle); background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
 .ds-repre__resumen .ds-repre__deuda dd { color: inherit; }
 .ds-repre__ficha-acciones { display: flex; justify-content: flex-end; padding: 0 .75rem .75rem; margin-top: auto; }
+/* Representantes › Adeudado: el total de sus representados en rojo, o
+   «Al día» en verde (con icono y texto); debajo, cuántos en mora. */
+.ds-repres__deuda { display: inline-flex; align-items: center; gap: .3rem; padding: .15rem .5rem; border: 1px solid; border-radius: var(--bs-border-radius); font-size: .85rem; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ds-repres__deuda--mora  { border-color: var(--bs-danger-border-subtle);  background: var(--bs-danger-bg-subtle);  color: var(--bs-danger-text-emphasis); }
+.ds-repres__deuda--aldia { border-color: var(--bs-success-border-subtle); background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
+.ds-repres__deuda-detalle { display: block; margin-top: .15rem; font-size: .75rem; color: var(--bs-secondary-color); }
+@media (max-width: 991.98px) {
+    /* Ficha del teléfono: la cifra junto a su etiqueta, alineada a la izquierda. */
+    .ds-crud__tabla td.ds-repres__col-deuda { text-align: left !important; }
+    .ds-repres__deuda-detalle { display: inline; margin: 0 0 0 .4rem; }
+}
 /* Ficha del alumno › Hermanos: debajo del nombre, su beca o descuento. */
 .ds-repre__alumno-datos .ds-perfil__hermano-benef { display: flex; flex-wrap: wrap; align-items: center; gap: .1rem .4rem; margin-top: .15rem; font-size: .78rem; }
 .ds-repre__alumno-datos .ds-perfil__hermano-benef .ds-repre__beneficio { font-size: .7rem; color: var(--bs-warning-text-emphasis); }

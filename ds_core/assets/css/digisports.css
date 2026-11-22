@@ -638,6 +638,12 @@
 /* ==========================================================================
    Selector de aplicaciones (dentro de cada modulo)
    ========================================================================== */
+/*
+| Solo las aplicaciones del rol (app-launcher.php). Cada una con su icono en
+| una ficha de su color, el nombre y para qué sirve; la actual, marcada.
+| En el teléfono: a lo ancho bajo la barra, filas de 56 px para el dedo y
+| la página atenuada detrás.
+*/
 
 .ds-launcher { position: relative; }
 
@@ -645,17 +651,150 @@
     position: absolute;
     top: calc(100% + 10px);
     right: 0;
-    width: 268px;
-    padding: 8px;
+    width: 300px;
+    padding: 6px;
     border-radius: var(--ds-radius-md);
-    border: 1px solid var(--ds-border);
+    border: 1px solid var(--ds-border-strong);
     background: var(--ds-surface);
+    color: var(--ds-text);
     box-shadow: 0 20px 50px rgba(0, 0, 0, .45);
     display: none;
     z-index: 1050;
+    font-family: var(--ds-font);
 }
 
-.ds-launcher__panel.abierto { display: block; }
+.ds-launcher__panel.abierto { display: block; animation: ds-launcher-entra .16s ease-out; }
+
+@keyframes ds-launcher-entra { from { opacity: 0; transform: translateY(-6px); } }
+
+@media (prefers-reduced-motion: reduce) {
+    .ds-launcher__panel.abierto { animation: none; }
+}
+
+.ds-launcher__cab {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 6px 6px 12px;
+}
+
+.ds-launcher__titulo {
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--ds-text-muted);
+}
+
+/* La X sólo hace falta en el teléfono, donde el panel tapa la barra. */
+.ds-launcher__cerrar {
+    display: none;
+    width: 40px;
+    height: 40px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--ds-text-muted);
+    font-size: 1.05rem;
+    cursor: pointer;
+}
+
+.ds-launcher__cerrar:hover { background: var(--ds-surface-2); color: var(--ds-text); }
+
+.ds-launcher__lista { display: grid; gap: 2px; }
+
+.ds-launcher__item {
+    --acento: var(--ds-primary);
+
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 52px;
+    padding: 8px 10px;
+    border-radius: var(--ds-radius-sm);
+    text-decoration: none;
+    color: var(--ds-text);
+    transition: background .18s;
+}
+
+.ds-launcher__item:hover,
+.ds-launcher__item:focus-visible { background: var(--ds-surface-2); color: var(--ds-text); }
+
+.ds-launcher__item:focus-visible,
+.ds-launcher__hub:focus-visible,
+.ds-launcher__cerrar:focus-visible { outline: 2px solid var(--ds-primary); outline-offset: 1px; }
+
+/* La ficha del icono: el color de la app sobre su propio tono. */
+.ds-launcher__icono {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--acento) 16%, transparent);
+    color: var(--acento);
+    font-size: 1.05rem;
+}
+
+.ds-launcher__texto { display: grid; min-width: 0; line-height: 1.2; }
+
+.ds-launcher__nombre { font-size: .92rem; font-weight: 700; }
+
+.ds-launcher__tagline {
+    font-size: .76rem;
+    color: var(--ds-text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* La app en la que se está: fondo y filete de su color, y «Aquí». */
+.ds-launcher__item--aqui { background: color-mix(in srgb, var(--acento) 10%, transparent); }
+
+.ds-launcher__item--aqui::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 10px;
+    bottom: 10px;
+    width: 3px;
+    border-radius: 3px;
+    background: var(--acento);
+}
+
+.ds-launcher__aqui {
+    margin-left: auto;
+    flex: none;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: .64rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--ds-text);
+    background: color-mix(in srgb, var(--acento) 26%, transparent);
+}
+
+.ds-launcher__hub {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 46px;
+    margin-top: 6px;
+    padding: 8px 12px 8px 22px;
+    border-top: 1px solid var(--ds-border);
+    border-radius: 0 0 var(--ds-radius-sm) var(--ds-radius-sm);
+    text-decoration: none;
+    color: var(--ds-text);
+    font-size: .88rem;
+    font-weight: 600;
+}
+
+.ds-launcher__hub i { color: var(--ds-primary); width: 18px; text-align: center; }
+
+.ds-launcher__hub:hover { background: var(--ds-surface-2); color: var(--ds-text); }
 
 /* En el teléfono el botón queda a media barra (a su derecha van el tema y
    el usuario) y el panel, alineado a su borde derecho, se salía por la
@@ -670,48 +809,24 @@
         width: auto;
         max-height: calc(100dvh - 80px);
         overflow-y: auto;
+        overscroll-behavior: contain;
+        padding: 8px;
+        /* La página, atenuada detrás: el foco queda en el panel. */
+        box-shadow: 0 20px 50px rgba(0, 0, 0, .45), 0 0 0 100vmax rgba(2, 6, 23, .55);
     }
+
+    .ds-launcher__cerrar { display: grid; place-items: center; }
+
+    .ds-launcher__item { min-height: 58px; gap: 14px; }
+
+    .ds-launcher__icono { width: 42px; height: 42px; font-size: 1.15rem; }
+
+    .ds-launcher__nombre { font-size: 1rem; }
+
+    .ds-launcher__tagline { font-size: .8rem; white-space: normal; }
+
+    .ds-launcher__hub { min-height: 52px; font-size: .95rem; }
 }
-
-.ds-launcher__titulo {
-    padding: 8px 12px 10px;
-    font-size: .68rem;
-    font-weight: 700;
-    letter-spacing: .09em;
-    text-transform: uppercase;
-    color: var(--ds-text-muted);
-}
-
-.ds-launcher__item {
-    --acento: var(--ds-primary);
-
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 9px 12px;
-    border-radius: var(--ds-radius-sm);
-    text-decoration: none;
-    color: var(--ds-text);
-    font-size: .88rem;
-    font-weight: 600;
-    transition: background .18s;
-}
-
-.ds-launcher__item:hover { background: var(--ds-surface-2); color: var(--ds-text); }
-
-.ds-launcher__item i { color: var(--acento); width: 18px; text-align: center; }
-
-.ds-launcher__item--inactivo { opacity: .45; pointer-events: none; }
-
-.ds-launcher__item small {
-    margin-left: auto;
-    font-size: .64rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    color: var(--ds-text-muted);
-}
-
-.ds-launcher__sep { height: 1px; background: var(--ds-border); margin: 8px 4px; }
 
 /* ==========================================================================
    Responsive

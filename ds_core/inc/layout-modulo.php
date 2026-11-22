@@ -111,6 +111,9 @@ $moduloInicio = $moduloInicio ?? (defined('APP_URL') ? APP_URL . 'panel/' : DS_H
         .app-header .ds-launcher .nav-link { color: var(--bs-body-color); }
     </style>
 	<?php require DS_HUB_PATH . "ds_core/inc/tema-init.php"; ?>
+	<?php /* Lo propio de una vista en el <head> (p. ej. el manifiesto y el
+	         service worker de la PWA de DigiCheck). HTML ya armado por la vista. */
+	echo $cabeceraExtra ?? ''; ?>
 </head>
 <body class="layout-fixed sidebar-expand-lg bg-body-tertiary">
 <?php /* ds-core NO es decorativa: acota las reglas de core.css que dan a

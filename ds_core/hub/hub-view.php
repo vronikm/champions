@@ -165,6 +165,9 @@ $vendorCss = DS_HUB_URL . 'ds_core/assets/vendor/fontawesome6/css/all.min.css';
 
                     <h2 class="ds-app__name"><?php echo $m['nombre']; ?></h2>
                     <p class="ds-app__tagline"><?php echo $m['tagline']; ?></p>
+                    <?php if (!empty($m['lema'])): ?>
+                        <p class="ds-app__lema"><?php echo $m['lema']; ?></p>
+                    <?php endif; ?>
 
                     <?php if (!empty($m['metricas'])): ?>
                         <div class="ds-app__metrics">

@@ -24,6 +24,7 @@ if (!function_exists('ds_vistas_modulo')) {
             'arena'      => $raiz . '/ds_arena/config/vistas.php',
             'league'     => $raiz . '/ds_league/config/vistas.php',
             'insights'   => $raiz . '/ds_insights/config/vistas.php',
+            'check'      => $raiz . '/ds_check/config/vistas.php',
         ];
 
         if (!isset($ubicaciones[$modulo]) || !is_file($ubicaciones[$modulo])) {

@@ -561,6 +561,7 @@ if (!function_exists('usuario_autenticado')) {
             'arena'      => 'Arena',
             'league'     => 'League',
             'insights'   => 'Insights',
+            'check'      => 'DigiCheck',
         ];
     }
 

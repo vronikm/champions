@@ -1,0 +1,97 @@
+/*
+|--------------------------------------------------------------------------
+| DigiCheck — estilos
+|--------------------------------------------------------------------------
+| Primero el teléfono: la cámara ocupa el ancho, la confirmación se lee a
+| un metro y los botones miden al menos 44 px. Colores de Bootstrap (claro
+| y oscuro); el estado (registrado / ya estaba / no reconocido) va siempre
+| con icono y texto, nunca sólo con color.
+*/
+.dc { --dc-acento: #c2410c; max-width: 720px; margin: 0 auto; display: grid; gap: .9rem; padding-bottom: 1rem; }
+
+/* ----- Estado ----- */
+.dc-estado { display: grid; gap: .5rem; padding: .75rem; border: 1px solid var(--bs-border-color); border-radius: .75rem; background: var(--bs-body-bg); }
+.dc-estado__fila, .dc-estado__lista { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
+.dc-estado__lista { font-size: .9rem; color: var(--bs-secondary-color); }
+.dc-estado__lista > i { color: var(--dc-acento); }
+.dc-estado__lista > span { flex: 1 1 12rem; min-width: 0; }   /* el texto junto a su icono; el botón baja si no cabe */
+.dc-estado .btn { min-height: 2.5rem; }
+.dc-pill { display: inline-flex; align-items: center; gap: .35rem; padding: .25rem .65rem; border-radius: 999px; font-size: .8rem; font-weight: 600;
+           border: 1px solid var(--bs-success-border-subtle); background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
+.dc-pill[data-red="no"] { border-color: var(--bs-warning-border-subtle); background: var(--bs-warning-bg-subtle); color: var(--bs-warning-text-emphasis); }
+#dcPendientes { border-color: var(--bs-info-border-subtle); background: var(--bs-info-bg-subtle); color: var(--bs-info-text-emphasis); }
+.dc-aviso { margin: 0; padding: .5rem .65rem; border-radius: .5rem; font-size: .85rem; background: var(--bs-warning-bg-subtle); color: var(--bs-warning-text-emphasis); border: 1px solid var(--bs-warning-border-subtle); }
+.dc-aviso[data-tono="error"] { background: var(--bs-danger-bg-subtle); color: var(--bs-danger-text-emphasis); border-color: var(--bs-danger-border-subtle); }
+.dc-aviso[data-tono="ok"] { background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); border-color: var(--bs-success-border-subtle); }
+
+/* ----- Sin lista ----- */
+.dc-vacio { text-align: center; padding: 1.5rem 1rem; border: 1px dashed var(--bs-border-color); border-radius: .75rem; }
+.dc-vacio > i { font-size: 2.5rem; color: var(--dc-acento); margin-bottom: .5rem; }
+.dc-vacio h2 { font-size: 1.1rem; font-weight: 700; }
+.dc-vacio p { margin: 0; color: var(--bs-secondary-color); font-size: .9rem; }
+
+/* ----- Modo: Presente / Atraso ----- */
+.dc-modo { display: grid; grid-template-columns: 1fr 1fr; gap: .25rem; padding: .25rem; border-radius: .75rem; background: var(--bs-tertiary-bg); }
+.dc-modo__op { min-height: 2.75rem; border: 0; border-radius: .55rem; background: transparent; color: var(--bs-body-color); font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: .4rem; }
+.dc-modo__op[aria-checked="true"] { background: var(--dc-acento); color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.dc-modo__op:focus-visible { outline: 3px solid var(--bs-primary); outline-offset: 2px; }
+
+/* ----- Cámara ----- */
+.dc-camara { position: relative; aspect-ratio: 3 / 4; max-height: 70vh; width: 100%; overflow: hidden; border-radius: 1rem; background: #0f172a; }
+@media (min-width: 576px) { .dc-camara { aspect-ratio: 4 / 3; } }
+.dc-camara video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.dc-visor { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.dc-visor span { width: min(64%, 300px); aspect-ratio: 1; border-radius: 1rem; box-shadow: 0 0 0 100vmax rgba(15, 23, 42, .45); border: 3px solid rgba(255,255,255,.9); }
+.dc[data-estado="escaneando"] .dc-visor span { animation: dc-latido 2s ease-in-out infinite; }
+@keyframes dc-latido { 50% { border-color: #fdba74; } }
+@media (prefers-reduced-motion: reduce) { .dc[data-estado="escaneando"] .dc-visor span { animation: none; } }
+.dc-camara__inicio { position: absolute; inset: 0; display: grid; place-content: center; gap: .75rem; padding: 1.25rem; text-align: center; color: #fff; background: rgba(15, 23, 42, .75); }
+.dc-camara__inicio p { margin: 0; font-size: .9rem; opacity: .9; }
+.dc-camara__inicio .btn { min-height: 3.25rem; }
+.dc-camara__herr { position: absolute; right: .6rem; bottom: .6rem; display: flex; gap: .5rem; }
+.dc-redondo { width: 2.9rem; height: 2.9rem; border-radius: 50%; border: 0; background: rgba(15, 23, 42, .65); color: #fff; font-size: 1.05rem; }
+.dc-redondo[aria-pressed="true"] { background: #fbbf24; color: #1f2937; }
+.dc-camara__error { margin: 0; padding: .6rem .75rem; border-radius: .5rem; background: var(--bs-danger-bg-subtle); color: var(--bs-danger-text-emphasis); font-size: .9rem; }
+
+/* ----- La confirmación ----- */
+.dc-resultado { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .35rem;
+                padding: 1.25rem; text-align: center; color: #fff; animation: dc-entra .18s ease-out; }
+@keyframes dc-entra { from { opacity: 0; transform: scale(.96); } }
+.dc-resultado[data-tipo="ok"]    { background: rgba(21, 128, 61, .94); }
+.dc-resultado[data-tipo="ya"]    { background: rgba(180, 83, 9, .95); }
+.dc-resultado[data-tipo="error"] { background: rgba(185, 28, 28, .95); }
+.dc-resultado__icono { font-size: clamp(3rem, 16vw, 5rem); }
+.dc-resultado__titulo { font-size: clamp(1.25rem, 5.5vw, 1.75rem); text-transform: uppercase; letter-spacing: .03em; }
+.dc-resultado__nombre { font-size: clamp(1.15rem, 5vw, 1.6rem); font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+.dc-resultado__detalle { font-size: .95rem; opacity: .92; }
+
+/* ----- Registro manual ----- */
+.dc-manual { border: 1px solid var(--bs-border-color); border-radius: .75rem; padding: .25rem .75rem; }
+.dc-manual summary { cursor: pointer; padding: .6rem 0; min-height: 2.75rem; color: var(--bs-link-color); font-weight: 500; }
+.dc-manual[open] { padding-bottom: .75rem; }
+.dc-manual__lista { list-style: none; margin: .5rem 0 0; padding: 0; display: grid; gap: .35rem; max-height: 18rem; overflow-y: auto; }
+.dc-manual__lista button { width: 100%; min-height: 2.75rem; display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+                           padding: .45rem .65rem; border: 1px solid var(--bs-border-color); border-radius: .5rem; background: var(--bs-body-bg); color: var(--bs-body-color); text-align: left; }
+.dc-manual__lista small { color: var(--bs-secondary-color); }
+
+/* ----- Registrados hoy ----- */
+.dc-hoy__titulo { font-size: 1rem; font-weight: 700; display: flex; align-items: center; gap: .5rem; margin: 0 0 .5rem; }
+.dc-hoy__lista { list-style: none; margin: 0; padding: 0; display: grid; gap: .4rem; }
+.dc-hoy__lista li { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: .65rem; padding: .55rem .7rem;
+                    border: 1px solid var(--bs-border-color); border-radius: .6rem; background: var(--bs-body-bg); }
+.dc-hoy__ini { width: 2.25rem; height: 2.25rem; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: .8rem;
+               background: #ffedd5; color: #9a3412; }
+.dc-hoy__nombre { font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+.dc-hoy__nombre small { display: block; font-weight: 400; color: var(--bs-secondary-color); }
+.dc-hoy__estado { font-size: .75rem; font-weight: 600; text-align: right; white-space: nowrap; }
+.dc-hoy__estado i { margin-right: .25rem; }
+.dc-hoy__estado[data-envio="pendiente"] { color: var(--bs-info-text-emphasis); }
+.dc-hoy__estado[data-envio="enviado"] { color: var(--bs-success-text-emphasis); }
+.dc-hoy__estado[data-envio="aviso"] { color: var(--bs-danger-text-emphasis); }
+
+/* ----- Instalar ----- */
+.dc-instalar { display: flex; align-items: center; gap: .75rem; padding: .75rem; border-radius: .75rem; background: #fff7ed; color: #7c2d12; border: 1px solid #fed7aa; }
+.dc-instalar > i { font-size: 1.5rem; }
+.dc-instalar div { display: grid; flex: 1; font-size: .85rem; }
+[data-bs-theme="dark"] .dc-instalar { background: rgba(194, 65, 12, .18); color: #fed7aa; border-color: rgba(251, 146, 60, .35); }
+[data-bs-theme="dark"] .dc-hoy__ini { background: rgba(251, 146, 60, .2); color: #fed7aa; }

@@ -58,6 +58,7 @@ const DS_FUTBOL_URL = DS_HUB_URL . "ds_futbol/";
 const DS_ARENA_URL      = DS_HUB_URL . "ds_arena/";
 const DS_LEAGUE_URL     = DS_HUB_URL . "ds_league/";
 const DS_INSIGHTS_URL   = DS_HUB_URL . "ds_insights/";
+const DS_CHECK_URL      = DS_HUB_URL . "ds_check/";
 
 /*----------  Recursos de interfaz compartidos  ----------*/
 /*

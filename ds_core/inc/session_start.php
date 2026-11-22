@@ -115,8 +115,11 @@
             // No filtrar la URL interna al salir hacia otro sitio.
             header('Referrer-Policy: same-origin');
 
-            // Nada de esto necesita la aplicacion.
-            header('Permissions-Policy: geolocation=(self), camera=(), microphone=()');
+            // Nada de esto necesita la aplicacion. Salvo la camara en
+            // DigiCheck (ds_check/), que lee el QR de los carnets: ahi, y
+            // solo ahi, se permite al propio sitio.
+            $conCamara = strpos(str_replace('\\', '/', (string)($_SERVER['SCRIPT_NAME'] ?? '')), '/ds_check/') !== false;
+            header('Permissions-Policy: geolocation=(self), camera=' . ($conCamara ? '(self)' : '()') . ', microphone=()');
 
             // HSTS solo si ya se llego por HTTPS: anunciarlo por HTTP no
             // sirve de nada y el navegador lo ignora.

@@ -46,6 +46,7 @@
     --ds-arena:         #22d3ee;
     --ds-league:        #a78bfa;
     --ds-insights:      #22c55e;
+    --ds-check:         #fb923c;
 
     /* --- Tipografia --- */
     --ds-font: "Source Sans Pro", -apple-system, BlinkMacSystemFont,
@@ -379,6 +380,16 @@
     color: var(--ds-text-muted);
     margin: 0 0 18px;
     line-height: 1.45;
+}
+/* El lema del módulo (DigiCheck: «Porque cada entrenamiento cuenta»),
+   pegado a la descripción y en el color del módulo. */
+.ds-app__tagline:has(+ .ds-app__lema) { margin-bottom: 4px; }
+.ds-app__lema {
+    font-size: .8rem;
+    font-style: italic;
+    color: var(--acento);
+    margin: 0 0 18px;
+    line-height: 1.4;
 }
 
 .ds-app__metrics {

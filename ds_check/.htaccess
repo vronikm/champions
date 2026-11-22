@@ -1,0 +1,21 @@
+# =====================================================================
+# DigiSports DigiCheck
+# =====================================================================
+RewriteEngine On
+Options All -Indexes
+
+# Código de servidor: se incluye desde index.php, nunca se solicita por URL.
+RewriteRule ^(config/|controllers/|views/) - [F,L]
+
+# El service worker y el manifiesto son estáticos de la raíz del módulo.
+# El worker se sirve sin caché del navegador: así una versión nueva se
+# instala en cuanto se publica.
+<IfModule mod_headers.c>
+    <Files "sw-check.js">
+        Header set Cache-Control "no-cache"
+    </Files>
+</IfModule>
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^([a-zA-Z0-9/_-]+)$ index.php?views=$1 [QSA,L]

@@ -45,6 +45,22 @@ if (!function_exists('ds_modulos')) {
                     ['texto' => 'Mensualidades', 'icono' => 'fas fa-dollar-sign',      'ruta' => 'cobranzaPension/'],
                 ],
             ],
+            /* DigiCheck: la asistencia con el QR del carnet. Escanea en la
+               cancha sin Internet (la lista se descarga antes y las marcas se
+               envían después) y emite los carnets. Ver ds_check/. */
+            'check' => [
+                'nombre'  => 'DigiCheck',
+                'tagline' => 'Control inteligente de asistencia',
+                'lema'    => 'Porque cada entrenamiento cuenta',
+                'icono'   => 'fas fa-qrcode',
+                'acento'  => 'var(--ds-check)',
+                'url'     => DS_CHECK_URL,
+                'activo'  => true,
+                'accesos' => [
+                    ['texto' => 'Escanear', 'icono' => 'fas fa-camera',  'ruta' => 'escanear/'],
+                    ['texto' => 'Carnets',  'icono' => 'fas fa-id-card', 'ruta' => 'carnets/'],
+                ],
+            ],
             'arena' => [
                 'nombre'  => 'Arena',
                 'tagline' => 'Instalaciones &amp; Reservas',
@@ -82,22 +98,6 @@ if (!function_exists('ds_modulos')) {
                     ['texto' => 'Reportes',   'icono' => 'fas fa-file-alt',    'ruta' => 'reporteList/'],
                 ],
                 ],
-            /* DigiCheck: la asistencia con el QR del carnet. Escanea en la
-               cancha sin Internet (la lista se descarga antes y las marcas se
-               envían después) y emite los carnets. Ver ds_check/. */
-            'check' => [
-                'nombre'  => 'DigiCheck',
-                'tagline' => 'Control inteligente de asistencia',
-                'lema'    => 'Porque cada entrenamiento cuenta',
-                'icono'   => 'fas fa-qrcode',
-                'acento'  => 'var(--ds-check)',
-                'url'     => DS_CHECK_URL,
-                'activo'  => true,
-                'accesos' => [
-                    ['texto' => 'Escanear', 'icono' => 'fas fa-camera',  'ruta' => 'escanear/'],
-                    ['texto' => 'Carnets',  'icono' => 'fas fa-id-card', 'ruta' => 'carnets/'],
-                ],
-            ],
         ];
     }
 }

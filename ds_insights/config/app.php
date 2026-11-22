@@ -63,3 +63,52 @@ spl_autoload_register(function ($clase) {
         require_once $archivo;
     }
 });
+
+/*
+|--------------------------------------------------------------------------
+| Solo los módulos del rol
+|--------------------------------------------------------------------------
+| Insights consolida Fútbol, Arena y League, pero cada usuario ve SOLO lo
+| de los módulos que su rol tiene concedidos (seguridad_rol_modulo): un
+| Administrador sin Arena no ve cuánto cobra ni cuánto le deben a Arena, ni
+| en el panel, ni en Financiero, ni en Cartera, ni en una exportación.
+|
+| Se resuelve aquí, en un solo sitio, y lo aplican las consultas del
+| controlador (no calculan lo que no se puede ver), las vistas, el menú,
+| el catálogo de reportes, las exportaciones y el front controller.
+| El Super Administrador los tiene todos (usuario_tiene_modulo).
+*/
+
+/** Los módulos con datos en Insights que el rol puede ver, con su nombre. */
+function insights_modulos(): array
+{
+    static $visibles = null;
+    if ($visibles === null) {
+        $visibles = [];
+        foreach (['basketball' => 'Fútbol', 'arena' => 'Arena', 'league' => 'League'] as $m => $n) {
+            if (PHP_SAPI === 'cli' || usuario_tiene_modulo($m)) { $visibles[$m] = $n; }
+        }
+    }
+    return $visibles;
+}
+
+/** ¿El rol ve los datos de ese módulo? */
+function insights_ve(string $modulo): bool
+{
+    return isset(insights_modulos()[$modulo]);
+}
+
+/** El módulo del que depende cada vista o reporte de Insights (las demás son transversales). */
+const INSIGHTS_VISTA_MODULO = [
+    'basketball' => 'basketball',
+    'becas'      => 'basketball',
+    'arena'      => 'arena',
+    'league'     => 'league',
+];
+
+/** ¿La vista es de un módulo que el rol ve? (El permiso de la vista se comprueba aparte.) */
+function insights_vista_visible(string $vista): bool
+{
+    $m = INSIGHTS_VISTA_MODULO[$vista] ?? null;
+    return $m === null || insights_ve($m);
+}

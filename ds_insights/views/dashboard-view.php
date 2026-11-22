@@ -57,6 +57,14 @@ $varTrx      = $insInsights->variacion((float) $trx, (float) $trxAnt);
 */
 $varOcupacion = $ocuAnt['reservadas'] > 0 ? $ocu['pct'] - $ocuAnt['pct'] : null;
 
+/* Solo los módulos del rol (insights_modulos): sin Arena no hay tarjeta de
+   ocupación, y el reparto, el gráfico y las tarjetas de módulo se arman
+   con los que tiene. */
+$visibles = insights_modulos();
+$conArena = isset($visibles['arena']);
+$colCifra = $conArena ? 'col-lg-3' : 'col-lg-4';
+$colorModulo = ['basketball' => '#3b82f6', 'arena' => '#22d3ee', 'league' => '#a78bfa'];
+
 $tituloVista = 'Panel';
 $vistaActual = 'dashboard';
 
@@ -93,7 +101,7 @@ require_once __DIR__ . "/inc/layout-top.php";
 
 <!-- ==================== Las cuatro cifras ==================== -->
 <div class="row">
-    <div class="col-12 col-sm-6 col-lg-3">
+    <div class="col-12 col-sm-6 <?php echo $colCifra; ?>">
         <div class="small-box text-bg-success h-100">
             <div class="inner">
                 <h3 class="text-truncate">$<?php echo number_format($ing['total'], 2); ?></h3>
@@ -104,7 +112,7 @@ require_once __DIR__ . "/inc/layout-top.php";
         </div>
     </div>
 
-    <div class="col-12 col-sm-6 col-lg-3">
+    <div class="col-12 col-sm-6 <?php echo $colCifra; ?>">
         <div class="small-box text-bg-warning h-100">
             <div class="inner">
                 <h3 class="text-truncate">$<?php echo number_format($deuda['total'], 2); ?></h3>
@@ -118,7 +126,7 @@ require_once __DIR__ . "/inc/layout-top.php";
         </div>
     </div>
 
-    <div class="col-12 col-sm-6 col-lg-3">
+    <div class="col-12 col-sm-6 <?php echo $colCifra; ?>">
         <div class="small-box text-bg-primary h-100">
             <div class="inner">
                 <h3 class="text-truncate"><?php echo number_format($trx); ?></h3>
@@ -129,7 +137,8 @@ require_once __DIR__ . "/inc/layout-top.php";
         </div>
     </div>
 
-    <div class="col-12 col-sm-6 col-lg-3">
+    <?php if ($conArena): ?>
+    <div class="col-12 col-sm-6 <?php echo $colCifra; ?>">
         <div class="small-box text-bg-info h-100">
             <div class="inner">
                 <h3 class="text-truncate"><?php echo number_format($ocu['pct'], 1); ?> %</h3>
@@ -139,11 +148,12 @@ require_once __DIR__ . "/inc/layout-top.php";
             <i class="fas fa-warehouse small-box-icon" aria-hidden="true"></i>
         </div>
     </div>
+    <?php endif; ?>
 </div>
 
 <!-- ==================== Evolución y reparto ==================== -->
 <div class="row">
-    <div class="col-lg-8">
+    <div class="<?php echo count($visibles) > 1 ? 'col-lg-8' : 'col-12'; ?>">
         <div class="card h-100">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h3 class="card-title mb-0">Evolución de ingresos</h3>
@@ -161,6 +171,7 @@ require_once __DIR__ . "/inc/layout-top.php";
         </div>
     </div>
 
+    <?php if (count($visibles) > 1): /* con un solo módulo el reparto es 100 %: no informa */ ?>
     <div class="col-lg-4">
         <div class="card h-100">
             <div class="card-header">
@@ -172,7 +183,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                         No hay cobros en el periodo seleccionado.
                     </p>
                 <?php else: ?>
-                    <?php foreach (['basketball' => 'Fútbol', 'arena' => 'Arena', 'league' => 'League'] as $k => $nombre):
+                    <?php foreach ($visibles as $k => $nombre):
                         $pct = $ing[$k] / $ing['total'] * 100; ?>
                         <div class="mb-3">
                             <div class="d-flex justify-content-between">
@@ -192,12 +203,21 @@ require_once __DIR__ . "/inc/layout-top.php";
             </div>
         </div>
     </div>
+    <?php endif; ?>
 </div>
 
 <!-- ==================== Cada módulo ==================== -->
 <div class="row">
+    <?php if (count($modulos) === 0): ?>
+        <div class="col-12">
+            <div class="callout mb-0">
+                Su rol no tiene ningún módulo con datos para Insights (Fútbol, Arena o League).
+                Pida al administrador que se lo conceda en Core › Roles.
+            </div>
+        </div>
+    <?php endif; ?>
     <?php foreach ($modulos as $m): ?>
-        <div class="col-12 col-lg-4">
+        <div class="col-12 col-lg-<?php echo intdiv(12, max(1, count($modulos))); ?>">
             <div class="card h-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h3 class="card-title mb-0">
@@ -256,12 +276,15 @@ require_once __DIR__ . "/inc/layout-top.php";
 | proyecto —fondo fijo, color heredado— y aquí se evita desde el principio.
 */
 (function () {
-    var datos = <?php echo json_encode(array_map(static fn(array $f): array => [
-        'mes' => $f['mes'],
-        'bk'  => round((float) $f['basketball'], 2),
-        'ar'  => round((float) $f['arena'], 2),
-        'lg'  => round((float) $f['league'], 2),
-    ], $serie), JSON_UNESCAPED_UNICODE); ?>;
+    /* Una serie por cada módulo del rol. */
+    var series = <?php
+        $series = [];
+        foreach ($visibles as $k => $nombre) {
+            $series[] = ['name' => $nombre, 'color' => $colorModulo[$k],
+                         'data' => array_map(static fn(array $f): float => round((float) $f[$k], 2), $serie)];
+        }
+        echo json_encode($series, JSON_UNESCAPED_UNICODE); ?>;
+    var datos = <?php echo json_encode(array_map(static fn(array $f): array => ['mes' => $f['mes']], $serie)); ?>;
 
     var meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
     var etiquetas = datos.map(function (d) {
@@ -271,14 +294,10 @@ require_once __DIR__ . "/inc/layout-top.php";
 
     dsGrafico('grafico-evolucion', {
         chart: { type: 'area', height: 300, stacked: true, toolbar: { show: false } },
-        colors: ['#3b82f6', '#22d3ee', '#a78bfa'],
+        colors: series.map(function (s) { return s.color; }),
         dataLabels: { enabled: false },
         stroke: { curve: 'smooth', width: 2 },
-        series: [
-            { name: 'Fútbol', data: datos.map(function (d) { return d.bk; }) },
-            { name: 'Arena',      data: datos.map(function (d) { return d.ar; }) },
-            { name: 'League',     data: datos.map(function (d) { return d.lg; }) }
-        ],
+        series: series.map(function (s) { return { name: s.name, data: s.data }; }),
         xaxis: { categories: etiquetas },
         yaxis: { labels: {
                  formatter: function (v) { return '$' + Math.round(v).toLocaleString('es-EC'); } } },

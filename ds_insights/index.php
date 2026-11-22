@@ -48,7 +48,9 @@ if (!in_array($vista, $listaBlanca, true)
 }
 
 /*----------  Nivel 2: permiso de lectura sobre la vista  ----------*/
-if (!usuario_tiene_permiso($vista)) {
+/* …y la vista de un módulo (Arena, League, Fútbol) solo si el rol tiene
+   ese módulo: ver sus cifras sin poder entrar a él no tiene sentido. */
+if (!usuario_tiene_permiso($vista) || !insights_vista_visible($vista)) {
     http_response_code(403);
     require_once __DIR__ . "/views/accesoDenegado-view.php";
     exit();

@@ -69,6 +69,14 @@ $pctMas90 = $vencido > 0 ? $masDe90 / $vencido * 100 : null;
 
 $deudoresActivos = count($deudores);
 
+/* Solo los módulos del rol. Las tarjetas de alumnos y la lista de deudores
+   son de Fútbol; la deuda por sede, de Fútbol y Arena (League no tiene sede). */
+$visibles  = insights_modulos();
+$conFutbol = isset($visibles['basketball']);
+$conSede   = array_intersect_key($visibles, ['basketball' => 1, 'arena' => 1]);
+$colCifra  = $conFutbol ? 'col-lg-3' : 'col-lg-6';
+$colorModulo = ['basketball' => '#3b82f6', 'arena' => '#22d3ee', 'league' => '#a78bfa'];
+
 $tituloVista = 'Cartera';
 $vistaActual = 'cartera';
 
@@ -77,18 +85,18 @@ require_once __DIR__ . "/inc/layout-top.php";
 
 <!-- ==================== Las cifras ==================== -->
 <div class="row">
-    <div class="col-12 col-sm-6 col-lg-3">
+    <div class="col-12 col-sm-6 <?php echo $colCifra; ?>">
         <div class="small-box text-bg-danger h-100">
             <div class="inner">
                 <h3 class="text-truncate">$<?php echo number_format($porCobrar['total'], 2); ?></h3>
                 <p class="mb-0">Por cobrar</p>
-                <p class="mb-0 small opacity-75"><span class="opacity-75">saldo vivo de los tres módulos</span></p>
+                <p class="mb-0 small opacity-75"><span class="opacity-75">saldo vivo de <?php echo htmlspecialchars(implode(', ', $visibles), ENT_QUOTES, 'UTF-8'); ?></span></p>
             </div>
             <i class="fas fa-hand-holding-usd small-box-icon" aria-hidden="true"></i>
         </div>
     </div>
 
-    <div class="col-12 col-sm-6 col-lg-3">
+    <div class="col-12 col-sm-6 <?php echo $colCifra; ?>">
         <div class="small-box text-bg-warning h-100">
             <div class="inner">
                 <h3 class="text-truncate">$<?php echo number_format($masDe90, 2); ?></h3>
@@ -103,7 +111,8 @@ require_once __DIR__ . "/inc/layout-top.php";
         </div>
     </div>
 
-    <div class="col-12 col-sm-6 col-lg-3">
+    <?php if ($conFutbol): ?>
+    <div class="col-12 col-sm-6 <?php echo $colCifra; ?>">
         <div class="small-box text-bg-primary h-100">
             <div class="inner">
                 <h3 class="text-truncate"><?php echo $deudoresActivos; ?></h3>
@@ -119,7 +128,7 @@ require_once __DIR__ . "/inc/layout-top.php";
     | decisión R12. Un alumno que ya no está y debe no se cobra igual que uno
     | activo, y sumarlos da una cifra que nadie puede gestionar.
     -->
-    <div class="col-12 col-sm-6 col-lg-3">
+    <div class="col-12 col-sm-6 <?php echo $colCifra; ?>">
         <div class="small-box text-bg-secondary h-100">
             <div class="inner">
                 <h3 class="text-truncate">$<?php echo number_format($retirados['valor'], 2); ?></h3>
@@ -129,6 +138,7 @@ require_once __DIR__ . "/inc/layout-top.php";
             <i class="fas fa-user-slash small-box-icon" aria-hidden="true"></i>
         </div>
     </div>
+    <?php endif; ?>
 </div>
 
 <!-- ==================== Antigüedad ==================== -->
@@ -160,7 +170,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                                 'league'     => ['Vencimiento', 'Es el único con fecha de vencimiento real'],
                             ];
                             $totalCol = array_fill_keys(array_keys($tramos), 0.0);
-                            foreach (['basketball' => 'Fútbol', 'arena' => 'Arena', 'league' => 'League'] as $k => $etq):
+                            foreach ($visibles as $k => $etq):
                                 $fila = $antiguedad[$k];
                                 $tot = 0.0;
                                 foreach ($tramos as $tk => $_) { $tot += $fila[$tk]['v']; $totalCol[$tk] += $fila[$tk]['v']; }
@@ -199,10 +209,12 @@ require_once __DIR__ . "/inc/layout-top.php";
                     </table>
                 </div>
 
+                <?php if (isset($visibles['arena']) || isset($visibles['league'])): ?>
                 <p class="text-muted small mb-0 mt-3">
                     «Aún no vencida» son reservas y obligaciones con fecha futura: dinero
                     comprometido que todavía no es exigible. No cuenta como mora.
                 </p>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -225,8 +237,9 @@ require_once __DIR__ . "/inc/layout-top.php";
                             <thead>
                                 <tr>
                                     <th scope="col">Sede</th>
-                                    <th scope="col" class="text-end">Fútbol</th>
-                                    <th scope="col" class="text-end">Arena</th>
+                                    <?php foreach ($conSede as $etq): ?>
+                                        <th scope="col" class="text-end"><?php echo $etq; ?></th>
+                                    <?php endforeach; ?>
                                     <th scope="col" class="text-end">Total</th>
                                 </tr>
                             </thead>
@@ -234,12 +247,11 @@ require_once __DIR__ . "/inc/layout-top.php";
                                 <?php foreach ($porSede as $s): ?>
                                     <tr>
                                         <th scope="row" class="fw-normal"><?php echo htmlspecialchars($s['nombre'], ENT_QUOTES, 'UTF-8'); ?></th>
-                                        <td class="text-end">
-                                            <?php echo $s['basketball'] > 0 ? '$' . number_format($s['basketball'], 2) : '<span class="text-muted">—</span>'; ?>
-                                        </td>
-                                        <td class="text-end">
-                                            <?php echo $s['arena'] > 0 ? '$' . number_format($s['arena'], 2) : '<span class="text-muted">—</span>'; ?>
-                                        </td>
+                                        <?php foreach ($conSede as $k => $etq): ?>
+                                            <td class="text-end">
+                                                <?php echo $s[$k] > 0 ? '$' . number_format($s[$k], 2) : '<span class="text-muted">—</span>'; ?>
+                                            </td>
+                                        <?php endforeach; ?>
                                         <td class="text-end fw-semibold">$<?php echo number_format($s['total'], 2); ?></td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -291,6 +303,7 @@ require_once __DIR__ . "/inc/layout-top.php";
 </div>
 
 <!-- ==================== Quiénes deben ==================== -->
+<?php if ($conFutbol): ?>
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
         <h3 class="card-title mb-0">Alumnos activos con saldo</h3>
@@ -342,6 +355,7 @@ require_once __DIR__ . "/inc/layout-top.php";
         <?php endif; ?>
     </div>
 </div>
+<?php endif; ?>
 
 <?php if (count($evolucion) >= 2): ?>
 <script src="<?php echo ds_recurso('ds_insights/assets/js/graficos.js'); ?>"></script>
@@ -349,11 +363,14 @@ require_once __DIR__ . "/inc/layout-top.php";
 dsGrafico('grafico-cartera', {
     chart:  { type: 'line', height: 280, toolbar: { show: false } },
     stroke: { width: 2, curve: 'smooth' },
-    series: [
-        { name: 'Fútbol', data: <?php echo json_encode(array_map(static fn(array $e): float => round($e['basketball'], 2), $evolucion)); ?> },
-        { name: 'Arena',      data: <?php echo json_encode(array_map(static fn(array $e): float => round($e['arena'], 2), $evolucion)); ?> },
-        { name: 'League',     data: <?php echo json_encode(array_map(static fn(array $e): float => round($e['league'], 2), $evolucion)); ?> },
-    ],
+    colors: <?php echo json_encode(array_values(array_intersect_key($colorModulo, $visibles))); ?>,
+    series: <?php
+        $series = [];
+        foreach ($visibles as $k => $etq) {
+            $series[] = ['name' => $etq,
+                         'data' => array_map(static fn(array $e): float => round($e[$k], 2), $evolucion)];
+        }
+        echo json_encode($series, JSON_UNESCAPED_UNICODE); ?>,
     xaxis:  { categories: <?php echo json_encode(array_column($evolucion, 'periodo')); ?> },
     yaxis:  { labels: { formatter: function (v) { return '$' + v.toLocaleString('es-EC'); } } },
     tooltip:{ y: { formatter: function (v) { return '$' + v.toLocaleString('es-EC', { minimumFractionDigits: 2 }); } } },

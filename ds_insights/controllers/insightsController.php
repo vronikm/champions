@@ -207,6 +207,7 @@ class insightsController
 
         $html = '';
         foreach ($this->filas($sql, $params) as $f) {
+            if (!insights_vista_visible((string) $f['menu_vista'])) { continue; }
             $activo = ($f['menu_vista'] === $vistaActual) ? ' active' : '';
             $html .= '<li class="nav-item">'
                    . '<a href="' . APP_URL . $f['menu_vista'] . '/" class="nav-link' . $activo . '">'
@@ -351,18 +352,19 @@ class insightsController
         $d = $anterior ? $p['antDesde'] : $p['desde'];
         $h = $anterior ? $p['antHasta'] : $p['hasta'];
 
+        /* Solo los módulos del rol: lo demás queda en cero y no se consulta. */
         $r = [
-            'basketball' => (float) $this->escalar(
+            'basketball' => !insights_ve('basketball') ? 0.0 : (float) $this->escalar(
                 "SELECT IFNULL(SUM(pago_valor),0) FROM alumno_pago
                   WHERE pago_estado = 'C' AND pago_fecha BETWEEN :d AND :h"
                 . $this->sede('pago_sedeid'),
                 [':d' => $d, ':h' => $h]),
-            'arena' => (float) $this->escalar(
+            'arena' => !insights_ve('arena') ? 0.0 : (float) $this->escalar(
                 "SELECT IFNULL(SUM(pago_valor),0) FROM dsa_pago
                   WHERE pago_estado = 'A' AND pago_fecha BETWEEN :d AND :h"
                 . $this->sedeReserva('pago_reservaid'),
                 [':d' => $d, ':h' => $h]),
-            'league' => (float) $this->escalar(
+            'league' => !insights_ve('league') ? 0.0 : (float) $this->escalar(
                 "SELECT IFNULL(SUM(abono_valor),0) FROM dsl_abono
                   WHERE abono_anulado = 'N' AND abono_fecha BETWEEN :d AND :h",
                 [':d' => $d, ':h' => $h]),
@@ -377,14 +379,24 @@ class insightsController
         $d = $anterior ? $p['antDesde'] : $p['desde'];
         $h = $anterior ? $p['antHasta'] : $p['hasta'];
 
-        return (int) $this->escalar(
-            "SELECT
-               (SELECT COUNT(*) FROM alumno_pago WHERE pago_estado='C' AND pago_fecha BETWEEN :d1 AND :h1"
-             . $this->sede('pago_sedeid') . ")
-             + (SELECT COUNT(*) FROM dsa_pago    WHERE pago_estado='A' AND pago_fecha BETWEEN :d2 AND :h2"
-             . $this->sedeReserva('pago_reservaid') . ")
-             + (SELECT COUNT(*) FROM dsl_abono   WHERE abono_anulado='N' AND abono_fecha BETWEEN :d3 AND :h3)",
-            [':d1' => $d, ':h1' => $h, ':d2' => $d, ':h2' => $h, ':d3' => $d, ':h3' => $h]);
+        /* Solo los módulos del rol. */
+        $n = 0;
+        if (insights_ve('basketball')) {
+            $n += (int) $this->escalar(
+                "SELECT COUNT(*) FROM alumno_pago WHERE pago_estado='C' AND pago_fecha BETWEEN :d AND :h"
+                . $this->sede('pago_sedeid'), [':d' => $d, ':h' => $h]);
+        }
+        if (insights_ve('arena')) {
+            $n += (int) $this->escalar(
+                "SELECT COUNT(*) FROM dsa_pago WHERE pago_estado='A' AND pago_fecha BETWEEN :d AND :h"
+                . $this->sedeReserva('pago_reservaid'), [':d' => $d, ':h' => $h]);
+        }
+        if (insights_ve('league')) {
+            $n += (int) $this->escalar(
+                "SELECT COUNT(*) FROM dsl_abono WHERE abono_anulado='N' AND abono_fecha BETWEEN :d AND :h",
+                [':d' => $d, ':h' => $h]);
+        }
+        return $n;
     }
 
     /*==============  Lo que se debe  ==============*/
@@ -400,13 +412,13 @@ class insightsController
     public function porCobrar(): array
     {
         $r = [
-            'basketball' => (float) $this->escalar(
+            'basketball' => !insights_ve('basketball') ? 0.0 : (float) $this->escalar(
                 "SELECT IFNULL(SUM(pago_saldo),0) FROM alumno_pago WHERE pago_estado='P'" . self::SIN_ELIMINADOS
                 . $this->sede('pago_sedeid')),
-            'arena' => (float) $this->escalar(
+            'arena' => !insights_ve('arena') ? 0.0 : (float) $this->escalar(
                 "SELECT IFNULL(SUM(reserva_saldo),0) FROM dsa_reserva WHERE reserva_estado<>'X'"
                 . $this->sede('reserva_sedeid')),
-            'league' => (float) $this->escalar(
+            'league' => !insights_ve('league') ? 0.0 : (float) $this->escalar(
                 "SELECT IFNULL(SUM(o.obligacion_valor - o.obligacion_descuento + o.obligacion_recargo
                         - IFNULL((SELECT SUM(a.abono_valor) FROM dsl_abono a
                                    WHERE a.abono_obligacionid = o.obligacion_id
@@ -432,6 +444,10 @@ class insightsController
     {
         $d = $anterior ? $p['antDesde'] : $p['desde'];
         $h = $anterior ? $p['antHasta'] : $p['hasta'];
+
+        if (!insights_ve('arena')) {
+            return ['reservadas' => 0.0, 'disponibles' => 0.0, 'pct' => 0.0];
+        }
 
         $reservadas = (float) $this->escalar(
             "SELECT IFNULL(SUM(reserva_horas),0) FROM dsa_reserva
@@ -475,26 +491,36 @@ class insightsController
            Se descubrio ejecutandolo: devolvia 10 filas. */
         $hasta = (new \DateTimeImmutable('last day of this month'))->format('Y-m-d');
 
-        return $this->filas(
-            "SELECT mes, SUM(bk) basketball, SUM(ar) arena, SUM(lg) league
-               FROM (
-                 SELECT DATE_FORMAT(pago_fecha,'%Y-%m') mes, SUM(pago_valor) bk, 0 ar, 0 lg
+        /* Una rama por cada módulo del rol. */
+        $ramas  = [];
+        $params = [];
+        if (insights_ve('basketball')) {
+            $ramas[] = "SELECT DATE_FORMAT(pago_fecha,'%Y-%m') mes, SUM(pago_valor) bk, 0 ar, 0 lg
                    FROM alumno_pago WHERE pago_estado='C'
                     AND pago_fecha BETWEEN :d1 AND :h1"
-                     . $this->sede("pago_sedeid") . " GROUP BY mes
-                 UNION ALL
-                 SELECT DATE_FORMAT(pago_fecha,'%Y-%m'), 0, SUM(pago_valor), 0
+                     . $this->sede("pago_sedeid") . " GROUP BY 1";
+            $params += [':d1' => $desde, ':h1' => $hasta];
+        }
+        if (insights_ve('arena')) {
+            $ramas[] = "SELECT DATE_FORMAT(pago_fecha,'%Y-%m') mes, 0 bk, SUM(pago_valor) ar, 0 lg
                    FROM dsa_pago WHERE pago_estado='A'
                     AND pago_fecha BETWEEN :d2 AND :h2"
-                     . $this->sedeReserva("pago_reservaid") . " GROUP BY 1
-                 UNION ALL
-                 SELECT DATE_FORMAT(abono_fecha,'%Y-%m'), 0, 0, SUM(abono_valor)
+                     . $this->sedeReserva("pago_reservaid") . " GROUP BY 1";
+            $params += [':d2' => $desde, ':h2' => $hasta];
+        }
+        if (insights_ve('league')) {
+            $ramas[] = "SELECT DATE_FORMAT(abono_fecha,'%Y-%m') mes, 0 bk, 0 ar, SUM(abono_valor) lg
                    FROM dsl_abono WHERE abono_anulado='N'
-                    AND abono_fecha BETWEEN :d3 AND :h3 GROUP BY 1
-               ) t
+                    AND abono_fecha BETWEEN :d3 AND :h3 GROUP BY 1";
+            $params += [':d3' => $desde, ':h3' => $hasta];
+        }
+        if ($ramas === []) { return []; }
+
+        return $this->filas(
+            "SELECT mes, SUM(bk) basketball, SUM(ar) arena, SUM(lg) league
+               FROM (" . implode("\n UNION ALL\n", $ramas) . ") t
               GROUP BY mes ORDER BY mes",
-            [':d1' => $desde, ':h1' => $hasta, ':d2' => $desde, ':h2' => $hasta,
-             ':d3' => $desde, ':h3' => $hasta]);
+            $params);
     }
 
     /*==============  Asistencia  ==============*/
@@ -543,6 +569,16 @@ class insightsController
     {
         $ing = $this->ingresos($p);
 
+        /* Las tarjetas de los módulos del rol; las demás ni se calculan. */
+        $r = [];
+        if (insights_ve('basketball')) { $r += $this->resumenFutbol($ing); }
+        if (insights_ve('arena'))      { $r += $this->resumenArena($p, $ing); }
+        if (insights_ve('league'))     { $r += $this->resumenLeague($ing); }
+        return $r;
+    }
+
+    private function resumenFutbol(array $ing): array
+    {
         return [
             'basketball' => [
                 'nombre'  => 'Fútbol',
@@ -557,6 +593,12 @@ class insightsController
                     ['inasistencias avisadas', $this->porcentajeAvisadas() . ' %'],
                 ],
             ],
+        ];
+    }
+
+    private function resumenArena(array $p, array $ing): array
+    {
+        return [
             'arena' => [
                 'nombre'  => 'Arena',
                 'icono'   => 'fas fa-warehouse',
@@ -575,6 +617,12 @@ class insightsController
                         "SELECT COUNT(*) FROM dsa_cliente WHERE cliente_estado='A'")],
                 ],
             ],
+        ];
+    }
+
+    private function resumenLeague(array $ing): array
+    {
+        return [
             'league' => [
                 'nombre'  => 'League',
                 'icono'   => 'fas fa-trophy',
@@ -614,7 +662,9 @@ class insightsController
         | Un tablero que acusa de moroso a un becado se deja de creer, y con
         | razon.
         */
-        $sinPagar = (int) $this->escalar(
+        /* Cada aviso, solo si el rol tiene su módulo. */
+        $bk = insights_ve('basketball');
+        $sinPagar = !$bk ? 0 : (int) $this->escalar(
             "SELECT COUNT(*) FROM sujeto_alumno a
               WHERE a.alumno_estado = 'A'
                 AND NOT EXISTS (SELECT 1 FROM alumno_pago p
@@ -628,23 +678,23 @@ class insightsController
                                    AND d.descuento_estado = 'S'
                                    AND c.catalogo_descripcion LIKE 'Beca%')"
             . $this->sede('a.alumno_sedeid'));
-        if ($this->superaUmbral('alumnos_sin_pago', $sinPagar)) {
+        if ($bk && $this->superaUmbral('alumnos_sin_pago', $sinPagar)) {
             $avisos[] = ['tono' => 'danger', 'icono' => 'fa-user-clock',
                 'texto' => "$sinPagar alumno(s) activo(s) sin ningún pago de pensión registrado"];
         }
 
-        $carteraArena = (float) $this->escalar(
+        $carteraArena = !insights_ve('arena') ? 0.0 : (float) $this->escalar(
             "SELECT IFNULL(SUM(reserva_saldo),0) FROM dsa_reserva WHERE reserva_estado <> 'X'"
             . $this->sede('reserva_sedeid'));
-        if ($this->superaUmbral('cartera_arena', $carteraArena)) {
+        if (insights_ve('arena') && $this->superaUmbral('cartera_arena', $carteraArena)) {
             $avisos[] = ['tono' => 'warning', 'icono' => 'fa-warehouse',
                 'texto' => 'Arena tiene $' . number_format($carteraArena, 2) . ' por cobrar en reservas'];
         }
 
-        $vencidas = (int) $this->escalar(
+        $vencidas = !$bk ? 0 : (int) $this->escalar(
             "SELECT COUNT(*) FROM alumno_pago WHERE pago_estado = 'P' AND pago_saldo > 0" . self::SIN_ELIMINADOS
             . $this->sede('pago_sedeid'));
-        if ($this->superaUmbral('pagos_pendientes', $vencidas)) {
+        if ($bk && $this->superaUmbral('pagos_pendientes', $vencidas)) {
             $avisos[] = ['tono' => 'warning', 'icono' => 'fa-file-invoice-dollar',
                 'texto' => "$vencidas pago(s) de Fútbol con saldo pendiente"];
         }
@@ -657,7 +707,7 @@ class insightsController
         | Antes decía que «no constan como descuento»: constan, con lo que
         | pagan (0,00). Ver beneficios().
         */
-        $beca = $this->filas(
+        $beca = !$bk ? [] : $this->filas(
             "SELECT COUNT(*) n, IFNULL(SUM(s.sede_pension), 0) v
                FROM alumno_pago_descuento d
                JOIN sujeto_alumno a ON a.alumno_id = d.descuento_alumnoid
@@ -665,28 +715,29 @@ class insightsController
               WHERE d.descuento_estado = 'S' AND d.descuento_rubroid = 'DBC'
                 AND a.alumno_estado = 'A'"
             . $this->sede('a.alumno_sedeid'));
-        if ($this->superaUmbral('becas_completas', (float) ($beca[0]['n'] ?? 0))) {
+        if ($bk && $this->superaUmbral('becas_completas', (float) ($beca[0]['n'] ?? 0))) {
             $nBecas = (int) $beca[0]['n'];
             $avisos[] = ['tono' => 'info', 'icono' => 'fa-graduation-cap',
                 'texto' => $nBecas . ($nBecas === 1 ? ' beca del 100 %: $' : ' becas del 100 %: $')
                     . number_format((float) $beca[0]['v'], 2) . ' al mes que no se cobran'];
         }
 
-        $sinResultado = (int) $this->escalar(
+        $lg = insights_ve('league');
+        $sinResultado = !$lg ? 0 : (int) $this->escalar(
             "SELECT COUNT(*) FROM dsl_partido p
                JOIN dsl_estado e ON e.estado_id = p.partido_estadoid
               WHERE e.estado_codigo = 'FINALIZADO'
                 AND (p.partido_puntoslocal IS NULL OR p.partido_puntosvisitante IS NULL)");
-        if ($this->superaUmbral('partidos_sin_resultado', $sinResultado)) {
+        if ($lg && $this->superaUmbral('partidos_sin_resultado', $sinResultado)) {
             $avisos[] = ['tono' => 'warning', 'icono' => 'fa-trophy',
                 'texto' => "$sinResultado partido(s) finalizado(s) sin resultado registrado"];
         }
 
-        $obligVencidas = (int) $this->escalar(
+        $obligVencidas = !$lg ? 0 : (int) $this->escalar(
             "SELECT COUNT(*) FROM dsl_obligacion
               WHERE obligacion_estado NOT IN ('PAGADA','ANULADA')
                 AND obligacion_vence < CURDATE()");
-        if ($this->superaUmbral('obligaciones_vencidas', $obligVencidas)) {
+        if ($lg && $this->superaUmbral('obligaciones_vencidas', $obligVencidas)) {
             $avisos[] = ['tono' => 'warning', 'icono' => 'fa-clock',
                 'texto' => "$obligVencidas obligación(es) de League vencida(s) sin pagar"];
         }
@@ -726,15 +777,18 @@ class insightsController
 
         $r = [];
         foreach ($filas as $f) {
-            $total = (float) $f['basketball'] + (float) $f['arena'];
+            /* Lo de un módulo que el rol no tiene cuenta como cero. */
+            $bk = insights_ve('basketball') ? (float) $f['basketball'] : 0.0;
+            $ar = insights_ve('arena') ? (float) $f['arena'] : 0.0;
+            $total = $bk + $ar;
             /* Las sedes sin movimiento en el periodo no se listan: una tabla
                con siete filas a cero no informa, solo estorba. */
             if ($total <= 0) { continue; }
-            $r[] = ['nombre' => $f['nombre'], 'basketball' => (float) $f['basketball'],
-                    'arena' => (float) $f['arena'], 'league' => 0.0, 'total' => $total];
+            $r[] = ['nombre' => $f['nombre'], 'basketball' => $bk,
+                    'arena' => $ar, 'league' => 0.0, 'total' => $total];
         }
 
-        $league = (float) $this->escalar(
+        $league = !insights_ve('league') ? 0.0 : (float) $this->escalar(
             "SELECT IFNULL(SUM(abono_valor),0) FROM dsl_abono
               WHERE abono_anulado = 'N' AND abono_fecha BETWEEN :d AND :h",
             [':d' => $p['desde'], ':h' => $p['hasta']]);
@@ -758,6 +812,7 @@ class insightsController
     {
         $r = [];
 
+        if (insights_ve('basketball'))
         foreach ($this->filas(
             "SELECT IFNULL(c.catalogo_descripcion, p.pago_rubroid) concepto,
                     COUNT(*) n, SUM(p.pago_valor) v
@@ -774,6 +829,7 @@ class insightsController
 
         /* Arena no tiene catalogo de rubros: lo que distingue un ingreso de
            otro es la clase de instalacion, cancha o residencia. */
+        if (insights_ve('arena'))
         foreach ($this->filas(
             "SELECT CASE i.instalacion_clase WHEN 'R' THEN 'Residencias' ELSE 'Canchas' END concepto,
                     COUNT(*) n, SUM(p.pago_valor) v
@@ -788,6 +844,7 @@ class insightsController
                     'n' => (int) $f['n'], 'valor' => (float) $f['v']];
         }
 
+        if (insights_ve('league'))
         foreach ($this->filas(
             "SELECT co.concepto_nombre concepto, COUNT(*) n, SUM(a.abono_valor) v
                FROM dsl_abono a
@@ -832,6 +889,7 @@ class insightsController
     public function descuentos(): array
     {
         $tipos = [];
+        if (insights_ve('basketball'))
         foreach ($this->filas(
             "SELECT d.descuento_rubroid cod, MAX(c.catalogo_descripcion) tipo, COUNT(*) n,
                     SUM(s.sede_pension) pension, SUM(" . self::SQL_PAGA_BENEFICIO . ") paga
@@ -880,6 +938,7 @@ class insightsController
             'league'     => ["dsl_abono",   "abono_valor", "abono_anulado='N'", "abono_fecha",
                                  ""],
         ] as $m => [$tabla, $col, $cond, $fecha, $ambito]) {
+            if (!insights_ve($m)) { continue; }
             $r = $this->filas(
                 "SELECT COUNT(*) n, IFNULL(AVG($col),0) a FROM `$tabla`
                   WHERE $cond AND $fecha BETWEEN :d AND :h$ambito",
@@ -897,6 +956,7 @@ class insightsController
     */
     public function facturacion(array $p): array
     {
+        if (!insights_ve('basketball')) { return []; }   /* son facturas de Fútbol */
         return $this->filas(
             "SELECT estado_sri estado, COUNT(*) n, IFNULL(SUM(total),0) v
                FROM facturas_electronicas
@@ -2109,13 +2169,16 @@ class insightsController
               ORDER BY (IFNULL(bk.v,0) + IFNULL(ar.v,0)) DESC, s.sede_nombre");
 
         $r = [];
+        $bk = insights_ve('basketball');
+        $ar = insights_ve('arena');
         foreach ($filas as $f) {
-            $total = (float) $f['basketball'] + (float) $f['arena'];
+            /* Lo de un módulo que el rol no tiene cuenta como cero. */
+            $total = ($bk ? (float) $f['basketball'] : 0.0) + ($ar ? (float) $f['arena'] : 0.0);
             if ($total <= 0) { continue; }
             $r[] = [
                 'nombre'     => $f['nombre'],
-                'basketball' => (float) $f['basketball'], 'bkn' => (int) $f['bkn'],
-                'arena'      => (float) $f['arena'],      'arn' => (int) $f['arn'],
+                'basketball' => $bk ? (float) $f['basketball'] : 0.0, 'bkn' => $bk ? (int) $f['bkn'] : 0,
+                'arena'      => $ar ? (float) $f['arena'] : 0.0,      'arn' => $ar ? (int) $f['arn'] : 0,
                 'total'      => $total,
             ];
         }
@@ -2144,6 +2207,7 @@ class insightsController
 
         $r = ['basketball' => $vacio, 'arena' => $vacio, 'league' => $vacio];
 
+        if (insights_ve('basketball'))
         foreach ($this->filas(
             "SELECT " . $tramo('pago_fecha') . " tramo, SUM(pago_saldo) v, COUNT(*) n
                FROM alumno_pago
@@ -2153,6 +2217,7 @@ class insightsController
             $r['basketball'][$f['tramo']] = ['v' => (float) $f['v'], 'n' => (int) $f['n']];
         }
 
+        if (insights_ve('arena'))
         foreach ($this->filas(
             "SELECT " . $tramo('reserva_fecha') . " tramo, SUM(reserva_saldo) v, COUNT(*) n
                FROM dsa_reserva
@@ -2164,6 +2229,7 @@ class insightsController
 
         /* League usa su vencimiento real, que es lo que deberian tener los
            otros dos. El saldo se calcula: obligacion menos lo abonado. */
+        if (insights_ve('league'))
         foreach ($this->filas(
             "SELECT " . $tramo('o.obligacion_vence') . " tramo,
                     SUM(o.obligacion_valor - o.obligacion_descuento + o.obligacion_recargo
@@ -2203,6 +2269,7 @@ class insightsController
 
         $r = [];
         foreach (array_reverse($filas) as $f) {
+            if (!insights_ve((string) $f['modulo'])) { continue; }
             $p = $f['periodo'];
             if (!isset($r[$p])) {
                 $r[$p] = ['periodo' => $p, 'basketball' => 0.0, 'arena' => 0.0,
@@ -2226,6 +2293,7 @@ class insightsController
     */
     public function carteraRetirados(): array
     {
+        if (!insights_ve('basketball')) { return ['valor' => 0.0, 'alumnos' => 0]; }
         $r = $this->filas(
             "SELECT IFNULL(SUM(p.pago_saldo), 0) v,
                     COUNT(DISTINCT p.pago_alumnoid) alumnos
@@ -2256,6 +2324,7 @@ class insightsController
     public function carteraDeudores(int $limite = 25): array
     {
         $limite = max(1, min(100, $limite));
+        if (!insights_ve('basketball')) { return []; }
 
         return $this->filas(
             "SELECT a.alumno_id,
@@ -2319,7 +2388,7 @@ class insightsController
     /** Los modulos que esta pantalla sabe listar, con su etiqueta. */
     public function modulosTransaccion(): array
     {
-        return ['basketball' => 'Fútbol', 'arena' => 'Arena', 'league' => 'League'];
+        return insights_modulos();     /* solo los del rol */
     }
 
     /*
@@ -2338,7 +2407,8 @@ class insightsController
         $params = [':d' => $filtros['desde'], ':h' => $filtros['hasta']];
         $ramas  = [];
 
-        if ($modulo === '' || $modulo === 'basketball') {
+        $ve = $this->modulosTransaccion();
+        if (isset($ve['basketball']) && ($modulo === '' || $modulo === 'basketball')) {
             $ramas[] = "SELECT 'basketball' modulo, p.pago_id id, p.pago_fecha fecha,
                                s.sede_nombre sede,
                                IFNULL(c.catalogo_descripcion, p.pago_rubroid) concepto,
@@ -2354,7 +2424,7 @@ class insightsController
                      . $this->sede('p.pago_sedeid');
         }
 
-        if ($modulo === '' || $modulo === 'arena') {
+        if (isset($ve['arena']) && ($modulo === '' || $modulo === 'arena')) {
             $ramas[] = "SELECT 'arena' modulo, p.pago_id id, p.pago_fecha fecha,
                                s.sede_nombre sede,
                                i.instalacion_nombre concepto,
@@ -2369,7 +2439,7 @@ class insightsController
                      . $this->sede('r.reserva_sedeid');
         }
 
-        if ($modulo === '' || $modulo === 'league') {
+        if (isset($ve['league']) && ($modulo === '' || $modulo === 'league')) {
             /* League no tiene sede (R5): la columna va nula y la pantalla lo
                rotula como «fuera de sede» en vez de dejar un hueco. */
             $ramas[] = "SELECT 'league' modulo, ab.abono_id id, ab.abono_fecha fecha,
@@ -2475,9 +2545,28 @@ class insightsController
     | ensuciaria la marca de «modificado por» de los que nadie toco, y esa
     | marca es lo que permite entender despues por que un aviso dejo de salir.
     */
+    /** El módulo del que avisa cada umbral. */
+    const UMBRAL_MODULO = [
+        'alumnos_sin_pago'       => 'basketball',
+        'pagos_pendientes'       => 'basketball',
+        'becas_completas'        => 'basketball',
+        'cartera_arena'          => 'arena',
+        'partidos_sin_resultado' => 'league',
+        'obligaciones_vencidas'  => 'league',
+    ];
+
+    /** Los umbrales de los módulos del rol (Indicadores no muestra ni guarda los demás). */
+    public function umbralesVisibles(): array
+    {
+        return array_filter($this->umbrales(), static function (array $u): bool {
+            $m = self::UMBRAL_MODULO[$u['umbral_codigo']] ?? null;
+            return $m === null || insights_ve($m);
+        });
+    }
+
     public function guardarUmbrales(array $enviados): int
     {
-        $actuales = $this->umbrales();
+        $actuales = $this->umbralesVisibles();
         $cambios  = 0;
 
         foreach ($enviados as $codigo => $datos) {
@@ -2531,7 +2620,7 @@ class insightsController
             /* ---------- Consolidado ---------- */
             'consolidado' => [
                 'titulo'   => 'Panel ejecutivo',
-                'resumen'  => 'Ingresos, cartera, transacciones y ocupación de los tres módulos, con comparación entre periodos.',
+                'resumen'  => 'Ingresos, cartera, transacciones y ocupación de sus módulos, con comparación entre periodos.',
                 'categoria'=> 'Gerencial',
                 'icono'    => 'fas fa-chart-line',
                 'vista'    => 'dashboard',
@@ -2559,7 +2648,7 @@ class insightsController
 
             'transacciones' => [
                 'titulo'   => 'Transacciones',
-                'resumen'  => 'El detalle pago a pago de los tres módulos, con filtros de periodo y módulo. Muestra personas identificadas, así que exige su propio permiso.',
+                'resumen'  => 'El detalle pago a pago de sus módulos, con filtros de periodo y módulo. Muestra personas identificadas, así que exige su propio permiso.',
                 'categoria'=> 'Financiero',
                 'icono'    => 'fas fa-list-ul',
                 'vista'    => 'transacciones',
@@ -2794,31 +2883,43 @@ class insightsController
             | del archivo sigue diciendo el periodo porque asi el lector sabe
             | CUANDO se saco la foto, que es la fecha que importa aqui.
             */
+            /* Las columnas de cada módulo, solo si el rol lo tiene. */
             case 'cartera':
+                $bk = insights_ve('basketball');
+                $ar = insights_ve('arena');
                 $filas = [];
                 foreach ($this->carteraPorSede() as $s) {
-                    $filas[] = [$s['nombre'], $s['basketball'], $s['bkn'],
-                                 $s['arena'], $s['arn'], $s['total']];
+                    $filas[] = array_merge([$s['nombre']],
+                        $bk ? [$s['basketball'], $s['bkn']] : [],
+                        $ar ? [$s['arena'], $s['arn']] : [],
+                        [$s['total']]);
                 }
                 return [
                     'titulo'    => 'Cartera por sede',
                     'vista'     => 'cartera',
-                    'cabeceras' => ['Sede', 'Fútbol', 'Documentos FT',
-                                     'Arena', 'Documentos AR', 'Total'],
-                    'tipos'     => ['texto', 'dinero', 'entero', 'dinero', 'entero', 'dinero'],
+                    'cabeceras' => array_merge(['Sede'],
+                        $bk ? ['Fútbol', 'Documentos FT'] : [],
+                        $ar ? ['Arena', 'Documentos AR'] : [], ['Total']),
+                    'tipos'     => array_merge(['texto'],
+                        $bk ? ['dinero', 'entero'] : [],
+                        $ar ? ['dinero', 'entero'] : [], ['dinero']),
                     'filas'     => $filas,
                 ];
 
             case 'financiero':
+                $mods = array_keys(insights_modulos());
                 $filas = [];
                 foreach ($this->ingresosPorSede($p) as $s) {
-                    $filas[] = [$s['nombre'], $s['basketball'], $s['arena'], $s['league'], $s['total']];
+                    $fila = [$s['nombre']];
+                    foreach ($mods as $m) { $fila[] = $s[$m]; }
+                    $fila[] = $s['total'];
+                    $filas[] = $fila;
                 }
                 return [
                     'titulo'    => 'Ingresos por sede',
                     'vista'     => 'financiero',
-                    'cabeceras' => ['Sede', 'Fútbol', 'Arena', 'League', 'Total'],
-                    'tipos'     => ['texto', 'dinero', 'dinero', 'dinero', 'dinero'],
+                    'cabeceras' => array_merge(['Sede'], array_values(insights_modulos()), ['Total']),
+                    'tipos'     => array_merge(['texto'], array_fill(0, count($mods), 'dinero'), ['dinero']),
                     'filas'     => $filas,
                 ];
 

@@ -88,7 +88,7 @@ require_once __DIR__ . "/inc/layout-top.php";
             <div class="col-auto">
                 <label for="modulo" class="form-label mb-1 small text-muted">Módulo</label>
                 <select class="form-select form-select-sm" id="modulo" name="modulo">
-                    <option value="">Los tres</option>
+                    <option value=""><?php echo count($modulos) === 3 ? 'Los tres' : 'Todos'; ?></option>
                     <?php foreach ($modulos as $k => $etq): ?>
                         <option value="<?php echo $k; ?>" <?php echo $modulo === $k ? 'selected' : ''; ?>>
                             <?php echo $etq; ?>

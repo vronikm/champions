@@ -85,7 +85,7 @@ if (isset($_GET['g'])) {
                   : 'No había nada que cambiar.'];
 }
 
-$umbrales = $insInsights->umbrales();
+$umbrales = $insInsights->umbralesVisibles();   /* solo los de los módulos del rol */
 
 /* Para que la pantalla no pida a ciegas: se enseña el valor que tiene HOY
    cada indicador, al lado de su umbral. Sin eso hay que adivinar si 50 es

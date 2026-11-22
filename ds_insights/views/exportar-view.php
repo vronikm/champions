@@ -49,7 +49,7 @@ if ($datos === null) {
 }
 
 /*----------  El permiso de exportar, que es propio  ----------*/
-if (!puede_exportar($datos['vista'])) {
+if (!puede_exportar($datos['vista']) || !insights_vista_visible($datos['vista'])) {
     http_response_code(403);
     /* Se registra el intento denegado: el §45 lo pide, y es justo el evento
        que interesa cuando alguien pregunta quién intentó llevarse qué. */

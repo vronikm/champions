@@ -49,7 +49,9 @@ $favoritos = $insInsights->favoritos();
 /* Se descartan los que el usuario no puede abrir. Los externos no llevan
    vista de Insights: su control está en el módulo que los sirve. */
 $catalogo = array_filter($catalogo, static function (array $r): bool {
-    return $r['vista'] === null || usuario_tiene_permiso($r['vista']);
+    /* Y solo los de los módulos del rol: los externos son reportes de Fútbol. */
+    if ($r['vista'] === null) { return insights_ve('basketball'); }
+    return usuario_tiene_permiso($r['vista']) && insights_vista_visible($r['vista']);
 });
 
 $categorias = array_values(array_unique(array_column($catalogo, 'categoria')));

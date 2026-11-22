@@ -42,6 +42,13 @@ $facturas  = $insInsights->facturacion($p);
 $varIngresos = $insInsights->variacion($ing['total'], $ingAnt['total']);
 $totalTrx    = array_sum(array_column($ticket, 'n'));
 
+/* Solo los módulos del rol: columnas, reparto y gráfico. Becas, descuentos
+   y facturación electrónica son de Fútbol. */
+$visibles    = insights_modulos();
+$conFutbol   = isset($visibles['basketball']);
+$colorModulo = ['basketball' => '#3b82f6', 'arena' => '#22d3ee', 'league' => '#a78bfa'];
+$colCifra    = $conFutbol ? 'col-lg-3' : 'col-lg-4';
+
 $tituloVista = 'Financiero';
 $vistaActual = 'financiero';
 
@@ -77,7 +84,7 @@ require_once __DIR__ . "/inc/layout-top.php";
 
 <!-- ==================== Las cifras ==================== -->
 <div class="row">
-    <div class="col-12 col-sm-6 col-lg-3">
+    <div class="col-12 col-sm-6 <?php echo $colCifra; ?>">
         <div class="small-box text-bg-success h-100">
             <div class="inner">
                 <h3 class="text-truncate">$<?php echo number_format($ing['total'], 2); ?></h3>
@@ -87,7 +94,7 @@ require_once __DIR__ . "/inc/layout-top.php";
             <i class="fas fa-dollar-sign small-box-icon" aria-hidden="true"></i>
         </div>
     </div>
-    <div class="col-12 col-sm-6 col-lg-3">
+    <div class="col-12 col-sm-6 <?php echo $colCifra; ?>">
         <div class="small-box text-bg-warning h-100">
             <div class="inner">
                 <h3 class="text-truncate">$<?php echo number_format($deuda['total'], 2); ?></h3>
@@ -97,7 +104,8 @@ require_once __DIR__ . "/inc/layout-top.php";
             <i class="fas fa-hand-holding-usd small-box-icon" aria-hidden="true"></i>
         </div>
     </div>
-    <div class="col-12 col-sm-6 col-lg-3">
+    <?php if ($conFutbol): ?>
+    <div class="col-12 col-sm-6 <?php echo $colCifra; ?>">
         <div class="small-box text-bg-danger h-100">
             <div class="inner">
                 <h3 class="text-truncate">$<?php echo number_format($dsc['beneficio'], 2); ?></h3>
@@ -107,7 +115,8 @@ require_once __DIR__ . "/inc/layout-top.php";
             <i class="fas fa-tags small-box-icon" aria-hidden="true"></i>
         </div>
     </div>
-    <div class="col-12 col-sm-6 col-lg-3">
+    <?php endif; ?>
+    <div class="col-12 col-sm-6 <?php echo $colCifra; ?>">
         <div class="small-box text-bg-primary h-100">
             <div class="inner">
                 <h3 class="text-truncate">$<?php echo $totalTrx > 0 ? number_format($ing['total'] / $totalTrx, 2) : '0.00'; ?></h3>
@@ -133,7 +142,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                     <div id="grafico-modulos" style="min-height:280px;"></div>
                     <table class="table table-sm mt-3 mb-0">
                         <tbody>
-                        <?php foreach (['basketball' => 'Fútbol', 'arena' => 'Arena', 'league' => 'League'] as $k => $n): ?>
+                        <?php foreach ($visibles as $k => $n): ?>
                             <tr>
                                 <td><?php echo $n; ?></td>
                                 <td class="text-end fw-semibold">$<?php echo number_format($ing[$k], 2); ?></td>
@@ -168,9 +177,9 @@ require_once __DIR__ . "/inc/layout-top.php";
                             <thead>
                                 <tr>
                                     <th>Sede</th>
-                                    <th class="text-end">Fútbol</th>
-                                    <th class="text-end">Arena</th>
-                                    <th class="text-end">League</th>
+                                    <?php foreach ($visibles as $n): ?>
+                                        <th class="text-end"><?php echo $n; ?></th>
+                                    <?php endforeach; ?>
                                     <th class="text-end">Total</th>
                                 </tr>
                             </thead>
@@ -184,9 +193,9 @@ require_once __DIR__ . "/inc/layout-top.php";
                                                title="Los torneos de League pueden organizarse fuera de las instalaciones del club, así que no tienen sede. No se reparte a prorrateo."></i>
                                         <?php endif; ?>
                                     </td>
-                                    <td class="text-end"><?php echo $s['basketball'] > 0 ? '$' . number_format($s['basketball'], 2) : '<span class="text-muted">—</span>'; ?></td>
-                                    <td class="text-end"><?php echo $s['arena'] > 0 ? '$' . number_format($s['arena'], 2) : '<span class="text-muted">—</span>'; ?></td>
-                                    <td class="text-end"><?php echo $s['league'] > 0 ? '$' . number_format($s['league'], 2) : '<span class="text-muted">—</span>'; ?></td>
+                                    <?php foreach ($visibles as $k => $n): ?>
+                                        <td class="text-end"><?php echo $s[$k] > 0 ? '$' . number_format($s[$k], 2) : '<span class="text-muted">—</span>'; ?></td>
+                                    <?php endforeach; ?>
                                     <td class="text-end fw-semibold">$<?php echo number_format($s['total'], 2); ?></td>
                                 </tr>
                             <?php endforeach; ?>
@@ -194,9 +203,9 @@ require_once __DIR__ . "/inc/layout-top.php";
                             <tfoot>
                                 <tr>
                                     <th>Total</th>
-                                    <th class="text-end">$<?php echo number_format($ing['basketball'], 2); ?></th>
-                                    <th class="text-end">$<?php echo number_format($ing['arena'], 2); ?></th>
-                                    <th class="text-end">$<?php echo number_format($ing['league'], 2); ?></th>
+                                    <?php foreach ($visibles as $k => $n): ?>
+                                        <th class="text-end">$<?php echo number_format($ing[$k], 2); ?></th>
+                                    <?php endforeach; ?>
                                     <th class="text-end">$<?php echo number_format($ing['total'], 2); ?></th>
                                 </tr>
                             </tfoot>
@@ -210,7 +219,7 @@ require_once __DIR__ . "/inc/layout-top.php";
 
 <div class="row">
     <!-- ==================== Por concepto ==================== -->
-    <div class="col-lg-7">
+    <div class="<?php echo $conFutbol ? 'col-lg-7' : 'col-12'; ?>">
         <div class="card h-100">
             <div class="card-header">
                 <h3 class="card-title mb-0">Ingresos por concepto</h3>
@@ -242,6 +251,7 @@ require_once __DIR__ . "/inc/layout-top.php";
         </div>
     </div>
 
+    <?php if ($conFutbol): ?>
     <!-- ==================== Descuentos y facturación ==================== -->
     <div class="col-lg-5">
         <div class="card mb-3">
@@ -323,6 +333,7 @@ require_once __DIR__ . "/inc/layout-top.php";
             </div>
         </div>
     </div>
+    <?php endif; ?>
 </div>
 
 <?php if ($ing['total'] > 0): ?>
@@ -334,13 +345,9 @@ require_once __DIR__ . "/inc/layout-top.php";
 (function () {
     dsGrafico('grafico-modulos', {
         chart: { type: 'donut', height: 280 },
-        colors: ['#3b82f6', '#22d3ee', '#a78bfa'],
-        labels: ['Fútbol', 'Arena', 'League'],
-        series: [
-            <?php echo round($ing['basketball'], 2); ?>,
-            <?php echo round($ing['arena'], 2); ?>,
-            <?php echo round($ing['league'], 2); ?>
-        ],
+        colors: <?php echo json_encode(array_values(array_intersect_key($colorModulo, $visibles))); ?>,
+        labels: <?php echo json_encode(array_values($visibles), JSON_UNESCAPED_UNICODE); ?>,
+        series: <?php echo json_encode(array_map(static fn(string $k): float => round($ing[$k], 2), array_keys($visibles))); ?>,
         legend: { position: 'bottom' },
         dataLabels: { enabled: true, formatter: function (v) { return v.toFixed(1) + '%'; } },
         tooltip: { y: { formatter: function (v) { return '$' + v.toFixed(2); } } },

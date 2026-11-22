@@ -78,7 +78,7 @@ if (!function_exists('ds_botones_exportar')) {
      */
     function ds_botones_exportar(string $reporte, string $vista, array $p): string
     {
-        if (!puede_exportar($vista)) { return ''; }
+        if (!puede_exportar($vista) || !insights_vista_visible($vista)) { return ''; }
 
         $qs = 'reporte=' . urlencode($reporte)
             . '&desde=' . urlencode($p['desde'])

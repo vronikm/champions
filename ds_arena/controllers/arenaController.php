@@ -1749,6 +1749,9 @@ class arenaController
      * Cada franja semanal se parte en bloques de BLOQUE_MINUTOS desde su
      * inicio; el último puede ser más corto si la franja no es múltiplo.
      * Estado de cada bloque, por prioridad: ocupado, bloqueado, pasado, libre.
+     * «pasado» se puede elegir igual que «libre» (alquiler registrado después
+     * de jugado); el formulario sólo lo pinta de otro color. «libres» cuenta
+     * únicamente los que están por venir.
      * El índice de franja viaja en cada bloque porque una reserva debe caber
      * ENTERA en una sola franja (regla 1 de verificarDisponibilidad).
      */

@@ -399,7 +399,7 @@ require_once __DIR__ . "/inc/layout-top.php";
             return;
         }
 
-        mensaje(r.libres
+        mensaje(bloques.some(elegible)
             ? ''
             : '<i class="fas fa-calendar-times me-1"></i> No quedan horarios libres el ' +
               esc(fechaLarga(fecha.value).toLowerCase()) + '. Pruebe con otro día.');
@@ -417,11 +417,12 @@ require_once __DIR__ . "/inc/layout-top.php";
                 }
                 html += '<div class="ar-bloques">';
             }
-            var libre = b.estado === 'libre';
-            var nota  = { ocupado: 'Ocupado', bloqueado: 'Bloqueado', pasado: 'Ya pasó' }[b.estado] || ('$' + (+b.tarifa).toFixed(2));
+            var precio = '$' + (+b.tarifa).toFixed(2);
+            var nota   = { ocupado: 'Ocupado', bloqueado: 'Bloqueado', pasado: 'Pasó · ' + precio }[b.estado] || precio;
             html += '<button type="button" class="ar-bloque ar-bloque--' + b.estado + '" data-i="' + i + '"' +
-                    (libre ? '' : ' disabled') + ' aria-pressed="false"' +
-                    ' title="' + esc(b.desde + ' a ' + b.hasta + (b.detalle ? ' · ' + b.detalle : '')) + '">' +
+                    (elegible(b) ? '' : ' disabled') + ' aria-pressed="false"' +
+                    ' title="' + esc(b.desde + ' a ' + b.hasta + (b.detalle ? ' · ' + b.detalle : '') +
+                                     (b.estado === 'pasado' ? ' · se puede registrar igual' : '')) + '">' +
                     '<span class="ar-bloque__hora">' + esc(b.desde) + '</span>' +
                     '<span class="ar-bloque__nota">' + esc(nota) + '</span></button>';
         });
@@ -429,9 +430,15 @@ require_once __DIR__ . "/inc/layout-top.php";
     }
 
     /*----------  Elegir: un toque fija el inicio, otro extiende hasta la última hora  ----------*/
+    /* Una hora que ya pasó también se puede elegir: el alquiler se registra
+       después de jugado (llegó sin reservar, o se anota al cerrar el día).
+       Se pinta en otro color para que no se confunda con una hora por venir.
+       El servidor no pone reparos: sólo exige horario, sin bloqueo ni cruce. */
+    function elegible(b) { return b.estado === 'libre' || b.estado === 'pasado'; }
+
     function rangoLibre(i, j) {
         if (bloques[i].franja !== bloques[j].franja) { return false; }
-        for (var k = i; k <= j; k++) { if (bloques[k].estado !== 'libre') { return false; } }
+        for (var k = i; k <= j; k++) { if (!elegible(bloques[k])) { return false; } }
         return true;
     }
 
@@ -505,6 +512,11 @@ require_once __DIR__ . "/inc/layout-top.php";
         }
         var importe = partes.reduce(function (s, p) { return s + p.h * p.v; }, 0);
         var fuera  = !sel;
+        var yaPaso = false;
+        if (sel) { for (var q = sel.i; q <= sel.j; q++) { if (bloques[q].estado === 'pasado') { yaPaso = true; } } }
+        var notaPaso = yaPaso
+            ? '<br><small class="ar-resumen__paso"><i class="fas fa-clock-rotate-left me-1"></i>Este horario ya pasó: se registra igual, como alquiler ya jugado.</small>'
+            : '';
 
         var semanal = repetirSi && repetirSi.checked;
         var nombreDia = dias[diaIso(fecha.value)].toLowerCase();
@@ -515,12 +527,13 @@ require_once __DIR__ . "/inc/layout-top.php";
             ? '<i class="fas fa-repeat me-2"></i>' +
               '<strong>Cada ' + esc(nombreDia) + '</strong> · ' + esc(desde.value) + ' a ' + esc(hasta.value) + ' · ' +
               horas.toFixed(2).replace(/\.?0+$/, '') + (horas === 1 ? ' hora' : ' horas') +
-              '<br><small>Desde el ' + esc(fechaLarga(fecha.value).toLowerCase()) + ', hasta que se cancele.</small>'
+              '<br><small>Desde el ' + esc(fechaLarga(fecha.value).toLowerCase()) + ', hasta que se cancele.</small>' + notaPaso
             : '<i class="fas fa-calendar-check me-2"></i>' +
               '<strong>' + esc(fechaLarga(fecha.value)) + '</strong> · ' +
               esc(desde.value) + ' a ' + esc(hasta.value) + ' · ' +
               horas.toFixed(2).replace(/\.?0+$/, '') + (horas === 1 ? ' hora' : ' horas') +
-              (fuera ? '<br><small class="text-muted">Es el horario actual de la reserva. Toque un horario libre para cambiarlo.</small>' : '');
+              (fuera ? '<br><small class="text-muted">Es el horario actual de la reserva. Toque un horario libre para cambiarlo.</small>' : '') +
+              notaPaso;
 
         caja.style.display = ''; pista.hidden = true;
         total.textContent = '$' + importe.toFixed(2) + (semanal ? ' / semana' : '');
@@ -769,7 +782,20 @@ require_once __DIR__ . "/inc/layout-top.php";
         cursor: not-allowed; border-color: var(--bs-danger-border-subtle);
         background: repeating-linear-gradient(135deg, var(--bs-danger-bg-subtle) 0 6px, transparent 6px 12px);
     }
-    .ar-bloque--pasado { opacity: .45; cursor: not-allowed; }
+    /* Ya pasó, pero se puede registrar: ámbar, para que se distinga de las
+       horas por venir (verde) sin parecer desactivada. */
+    .ar-bloque--pasado {
+        cursor: pointer; border-color: var(--bs-warning-border-subtle);
+        background: var(--bs-warning-bg-subtle); color: var(--bs-warning-text-emphasis);
+    }
+    .ar-bloque--pasado .ar-bloque__nota { color: var(--bs-warning-text-emphasis); opacity: .85; }
+    .ar-bloque--pasado:hover { border-color: var(--bs-warning); transform: translateY(-1px); }
+    /* Elegida, manda el color de «Elegido»; un borde ámbar recuerda que ya pasó. */
+    .ar-bloque--pasado.ar-bloque--sel, .ar-bloque--pasado.ar-bloque--sel:hover {
+        background: var(--ds-acento, #0e7490); color: #fff;
+        border-color: var(--bs-warning); box-shadow: inset 0 -3px 0 var(--bs-warning);
+    }
+    .ar-bloque--pasado.ar-bloque--sel .ar-bloque__nota { color: rgba(255, 255, 255, .85); opacity: 1; }
     .ar-bloque:focus-visible, .ar-dia:focus-visible { outline: 3px solid var(--ds-acento, #0e7490); outline-offset: 2px; }
 
     /* Leyenda, mensajes y resumen */
@@ -781,6 +807,7 @@ require_once __DIR__ . "/inc/layout-top.php";
         border-radius: var(--ds-radius-sm, 10px); color: var(--bs-secondary-color); font-size: .9rem;
     }
     .ar-vacio[hidden] { display: none; }
+    .ar-resumen__paso { color: var(--bs-warning-text-emphasis); }
     .ar-resumen {
         margin-top: 10px; padding: 10px 14px; border-radius: var(--ds-radius-sm, 10px);
         background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis);

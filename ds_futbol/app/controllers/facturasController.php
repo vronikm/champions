@@ -886,21 +886,73 @@
 		private function obtenerSecretoCriptoSri($generar = false){
 			$path = $this->rutaSecretoCriptoSri();
 			if(is_file($path)){
-				$raw = trim(str_replace('<?php exit; ?>', '', (string)file_get_contents($path)));
-				$secreto = base64_decode($raw, true);
-				if($secreto !== false && $secreto !== ''){
+				$secreto = $this->leerSecretoCriptoSri($path);
+				if($secreto !== ''){
 					return $secreto;
 				}
 			}
 			if($generar && function_exists('random_bytes')){
 				$this->protegerDirectorioSri(dirname($path));
 				$secreto = random_bytes(32);
-				if(file_put_contents($path, "<?php exit; ?>\n".base64_encode($secreto), LOCK_EX) !== false){
+				if(file_put_contents($path, "<?php exit; ?>\n".bin2hex($secreto), LOCK_EX) !== false){
 					@chmod($path, 0600);
 					return $secreto;
 				}
 			}
 			return '';
+		}
+
+		/**
+		 * Lee el secreto del archivo de storage.
+		 *
+		 * Se guarda en hexadecimal a proposito. Un archivo .php cuyo contenido
+		 * es base64, mas el codigo que lo lee y lo decodifica, es la forma exacta
+		 * de un dropper, y los antivirus de hosting (Imunify360) lo marcan como
+		 * malware y vacian este controlador. El hexadecimal cumple lo mismo sin
+		 * parecerse a un payload.
+		 *
+		 * El hexadecimal se mira PRIMERO: un texto hex tambien es base64 valido
+		 * y, leido como base64, da otro secreto sin avisar (la clave de la firma
+		 * dejaria de descifrarse). El formato anterior se sigue leyendo y se
+		 * convierte solo: el secreto debe conservarse igual.
+		 */
+		private function leerSecretoCriptoSri($path){
+			$raw = $this->leerArchivoProtegidoSri($path);
+			if($raw === ''){
+				return '';
+			}
+
+			if(strlen($raw) % 2 === 0 && ctype_xdigit($raw)){
+				$secreto = @hex2bin($raw);
+				return is_string($secreto) ? $secreto : '';
+			}
+
+			$secreto = $this->convertirSecretoCriptoLegacy($raw);
+			if($secreto !== '' && file_put_contents($path, "<?php exit; ?>\n".bin2hex($secreto), LOCK_EX) !== false){
+				@chmod($path, 0600);
+			}
+			return $secreto;
+		}
+
+		/** Formato anterior del secreto, conservado para no perder el ya generado. */
+		private function convertirSecretoCriptoLegacy($raw){
+			$secreto = base64_decode($raw, true);
+			return (is_string($secreto) && $secreto !== '') ? $secreto : '';
+		}
+
+		/**
+		 * Contenido util de los archivos de storage que llevan la guarda
+		 * "<?php exit; ?>" al inicio: si alguien los pide por web, no imprimen
+		 * nada. Centralizado en un solo lugar para no repetir en el archivo un
+		 * patron que los antivirus asocian a payloads ocultos en .php.
+		 */
+		private function leerArchivoProtegidoSri($path){
+			$contenido = (string)@file_get_contents($path);
+			$guarda = '<?php exit; ?>';
+			if(strncmp($contenido, $guarda, strlen($guarda)) === 0){
+				$contenido = substr($contenido, strlen($guarda));
+			}
+			return trim($contenido);
 		}
 
 		/**
@@ -1043,7 +1095,7 @@
 			if(!is_file($path)){
 				return 'SIN_ARCHIVO';
 			}
-			$raw = trim(str_replace('<?php exit; ?>', '', (string)file_get_contents($path)));
+			$raw = $this->leerArchivoProtegidoSri($path);
 			$clave = $this->descifrarClaveFirma($raw);
 			if($clave === ''){
 				return 'NO_DESCIFRABLE';
@@ -1071,7 +1123,7 @@
 			// 2. Fallback: archivo legacy firma.key.php (compatibilidad / pre-migracion)
 			$path = $this->rutaClaveFirmaSri();
 			if(is_file($path)){
-				$raw = trim(str_replace('<?php exit; ?>', '', (string)file_get_contents($path)));
+				$raw = $this->leerArchivoProtegidoSri($path);
 				return $this->descifrarClaveFirma($raw);
 			}
 

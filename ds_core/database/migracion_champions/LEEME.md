@@ -14,7 +14,7 @@ MYSQL=/ruta/a/mysql MYSQL_OPTS="-u USUARIO -pCLAVE" \
   ds_core/database/migracion_champions/aplicar_migracion.sh BASE
 ```
 
-Aplica los 88 archivos en el orden correcto y se detiene en el primer error.
+Aplica los 93 archivos en el orden correcto y se detiene en el primer error.
 Antes de empezar comprueba que `BASE` sea una copia de SoccerEasy **sin migrar**:
 si ya tiene `facturas_electronicas`, no aplica nada, porque varias migraciones no
 se pueden repetir.
@@ -151,6 +151,13 @@ en desarrollo y llevar el resultado a producción con un volcado (ver más abajo
     «Pensiones Inactivos» (`cobranzaPensionInactivos`) en Gestión de
     cobranza, debajo de «Pensiones»; cada rol recibe sobre ella los
     permisos que ya tiene sobre «Pensiones». Repetible.
+31. `090_insights_umbral_becas.sql` (de `ds_core/database/`, común): corrige
+    el texto de ayuda del aviso «Becas del 100 %» en Insights › Configuración.
+    No toca su valor ni si está activo. Repetible.
+32. `091_check_modulo.sql` (de `ds_core/database/`, común): alta de DigiCheck
+    (`ds_check/`): sus vistas «Escanear» y «Carnets» en el menú, el módulo
+    `check` para los roles que ya toman asistencia o ven el listado de
+    alumnos en Fútbol, y esos mismos permisos. Repetible.
 
 ```bash
 mysql -u USUARIO -p --default-character-set=utf8mb4 BASE < ARCHIVO.sql
@@ -223,6 +230,11 @@ archivos (incluida la 086): 33 segundos, la misma estructura que
 `digitech_migra_champions_cf` (108 tablas y vistas, 1175 columnas, 412
 índices, 93 claves ajenas, 100 menús); y la comprobación inicial detiene la
 importación sobre una base vacía y sobre una ya migrada sin tocarlas.
+Repetido el 2026-11-22 con los 93 archivos (hasta la 091, DigiCheck) sobre
+`digitech_migra_champions_cf` recién restaurada: 49 segundos, sin errores;
+108 tablas y vistas, 1179 columnas, 412 índices, 93 claves ajenas, 105 menús,
+todas InnoDB, y los datos de origen íntegros (943 alumnos, 820
+representantes, 10 835 pagos por 263 538,95 con saldo 8 990,80).
 
 ## Comprobación
 
@@ -232,7 +244,7 @@ Con la base apuntada en `secrets.php`:
 php ds_core/database/estado_migraciones.php
 ```
 
-Resultado esperado: 37 aplicadas, 0 pendientes, 28 no determinables.
+Resultado esperado: 38 aplicadas, 0 pendientes, 32 no determinables.
 
 El ensayo del 2026-10-21 se comparó además contra `digitech_champions_cf`:
 101 tablas y vistas, 1069 columnas, 380 índices, 86 claves ajenas, 243

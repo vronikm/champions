@@ -41,8 +41,8 @@ $insArena = new arenaController();
 $tituloVista = 'Dashboard';
 $vistaActual = 'panel';
 
-/* Enlaces a Reservas con el filtro de lo que se está contando: sin él la
-   lista abre en el mes en curso y no se ve lo que el aviso señala. */
+/* Enlaces a Reservas con el filtro de lo que se está contando. Lo de hoy va
+   a la vista por día (?dia=); varios días, con desde/hasta (2026-11-24). */
 $reservas = static fn (array $f) => APP_URL . 'reservaList/?' . http_build_query($f);
 $hoyIso   = date('Y-m-d');
 
@@ -94,7 +94,7 @@ if ($atencion['sinConfirmar'] > 0) {
                  'icono' => 'fa-clock',
                  'texto' => 'reservas de hoy sin confirmar',
                  'accion' => 'Confirmar',
-                 'url' => $reservas(['estado' => 'P', 'desde' => $hoyIso, 'hasta' => $hoyIso])];
+                 'url' => $reservas(['estado' => 'P', 'dia' => $hoyIso])];
 }
 if ($atencion['sinHorario'] > 0) {
     $avisos[] = ['n' => $atencion['sinHorario'], 'color' => 'info',
@@ -201,7 +201,7 @@ $metricas = [
      'detalle' => $atencion['sinConfirmar'] > 0
                   ? $atencion['sinConfirmar'] . ' sin confirmar' : 'todas confirmadas',
      'clase' => $atencion['sinConfirmar'] > 0 ? 'text-bg-warning' : 'text-bg-success',
-     'icono' => 'fa-calendar-check', 'url' => $reservas(['desde' => $hoyIso, 'hasta' => $hoyIso]), 'pie' => 'Ver reservas'],
+     'icono' => 'fa-calendar-check', 'url' => $reservas(['dia' => $hoyIso]), 'pie' => 'Ver reservas'],
 
     ['valor' => $pulso['semana'], 'etiqueta' => 'Próximos 7 días',
      'detalle' => 'reservas por venir',
@@ -279,7 +279,7 @@ if ($verDinero) {
         <div class="card h-100">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h3 class="card-title mb-0">Agenda de hoy</h3>
-                <a href="<?php echo $h($reservas(['desde' => $hoyIso, 'hasta' => $hoyIso])); ?>" class="btn btn-sm btn-outline-secondary">
+                <a href="<?php echo $h($reservas(['dia' => $hoyIso])); ?>" class="btn btn-sm btn-outline-secondary">
                     Reservas
                 </a>
             </div>

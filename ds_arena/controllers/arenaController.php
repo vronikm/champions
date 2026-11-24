@@ -1948,7 +1948,7 @@ class arenaController
      * a entero. La alternativa —concatenar lo que llegue— es justo lo que
      * no se hace.
      */
-    public function reservas(array $filtros = [], int $pagina = 1, int $porPagina = self::POR_PAGINA): array
+    public function reservas(array $filtros = [], int $pagina = 1, int $porPagina = self::POR_PAGINA, bool $diasAsc = false): array
     {
         $porPagina = max(1, min(200, $porPagina));
         $pagina    = max(1, $pagina);
@@ -1984,10 +1984,50 @@ class arenaController
                   LEFT JOIN general_sede s ON s.sede_id      = r.reserva_sedeid
                   LEFT JOIN dsa_reserva_fija fj ON fj.fija_id = r.reserva_fijaid
                  WHERE 1 = 1" . $where
-             . " ORDER BY r.reserva_fecha DESC, r.reserva_horainicio DESC, r.reserva_id DESC"
+             /* Por días (2026-11-24): dentro de cada día, por hora, como se
+                lee una agenda. Los días, del más reciente al más antiguo, o
+                al revés cuando se mira lo que viene ($diasAsc). */
+             . " ORDER BY r.reserva_fecha " . ($diasAsc ? 'ASC' : 'DESC')
+             . ", r.reserva_horainicio ASC, r.reserva_id ASC"
              . " LIMIT " . (int)$porPagina . " OFFSET " . (int)$desde;
 
         return $this->filas($sql, $params);
+    }
+
+    /**
+     * Las cifras de cada DÍA del filtro (2026-11-24): la lista de reservas
+     * se lee por días y cada día lleva sus cuentas.
+     *
+     * Mismo filtro que la lista (filtroReservas) y el mismo criterio que
+     * totalesReservas: las canceladas se cuentan aparte y no suman dinero
+     * ni horas. Devuelve [fecha => cifras]; un día sin reservas no aparece.
+     */
+    public function resumenPorDia(array $filtros): array
+    {
+        [$where, $params] = $this->filtroReservas($filtros);
+
+        $dias = [];
+        foreach ($this->filas(
+            "SELECT r.reserva_fecha AS dia,
+                    SUM(r.reserva_estado <> 'X') AS reservas,
+                    SUM(r.reserva_estado =  'X') AS canceladas,
+                    COALESCE(SUM(CASE WHEN r.reserva_estado <> 'X' THEN r.reserva_horas END), 0)   AS horas,
+                    COALESCE(SUM(CASE WHEN r.reserva_estado <> 'X' THEN r.reserva_total END), 0)   AS total,
+                    COALESCE(SUM(CASE WHEN r.reserva_estado <> 'X' THEN r.reserva_abonado END), 0) AS abonado,
+                    COALESCE(SUM(CASE WHEN r.reserva_estado <> 'X' THEN r.reserva_saldo END), 0)   AS saldo
+               FROM dsa_reserva r
+              WHERE 1 = 1" . $where . "
+              GROUP BY r.reserva_fecha", $params) as $f) {
+            $dias[(string)$f['dia']] = [
+                'reservas'   => (int)$f['reservas'],
+                'canceladas' => (int)$f['canceladas'],
+                'horas'      => (float)$f['horas'],
+                'total'      => (float)$f['total'],
+                'abonado'    => (float)$f['abonado'],
+                'saldo'      => (float)$f['saldo'],
+            ];
+        }
+        return $dias;
     }
 
     /** Cuántas reservas casan con el filtro, sin traerlas. */

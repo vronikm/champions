@@ -33,6 +33,14 @@
 -- SE PUEDE REPETIR
 --
 -- La tabla se crea sólo si falta, y sólo si existe dsa_reserva.
+--
+--
+-- SI dsa_reserva NO ES InnoDB
+--
+-- Hay bases en las que las tablas de Arena siguen en MyISAM (2026-11-23:
+-- la copia local de ADF Pedro Larrea). MyISAM no admite claves ajenas y
+-- la clave hacia dsa_reserva haría fallar toda la migración (error 1824).
+-- En ese caso la tabla se crea igual, sin esa clave.
 -- =====================================================================
 
 SET NAMES utf8mb4;
@@ -41,8 +49,12 @@ SET @falta := (SELECT COUNT(*) = 1 FROM information_schema.TABLES
                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dsa_reserva')
           AND (SELECT COUNT(*) = 0 FROM information_schema.TABLES
                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dsa_devolucion');
+SET @innodb := (SELECT COUNT(*) = 1 FROM information_schema.TABLES
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dsa_reserva' AND ENGINE = 'InnoDB');
+SET @clave := IF(@innodb,
+    'CONSTRAINT fk_devolucion_reserva FOREIGN KEY (devolucion_reservaid) REFERENCES dsa_reserva (reserva_id),', '');
 SET @sql := IF(@falta,
-    "CREATE TABLE dsa_devolucion (
+    CONCAT("CREATE TABLE dsa_devolucion (
         devolucion_id           INT           NOT NULL AUTO_INCREMENT,
         devolucion_reservaid    INT           NOT NULL COMMENT 'dsa_reserva.reserva_id',
         devolucion_valor        DECIMAL(10,2) NOT NULL,
@@ -57,11 +69,11 @@ SET @sql := IF(@falta,
         PRIMARY KEY (devolucion_id),
         KEY ix_devolucion_reserva (devolucion_reservaid),
         KEY ix_devolucion_fecha (devolucion_fecha),
-        CONSTRAINT fk_devolucion_reserva FOREIGN KEY (devolucion_reservaid) REFERENCES dsa_reserva (reserva_id),
+        ", @clave, "
         CONSTRAINT ck_devolucion_valor  CHECK (devolucion_valor > 0),
         CONSTRAINT ck_devolucion_medio  CHECK (devolucion_medio IN ('EFE','TRA','MON')),
         CONSTRAINT ck_devolucion_origen CHECK (devolucion_origen IN ('C','E'))
      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-       COMMENT='Arena: devoluciones de lo abonado en una reserva (092)'",
+       COMMENT='Arena: devoluciones de lo abonado en una reserva (092)'"),
     'SELECT ''dsa_devolucion ya existe o no hay dsa_reserva'' AS info');
 PREPARE st FROM @sql; EXECUTE st; DEALLOCATE PREPARE st;

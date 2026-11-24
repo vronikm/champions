@@ -939,7 +939,6 @@ document.addEventListener('click', function (e) {
 .ar-devolver__medios { display: flex; flex-wrap: wrap; gap: .5rem; }
 .ar-devolver__medios .btn { --bs-btn-padding-y: .35rem; --bs-btn-font-size: .9rem; background: var(--bs-body-bg); }
 .ar-devolver__medios .btn-check:checked + .btn { background: var(--ds-acento, #0e7490); border-color: var(--ds-acento, #0e7490); color: #fff; }
-@media (max-width: 575.98px) { .ar-devolver__medios .btn { flex: 1 1 0; } }
 .ar-devolver__error { margin-top: .4rem; font-size: .85rem; color: var(--bs-danger-text-emphasis); }
 .ar-tabla__cancelada > td:not(.ar-tabla__acciones):not(.ar-tabla__estado) { color: var(--bs-secondary-color); }
 .ar-solo-movil { display: none; }
@@ -955,6 +954,11 @@ document.addEventListener('click', function (e) {
 /* Atajos de motivo: botones-ficha que se envuelven. El elegido, relleno. */
 .ar-motivos { display: flex; flex-wrap: wrap; gap: .4rem; }
 .ar-motivos__op { --bs-btn-padding-y: .3rem; --bs-btn-padding-x: .7rem; --bs-btn-font-size: .875rem; border-radius: 2rem; }
+/* Sin elegir, con el color del texto y no el gris de btn-outline-secondary: en oscuro parecían desactivados. */
+.ar-motivos__op, .ar-devolver__medios .btn {
+    --bs-btn-color: var(--bs-body-color); --bs-btn-border-color: var(--bs-border-color);
+    --bs-btn-hover-color: var(--bs-body-color); --bs-btn-hover-bg: var(--bs-tertiary-bg); --bs-btn-hover-border-color: var(--bs-secondary-color);
+}
 .ar-motivos .ar-motivos__op[aria-pressed="true"] {
     --bs-btn-color: #fff; --bs-btn-bg: var(--bs-danger); --bs-btn-border-color: var(--bs-danger);
     --bs-btn-hover-color: #fff; --bs-btn-hover-bg: var(--bs-danger); --bs-btn-hover-border-color: var(--bs-danger);
@@ -962,6 +966,22 @@ document.addEventListener('click', function (e) {
 }
 .ar-motivo__texto { resize: vertical; }
 .ar-cancelar fieldset { border: 0; padding: 0; margin-left: 0; margin-right: 0; min-width: 0; }
+/*
+| EL PIE SIEMPRE A LA VISTA
+| El <form> va entre .modal-content y .modal-body, y eso rompe
+| modal-dialog-scrollable: el cuerpo no se encogía y, con la devolución
+| (2026-11-23), los botones quedaban fuera de la pantalla. El formulario
+| pasa a ser la columna flexible: cabecera y pie fijos, el cuerpo se
+| desplaza.
+*/
+.ar-hoja .modal-content > form.ar-cancelar {
+    display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; max-height: 100%;
+}
+.ar-hoja .modal-content > form.ar-cancelar > .modal-header,
+.ar-hoja .modal-content > form.ar-cancelar > .modal-footer { flex-shrink: 0; }
+.ar-hoja .modal-content > form.ar-cancelar > .modal-body { overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
+/* Cuando el cuerpo se desplaza, una sombra sobre el pie dice que hay más arriba. */
+.ar-hoja .modal-footer { box-shadow: 0 -6px 12px -10px rgba(0, 0, 0, .35); position: relative; z-index: 1; }
 .ar-cancelar legend { float: none; width: auto; padding: 0; font-weight: 600; }
 
 /* ---- Teléfono y tableta: fichas en lugar de tabla (< 992 px) ---- */
@@ -1045,13 +1065,34 @@ document.addEventListener('click', function (e) {
     .ar-hoja .modal-dialog { margin: 0; min-height: 100%; align-items: flex-end; max-width: none; }
     .ar-hoja.fade .modal-dialog { transform: translateY(100%); }
     .ar-hoja.show .modal-dialog { transform: none; }
-    .ar-hoja .modal-content { border-radius: 1rem 1rem 0 0; border: 0; max-height: 92vh; }
+    /* dvh: la altura que de verdad queda con la barra del navegador. */
+    .ar-hoja .modal-content { border-radius: 1rem 1rem 0 0; border: 0; max-height: 92vh; max-height: 92dvh; }
     .ar-hoja .modal-dialog-scrollable { height: auto; max-height: none; }
-    .ar-hoja .modal-footer { flex-wrap: nowrap; gap: .5rem; padding-bottom: max(.75rem, env(safe-area-inset-bottom)); }
-    .ar-hoja .modal-footer > .btn { flex: 1 1 0; min-height: 2.9rem; margin: 0; }
-    .ar-hoja .modal-footer > .btn-danger { flex-grow: 1.6; }
-    .ar-motivos__op { --bs-btn-padding-y: .5rem; --bs-btn-font-size: .9rem; }
+    /* El asa de la hoja: se reconoce que es un panel que se cierra. */
+    .ar-hoja .modal-header { position: relative; padding: 1rem 1rem .6rem; }
+    .ar-hoja .modal-header::before {
+        content: ""; position: absolute; top: .4rem; left: 50%; width: 2.5rem; height: .25rem;
+        margin-left: -1.25rem; border-radius: 1rem; background: var(--bs-border-color);
+    }
+    .ar-hoja .modal-title { font-size: 1.1rem; }
+    .ar-hoja .modal-body { padding: .75rem 1rem; }
+    .ar-hoja .ar-cancelar__resumen { margin-bottom: .75rem; padding: .5rem .65rem; font-size: .85rem; }
+    .ar-hoja .modal-footer { flex-wrap: nowrap; gap: .5rem; padding: .6rem 1rem max(.75rem, env(safe-area-inset-bottom)); }
+    .ar-hoja .modal-footer > .btn { flex: 1 1 0; min-height: 3rem; margin: 0; }
+    .ar-hoja .modal-footer > .btn-danger { flex-grow: 2.2; font-weight: 600; }
+    /* Motivos: dos columnas parejas en lugar de tres filas desiguales. */
+    .ar-motivos { display: grid; grid-template-columns: 1fr 1fr; gap: .4rem; }
+    .ar-motivos__op { --bs-btn-padding-y: .55rem; --bs-btn-padding-x: .5rem; --bs-btn-font-size: .85rem; border-radius: .6rem; line-height: 1.2; }
     .ar-motivo__texto { font-size: 1rem; }
+    /* Medios de devolución: tres botones iguales, icono arriba y texto abajo. */
+    .ar-devolver { padding: .65rem !important; }
+    .ar-devolver__medios { display: grid; grid-template-columns: repeat(3, 1fr); gap: .4rem; }
+    .ar-devolver__medios .btn {
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .2rem;
+        min-height: 3.6rem; --bs-btn-font-size: .85rem; --bs-btn-padding-x: .25rem;
+    }
+    .ar-devolver__medios .btn i { margin: 0 !important; font-size: 1.15rem; }
+    .ar-devolver input[type="text"] { font-size: 1rem; min-height: 2.75rem; }   /* 16 px: iOS no hace zoom al escribir */
 }
 </style>
 

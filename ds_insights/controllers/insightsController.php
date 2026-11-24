@@ -2693,14 +2693,17 @@ class insightsController
         return $this->periodo($d->format('Y-m-01'), $d->format('Y-m-t'));
     }
 
-    /** Sedes que el usuario puede elegir en el filtro: las suyas, activas o con cobros. */
+    /**
+     * Sedes que el usuario puede elegir en el filtro: las suyas y activas.
+     * Una sede inactiva no se ofrece (2026-11-24); lo cobrado en ella sigue
+     * saliendo con «Todas».
+     */
     public function sedesIngresos(): array
     {
         return $this->filas(
             "SELECT s.sede_id id, s.sede_nombre nombre
                FROM general_sede s
-              WHERE (s.sede_estado = 'A'
-                     OR EXISTS (SELECT 1 FROM alumno_pago p WHERE p.pago_sedeid = s.sede_id))"
+              WHERE s.sede_estado = 'A'"
              . $this->sede('s.sede_id') . "
               ORDER BY s.sede_id");
     }

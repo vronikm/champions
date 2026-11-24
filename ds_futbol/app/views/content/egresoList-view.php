@@ -24,8 +24,10 @@
 			$egreso_monto		= $datosEgreso['egreso_monto'];
 			$egreso_formaentrega= $datosEgreso['egreso_formaentrega'];
 			$egreso_concepto	= $datosEgreso['egreso_concepto'];
+			$egreso_rubroid		= (string)($datosEgreso['egreso_rubroid'] ?? '');
+			$egreso_lugarid		= (int)($datosEgreso['egreso_lugarid'] ?? 0);
 			$egreso_descripcion = $datosEgreso['egreso_descripcion'];
-			
+
 		}
 	}else{
 		$modulo_egreso 		= 'registrar';
@@ -35,8 +37,10 @@
 		$egreso_monto		= '';
 		$egreso_formaentrega= '';
 		$egreso_concepto	= '';
+		$egreso_rubroid		= '';
+		$egreso_lugarid		= 0;
 		$egreso_descripcion = '';
-			
+
 	}
 ?>
 
@@ -166,9 +170,27 @@
 														<label for="egreso_concepto">Concepto</label>
 														<select class="form-select" id="egreso_concepto" name="egreso_concepto" onchange="ocultarDiv()" >																									
 															<?php echo $insEgreso->listarTipoEgreso($egreso_concepto); ?>
-														</select>	
+														</select>
 													</div>
-												</div>											
+												</div>
+												<?php /* Bloque de Insights › Ingresos del mes (migración 094). */ ?>
+												<div class="col-md-3">
+													<div class="mb-3">
+														<label for="egreso_rubroid">Bloque del reporte</label>
+														<select class="form-select" id="egreso_rubroid" name="egreso_rubroid" aria-describedby="egresoBloqueAyuda">
+															<?php echo $insEgreso->listarBloqueEgreso($egreso_rubroid); ?>
+														</select>
+														<div id="egresoBloqueAyuda" class="form-text">Dónde se resta en «Ingresos del mes»</div>
+													</div>
+												</div>
+												<div class="col-md-3" id="egresoLugarCampo"<?php echo $egreso_rubroid === 'RPE' ? '' : ' hidden'; ?>>
+													<div class="mb-3">
+														<label for="egreso_lugarid">Lugar de entrenamiento</label>
+														<select class="form-select" id="egreso_lugarid" name="egreso_lugarid">
+															<?php echo $insEgreso->listarLugarEgreso($egreso_lugarid); ?>
+														</select>
+													</div>
+												</div>
 												<div class="col-md-6">
 													<div class="mb-3">
 														<label for="egreso_descripcion">Detalle</label>
@@ -191,6 +213,7 @@
 											<tr>
 												<th>Sede</th>
 												<th>Empresa</th>
+												<th>Bloque del reporte</th>
 												<th>Monto</th>
 												<th>Fecha de pago</th>
 												<th>Opciones</th>
@@ -255,7 +278,31 @@
                 placeholder: "0"
             }).mask("#egreso_monto");
         });
-    </script>    
+
+		/* Lugar de entrenamiento: sólo con «Pensiones», y sólo los de la
+		   sede elegida. Si el lugar elegido no es de la nueva sede, vuelve
+		   a «Toda la sede». */
+		(function () {
+			var bloque = document.getElementById('egreso_rubroid');
+			var sede   = document.getElementById('egreso_sedeid');
+			var lugar  = document.getElementById('egreso_lugarid');
+			var campo  = document.getElementById('egresoLugarCampo');
+			if (!bloque || !sede || !lugar || !campo) { return; }
+			function ajustar() {
+				campo.hidden = bloque.value !== 'RPE';
+				[].forEach.call(lugar.options, function (o) {
+					var ajeno = o.value !== '' && o.getAttribute('data-sede') !== sede.value;
+					o.hidden = ajeno;
+					o.disabled = ajeno;
+				});
+				var elegido = lugar.options[lugar.selectedIndex];
+				if (campo.hidden || (elegido && elegido.disabled)) { lugar.value = ''; }
+			}
+			bloque.addEventListener('change', ajustar);
+			sede.addEventListener('change', ajustar);
+			ajustar();
+		})();
+    </script>
 	<script src="<?php echo ds_recurso('ds_core/assets/js/foto.js'); ?>"></script>
   </body>
 </html>

@@ -33,6 +33,11 @@ return [
        perdona la cuota. */
     'becas',
 
+    /* Lo cobrado a los alumnos en un mes, cobro por cobro y por forma de
+       pago. Lleva nombres y cédulas: permiso propio, como Transacciones.
+       Se entra desde el Centro de reportes (menú oculto, migración 093). */
+    'ingresosMes',
+
     /* Catálogo de reportes y el detalle al que llega el drill-down. */
     'reporteList',
     'transacciones',

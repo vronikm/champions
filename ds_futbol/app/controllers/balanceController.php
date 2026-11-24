@@ -530,14 +530,81 @@
 			return json_encode($alerta);
 		}
 
-		public function BuscarEgreso($egresoid){		
+		public function BuscarEgreso($egresoid){
 			$consulta_datos=("SELECT egreso_sedeid, egreso_fechapago, egreso_empresa, egreso_monto, egreso_formaentrega,
-                                     egreso_concepto, egreso_descripcion, egreso_imagenpago 
+                                     egreso_concepto, egreso_rubroid, egreso_lugarid, egreso_descripcion, egreso_imagenpago
 							 FROM balance_egreso
-							 WHERE egreso_id = :egreso");	
+							 WHERE egreso_id = :egreso");
 
-			$datos = $this->ejecutarConsulta($consulta_datos, [':egreso' => (int)$egresoid]);		
+			$datos = $this->ejecutarConsulta($consulta_datos, [':egreso' => (int)$egresoid]);
 			return $datos;
+		}
+
+		/*
+		| BLOQUE DEL REPORTE (migración 094)
+		|
+		| A qué bloque de Insights › Ingresos del mes pertenece el egreso: el
+		| rubro de los pagos de alumnos que lo origina (la confección de
+		| polines va con «Kit entrenamiento», el pago de los profesores con las
+		| pensiones de su sede). Vacío = «Egresos generales».
+		|
+		| Las pensiones pueden afinarse por lugar de entrenamiento cuando la
+		| sede tiene más de uno (el pago de la cancha de un lugar va con las
+		| pensiones de ese lugar).
+		*/
+		private const RUBROS_BLOQUE = ['RPC', 'RIN', 'RKE', 'RNU', 'ROT', 'RPE'];
+
+		public function listarBloqueEgreso($rubro){
+			$option = '<option value="">Sin asignar (egresos generales)</option>';
+			$nombres = [];
+			foreach ($this->ejecutarConsulta("SELECT C.catalogo_valor, C.catalogo_descripcion
+					FROM general_tabla_catalogo C
+					INNER JOIN general_tabla T ON T.tabla_id = C.catalogo_tablaid
+					WHERE T.tabla_nombre = 'rubros'")->fetchAll() as $f) {
+				$nombres[$f['catalogo_valor']] = $f['catalogo_descripcion'];
+			}
+			foreach (self::RUBROS_BLOQUE as $r) {
+				$texto = $r === 'RPE' ? 'Pensiones' : ($nombres[$r] ?? $r);
+				$option .= '<option value="' . $r . '"' . ((string)$rubro === $r ? ' selected' : '') . '>'
+				         . htmlspecialchars($texto, ENT_QUOTES, 'UTF-8') . '</option>';
+			}
+			return $option;
+		}
+
+		/* Lugares de entrenamiento con su sede: la vista muestra sólo los de
+		   la sede elegida. Los activos y, si el egreso ya tiene uno, ése. */
+		public function listarLugarEgreso($lugarid){
+			$option = '<option value="" data-sede="">Toda la sede</option>';
+			$filas = $this->ejecutarConsulta("SELECT lugar_id, lugar_sedeid, lugar_nombre
+					FROM asistencia_lugar
+					WHERE lugar_estado = 'A' OR lugar_id = :lugar
+					ORDER BY lugar_nombre", [':lugar' => (int)$lugarid])->fetchAll();
+			foreach ($filas as $f) {
+				$option .= '<option value="' . (int)$f['lugar_id'] . '" data-sede="' . (int)$f['lugar_sedeid'] . '"'
+				         . ((int)$lugarid === (int)$f['lugar_id'] ? ' selected' : '') . '>'
+				         . htmlspecialchars($f['lugar_nombre'], ENT_QUOTES, 'UTF-8') . '</option>';
+			}
+			return $option;
+		}
+
+		/**
+		 * Bloque y lugar validados: [rubro|null, lugar|null, error|null].
+		 * El lugar sólo vale con pensiones y si es de la sede del egreso.
+		 */
+		private function bloqueEgresoDePost($sedeid): array{
+			$rubro = strtoupper(trim((string)($_POST['egreso_rubroid'] ?? '')));
+			$lugar = (int)($_POST['egreso_lugarid'] ?? 0);
+			if ($rubro === '') { return [null, null, null]; }
+			if (!in_array($rubro, self::RUBROS_BLOQUE, true)) {
+				return [null, null, 'El bloque del reporte no es válido'];
+			}
+			if ($rubro !== 'RPE' || $lugar <= 0) { return [$rubro, null, null]; }
+			$deLaSede = $this->ejecutarConsulta("SELECT COUNT(*) FROM asistencia_lugar WHERE lugar_id = :l AND lugar_sedeid = :s",
+				[':l' => $lugar, ':s' => (int)$sedeid])->fetchColumn();
+			if ((int)$deLaSede !== 1) {
+				return [null, null, 'El lugar de entrenamiento no pertenece a la sede del egreso'];
+			}
+			return [$rubro, $lugar, null];
 		}
 
 		public function listarTipoEgreso($egreso_concepto){
@@ -564,19 +631,30 @@
 
 		public function listarEgresos(){
 			$tabla="";
-			$consulta_datos="SELECT egreso_id, sede_nombre, egreso_empresa, egreso_monto, egreso_fechapago
-							 FROM balance_egreso, general_sede
-							 WHERE egreso_sedeid = sede_id
-							 	AND egreso_estado = 'A'
-							 ORDER BY egreso_fechapago DESC";	
-					
+			$consulta_datos="SELECT E.egreso_id, S.sede_nombre, E.egreso_empresa, E.egreso_monto, E.egreso_fechapago,
+									E.egreso_rubroid, R.catalogo_descripcion AS rubro, L.lugar_nombre
+							 FROM balance_egreso E
+							 INNER JOIN general_sede S ON S.sede_id = E.egreso_sedeid
+							 LEFT JOIN general_tabla_catalogo R ON R.catalogo_valor = E.egreso_rubroid
+							 LEFT JOIN asistencia_lugar L ON L.lugar_id = E.egreso_lugarid
+							 WHERE E.egreso_estado = 'A'
+							 ORDER BY E.egreso_fechapago DESC";
+
 			$datos = $this->ejecutarConsulta($consulta_datos);
 			$datos = $datos->fetchAll();
 			foreach($datos as $rows){
+				/* El bloque del reporte, o el aviso de que falta. */
+				if ($rows['egreso_rubroid'] === null || $rows['egreso_rubroid'] === '') {
+					$bloque = '<span class="badge text-bg-warning" title="Sale en «Egresos generales» del reporte Ingresos del mes">Sin bloque</span>';
+				} else {
+					$bloque = htmlspecialchars($rows['egreso_rubroid'] === 'RPE' ? 'Pensiones' : (string)$rows['rubro'], ENT_QUOTES, 'UTF-8')
+					        . ($rows['lugar_nombre'] ? '<br><small class="text-body-secondary">' . htmlspecialchars($rows['lugar_nombre'], ENT_QUOTES, 'UTF-8') . '</small>' : '');
+				}
 				$tabla.='
 					<tr>
-						<td>'.$rows['sede_nombre'].'</td>						
+						<td>'.$rows['sede_nombre'].'</td>
 						<td>'.$rows['egreso_empresa'].'</td>
+						<td>'.$bloque.'</td>
 						<td>'.$rows['egreso_monto'].'</td>
 						<td>'.$rows['egreso_fechapago'].'</td>
 						<td>
@@ -616,8 +694,14 @@
 					"texto"=>"No ha completado todos los campos obligatorios",
 					"icono"=>"error"
 				];
-				return json_encode($alerta);       
-		    }		
+				return json_encode($alerta);
+		    }
+
+			# Bloque del reporte (migración 094) #
+			[$egreso_rubroid, $egreso_lugarid, $errorBloque] = $this->bloqueEgresoDePost($egreso_sedeid);
+			if ($errorBloque !== null) {
+				return json_encode(["tipo"=>"simple", "titulo"=>"Error", "texto"=>$errorBloque, "icono"=>"error"]);
+			}
 
             # Directorio de imagenes #
 			$img_dir="../views/imagenes/fotos/egresos/";
@@ -727,6 +811,16 @@
 					"campo_valor"=>$egreso_concepto
 				],				
 				[
+					"campo_nombre"=>"egreso_rubroid",
+					"campo_marcador"=>":Rubroid",
+					"campo_valor"=>$egreso_rubroid
+				],
+				[
+					"campo_nombre"=>"egreso_lugarid",
+					"campo_marcador"=>":Lugarid",
+					"campo_valor"=>$egreso_lugarid
+				],
+				[
 					"campo_nombre"=>"egreso_descripcion",
 					"campo_marcador"=>":Descripcion",
 					"campo_valor"=>$egreso_descripcion
@@ -806,8 +900,14 @@
 					"texto"=>"No ha completado todos los campos obligatorios",
 					"icono"=>"error"
 				];
-				return json_encode($alerta);       
-		    }		
+				return json_encode($alerta);
+		    }
+
+			# Bloque del reporte (migración 094) #
+			[$egreso_rubroid, $egreso_lugarid, $errorBloque] = $this->bloqueEgresoDePost($egreso_sedeid);
+			if ($errorBloque !== null) {
+				return json_encode(["tipo"=>"simple", "titulo"=>"Error", "texto"=>$errorBloque, "icono"=>"error"]);
+			}
 
 			$egreso_datos_reg=[
 				[
@@ -839,13 +939,23 @@
 					"campo_nombre"=>"egreso_concepto",
 					"campo_marcador"=>":Concepto",
 					"campo_valor"=>$egreso_concepto
-				],				
+				],
+				[
+					"campo_nombre"=>"egreso_rubroid",
+					"campo_marcador"=>":Rubroid",
+					"campo_valor"=>$egreso_rubroid
+				],
+				[
+					"campo_nombre"=>"egreso_lugarid",
+					"campo_marcador"=>":Lugarid",
+					"campo_valor"=>$egreso_lugarid
+				],
 				[
 					"campo_nombre"=>"egreso_descripcion",
 					"campo_marcador"=>":Descripcion",
 					"campo_valor"=>$egreso_descripcion
 				]
-			];		
+			];
 
 			# Directorio de imagenes #
 			$img_dir="../views/imagenes/fotos/egresos/";

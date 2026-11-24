@@ -102,6 +102,7 @@ function insights_ve(string $modulo): bool
 const INSIGHTS_VISTA_MODULO = [
     'basketball' => 'basketball',
     'becas'      => 'basketball',
+    'ingresosMes' => 'basketball',
     'arena'      => 'arena',
     'league'     => 'league',
 ];

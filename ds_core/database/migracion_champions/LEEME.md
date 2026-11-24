@@ -14,7 +14,7 @@ MYSQL=/ruta/a/mysql MYSQL_OPTS="-u USUARIO -pCLAVE" \
   ds_core/database/migracion_champions/aplicar_migracion.sh BASE
 ```
 
-Aplica los 94 archivos en el orden correcto y se detiene en el primer error.
+Aplica los 96 archivos en el orden correcto y se detiene en el primer error.
 Antes de empezar comprueba que `BASE` sea una copia de SoccerEasy **sin migrar**:
 si ya tiene `facturas_electronicas`, no aplica nada, porque varias migraciones no
 se pueden repetir.
@@ -163,6 +163,17 @@ en desarrollo y llevar el resultado a producción con un volcado (ver más abajo
     o al pasarla a un horario más barato (E): valor, medio (EFE efectivo,
     TRA transferencia con su comprobante, MON monedero del cliente, enlazado
     a su movimiento DVR), motivo, fecha y usuario. Repetible.
+34. `093_insights_ingresos_mes.sql` (de `ds_core/database/`, común): vista
+    «Ingresos del mes» (`ingresosMes`) de Insights, oculta en el menú (se
+    entra desde el Centro de reportes). La ven los roles que ven
+    «Transacciones» y la exportan los que exportan «Financiero». Repetible.
+35. `094_egreso_bloque_banco.sql` (de `ds_core/database/`, común): cada
+    egreso (`balance_egreso`) dice a qué bloque de «Ingresos del mes»
+    pertenece (`egreso_rubroid`: rubro de los pagos de alumnos, o
+    pensiones; vacío = egresos generales) y, en pensiones, su lugar de
+    entrenamiento (`egreso_lugarid`). Añade las formas de entrega EBL
+    Transferencia Banco de Loja y EBP Transferencia Banco Pichincha. No
+    asigna bloque a los egresos ya registrados. Repetible.
 
 ```bash
 mysql -u USUARIO -p --default-character-set=utf8mb4 BASE < ARCHIVO.sql

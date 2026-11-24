@@ -75,14 +75,18 @@ if (!function_exists('ds_botones_exportar')) {
      * @param string $reporte clave en el catálogo del controlador
      * @param string $vista   vista sobre la que se pide el permiso
      * @param array  $p       periodo, para que el archivo salga del mismo recorte
+     * @param array  $extra   otros filtros de la pantalla (p. ej. ['sede' => 2])
      */
-    function ds_botones_exportar(string $reporte, string $vista, array $p): string
+    function ds_botones_exportar(string $reporte, string $vista, array $p, array $extra = []): string
     {
         if (!puede_exportar($vista) || !insights_vista_visible($vista)) { return ''; }
 
         $qs = 'reporte=' . urlencode($reporte)
             . '&desde=' . urlencode($p['desde'])
             . '&hasta=' . urlencode($p['hasta']);
+        foreach ($extra as $k => $v) {
+            $qs .= '&' . urlencode((string) $k) . '=' . urlencode((string) $v);
+        }
 
         return '<span class="btn-group btn-group-sm" role="group" aria-label="Exportar">'
              . '<a href="' . APP_URL . 'exportar/?' . $qs . '&formato=csv"'

@@ -71,10 +71,13 @@ SELECT 'EBP', t.tabla_id, 'Transferencia Banco Pichincha', 'A'
  WHERE t.tabla_nombre = 'forma_entregaingreso'
    AND NOT EXISTS (SELECT 1 FROM general_tabla_catalogo WHERE catalogo_valor = 'EBP');
 
--- Comprobación
-SELECT COLUMN_NAME, COLUMN_TYPE FROM information_schema.COLUMNS
- WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'balance_egreso'
-   AND COLUMN_NAME IN ('egreso_rubroid', 'egreso_lugarid');
+-- Comprobación. La de information_schema va AL FINAL: phpMyAdmin, después de
+-- un SELECT sobre information_schema, toma esa base como la activa y la
+-- consulta siguiente falla con #1109 «Tabla desconocida … in
+-- information_schema» (pasó el 2026-11-24 al aplicarla desde phpMyAdmin).
 SELECT c.catalogo_valor, c.catalogo_descripcion
   FROM general_tabla_catalogo c JOIN general_tabla t ON t.tabla_id = c.catalogo_tablaid
  WHERE t.tabla_nombre = 'forma_entregaingreso' ORDER BY 1;
+SELECT COLUMN_NAME, COLUMN_TYPE FROM information_schema.COLUMNS
+ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'balance_egreso'
+   AND COLUMN_NAME IN ('egreso_rubroid', 'egreso_lugarid');

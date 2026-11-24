@@ -14,7 +14,7 @@ MYSQL=/ruta/a/mysql MYSQL_OPTS="-u USUARIO -pCLAVE" \
   ds_core/database/migracion_champions/aplicar_migracion.sh BASE
 ```
 
-Aplica los 93 archivos en el orden correcto y se detiene en el primer error.
+Aplica los 94 archivos en el orden correcto y se detiene en el primer error.
 Antes de empezar comprueba que `BASE` sea una copia de SoccerEasy **sin migrar**:
 si ya tiene `facturas_electronicas`, no aplica nada, porque varias migraciones no
 se pueden repetir.
@@ -158,6 +158,11 @@ en desarrollo y llevar el resultado a producción con un volcado (ver más abajo
     (`ds_check/`): sus vistas «Escanear» y «Carnets» en el menú, el módulo
     `check` para los roles que ya toman asistencia o ven el listado de
     alumnos en Fútbol, y esos mismos permisos. Repetible.
+33. `092_arena_devolucion.sql` (de `ds_core/database/`, común): tabla
+    `dsa_devolucion` con lo devuelto de una reserva al cancelarla (origen C)
+    o al pasarla a un horario más barato (E): valor, medio (EFE efectivo,
+    TRA transferencia con su comprobante, MON monedero del cliente, enlazado
+    a su movimiento DVR), motivo, fecha y usuario. Repetible.
 
 ```bash
 mysql -u USUARIO -p --default-character-set=utf8mb4 BASE < ARCHIVO.sql

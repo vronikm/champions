@@ -359,10 +359,17 @@ class insightsController
                   WHERE pago_estado = 'C' AND pago_fecha BETWEEN :d AND :h"
                 . $this->sede('pago_sedeid'),
                 [':d' => $d, ':h' => $h]),
+            /* Lo cobrado menos lo devuelto en el periodo (dsa_devolucion,
+               migración 092): una reserva cancelada y devuelta no es ingreso. */
             'arena' => !insights_ve('arena') ? 0.0 : (float) $this->escalar(
                 "SELECT IFNULL(SUM(pago_valor),0) FROM dsa_pago
                   WHERE pago_estado = 'A' AND pago_fecha BETWEEN :d AND :h"
                 . $this->sedeReserva('pago_reservaid'),
+                [':d' => $d, ':h' => $h])
+              - (float) $this->escalar(
+                "SELECT IFNULL(SUM(devolucion_valor),0) FROM dsa_devolucion
+                  WHERE devolucion_fecha BETWEEN :d AND :h"
+                . $this->sedeReserva('devolucion_reservaid'),
                 [':d' => $d, ':h' => $h]),
             'league' => !insights_ve('league') ? 0.0 : (float) $this->escalar(
                 "SELECT IFNULL(SUM(abono_valor),0) FROM dsl_abono
@@ -507,6 +514,11 @@ class insightsController
                     AND pago_fecha BETWEEN :d2 AND :h2"
                      . $this->sedeReserva("pago_reservaid") . " GROUP BY 1";
             $params += [':d2' => $desde, ':h2' => $hasta];
+            /* Lo devuelto resta en el mes en que se devolvió (092). */
+            $ramas[] = "SELECT DATE_FORMAT(devolucion_fecha,'%Y-%m') mes, 0 bk, -SUM(devolucion_valor) ar, 0 lg
+                   FROM dsa_devolucion WHERE devolucion_fecha BETWEEN :d4 AND :h4"
+                     . $this->sedeReserva("devolucion_reservaid") . " GROUP BY 1";
+            $params += [':d4' => $desde, ':h4' => $hasta];
         }
         if (insights_ve('league')) {
             $ramas[] = "SELECT DATE_FORMAT(abono_fecha,'%Y-%m') mes, 0 bk, 0 ar, SUM(abono_valor) lg
@@ -765,15 +777,23 @@ class insightsController
                             FROM alumno_pago
                            WHERE pago_estado = 'C' AND pago_fecha BETWEEN :d1 AND :h1
                            GROUP BY pago_sedeid) bk ON bk.sede = s.sede_id
-               LEFT JOIN (SELECT reserva_sedeid sede, SUM(p.pago_valor) v
-                            FROM dsa_pago p
-                            JOIN dsa_reserva r ON r.reserva_id = p.pago_reservaid
-                           WHERE p.pago_estado = 'A' AND p.pago_fecha BETWEEN :d2 AND :h2
-                           GROUP BY reserva_sedeid) ar ON ar.sede = s.sede_id
+               LEFT JOIN (SELECT sede, SUM(v) v FROM (
+                              SELECT r.reserva_sedeid sede, p.pago_valor v
+                                FROM dsa_pago p
+                                JOIN dsa_reserva r ON r.reserva_id = p.pago_reservaid
+                               WHERE p.pago_estado = 'A' AND p.pago_fecha BETWEEN :d2 AND :h2
+                              UNION ALL
+                              /* Lo devuelto en el periodo resta (migración 092). */
+                              SELECT r.reserva_sedeid, -d.devolucion_valor
+                                FROM dsa_devolucion d
+                                JOIN dsa_reserva r ON r.reserva_id = d.devolucion_reservaid
+                               WHERE d.devolucion_fecha BETWEEN :d3 AND :h3) x
+                           GROUP BY sede) ar ON ar.sede = s.sede_id
               WHERE 1 = 1"
              . $this->sede('s.sede_id') . "
               ORDER BY (IFNULL(bk.v,0) + IFNULL(ar.v,0)) DESC, s.sede_nombre",
-            [':d1' => $p['desde'], ':h1' => $p['hasta'], ':d2' => $p['desde'], ':h2' => $p['hasta']]);
+            [':d1' => $p['desde'], ':h1' => $p['hasta'], ':d2' => $p['desde'], ':h2' => $p['hasta'],
+             ':d3' => $p['desde'], ':h3' => $p['hasta']]);
 
         $r = [];
         foreach ($filas as $f) {
@@ -842,6 +862,22 @@ class insightsController
             [':d' => $p['desde'], ':h' => $p['hasta']]) as $f) {
             $r[] = ['modulo' => 'Arena', 'concepto' => $f['concepto'],
                     'n' => (int) $f['n'], 'valor' => (float) $f['v']];
+        }
+
+        /* Lo devuelto de reservas (migración 092), en negativo: así los
+           conceptos suman lo mismo que «Ingresos». */
+        if (insights_ve('arena')) {
+            $dv = $this->filas(
+                "SELECT COUNT(*) n, IFNULL(SUM(d.devolucion_valor), 0) v
+                   FROM dsa_devolucion d
+                   JOIN dsa_reserva r ON r.reserva_id = d.devolucion_reservaid
+                  WHERE d.devolucion_fecha BETWEEN :d AND :h"
+                 . $this->sede('r.reserva_sedeid'),
+                [':d' => $p['desde'], ':h' => $p['hasta']])[0] ?? ['n' => 0, 'v' => 0];
+            if ((int) $dv['n'] > 0) {
+                $r[] = ['modulo' => 'Arena', 'concepto' => 'Devoluciones de reservas',
+                        'n' => (int) $dv['n'], 'valor' => -(float) $dv['v']];
+            }
         }
 
         if (insights_ve('league'))
@@ -2436,6 +2472,20 @@ class insightsController
                           LEFT JOIN general_sede  s  ON s.sede_id = r.reserva_sedeid
                           LEFT JOIN dsa_cliente   cl ON cl.cliente_id = r.reserva_clienteid
                          WHERE p.pago_estado = 'A' AND p.pago_fecha BETWEEN :d AND :h"
+                     . $this->sede('r.reserva_sedeid');
+            /* Lo devuelto (migración 092), en negativo: la suma de la
+               pantalla coincide con «Ingresos». */
+            $ramas[] = "SELECT 'arena' modulo, d.devolucion_id id, d.devolucion_fecha fecha,
+                               s.sede_nombre sede,
+                               CONCAT('Devolución · ', i.instalacion_nombre) concepto,
+                               cl.cliente_nombre quien,
+                               -d.devolucion_valor valor, d.devolucion_referencia referencia
+                          FROM dsa_devolucion d
+                          JOIN dsa_reserva r      ON r.reserva_id = d.devolucion_reservaid
+                          LEFT JOIN dsa_instalacion i ON i.instalacion_id = r.reserva_instalacionid
+                          LEFT JOIN general_sede  s  ON s.sede_id = r.reserva_sedeid
+                          LEFT JOIN dsa_cliente   cl ON cl.cliente_id = r.reserva_clienteid
+                         WHERE d.devolucion_fecha BETWEEN :d AND :h"
                      . $this->sede('r.reserva_sedeid');
         }
 

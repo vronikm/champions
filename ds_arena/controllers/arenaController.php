@@ -1973,6 +1973,8 @@ class arenaController
                        r.reserva_total, r.reserva_abonado, r.reserva_saldo,
                        r.reserva_estado, r.reserva_fijaid, fj.fija_codigo,
                        r.reserva_motivocancelacion,
+                       (SELECT COALESCE(SUM(d.devolucion_valor), 0) FROM dsa_devolucion d
+                         WHERE d.devolucion_reservaid = r.reserva_id) AS devuelto,
                        c.cliente_nombre, c.cliente_identificacion,
                        i.instalacion_nombre,
                        s.sede_nombre
@@ -2133,14 +2135,22 @@ class arenaController
             }
 
             /* Reducir el total por debajo de lo ya abonado dejaría un saldo
-               negativo: hay que devolver primero. */
-            if ($total < (float)$actual['reserva_abonado']) {
-                return $this->alerta('simple', 'Importe menor a lo abonado',
-                    'El cliente ya abonó $' . number_format((float)$actual['reserva_abonado'], 2) .
-                    '. Devuelva la diferencia antes de reducir la reserva.', 'error');
+               negativo: la diferencia se devuelve en el mismo paso, por el
+               medio elegido (registrarDevolucion). */
+            $abonadoActual = round((float)$actual['reserva_abonado'], 2);
+            $devolver = round($abonadoActual - $total, 2);
+            $medio = ''; $refDev = '';
+            if ($devolver > 0) {
+                [$medio, $refDev, $error] = $this->medioDevolucionDePost();
+                if ($error !== '') {
+                    return $this->alerta('simple', 'Falta cómo se devuelve la diferencia',
+                        'El cliente abonó $' . number_format($abonadoActual, 2) . ' y la reserva pasa a valer $' .
+                        number_format($total, 2) . ': hay que devolverle $' . number_format($devolver, 2) . '. ' . $error,
+                        'warning');
+                }
             }
 
-            $n = $this->escribir(
+            $sqlU =
                 "UPDATE dsa_reserva
                     SET reserva_clienteid = :c, reserva_instalacionid = :i,
                         reserva_sedeid = :s, reserva_fecha = :f,
@@ -2148,16 +2158,45 @@ class arenaController
                         reserva_horas = :h, reserva_valorhora = :v,
                         reserva_total = :t,
                         reserva_observacion = :o
-                  WHERE reserva_id = :id",
+                  WHERE reserva_id = :id";
                 /* reserva_saldo ya no se escribe: es columna generada
                    (total - abonado) desde la migración 061. La base la
                    recalcula sola al cambiar el total, y escribirla daría
                    error 3105. Con ella desaparece el parámetro :t2. */
-                [':c' => $cliente, ':i' => $instalacion, ':s' => (int)$inst['instalacion_sedeid'],
-                 ':f' => $fecha, ':ini' => $inicio, ':fin' => $fin, ':h' => $horas,
-                 ':v' => $valorhora, ':t' => $total,
-                 ':o' => $observacion !== '' ? $observacion : null, ':id' => $id]
-            );
+            $pU = [':c' => $cliente, ':i' => $instalacion, ':s' => (int)$inst['instalacion_sedeid'],
+                   ':f' => $fecha, ':ini' => $inicio, ':fin' => $fin, ':h' => $horas,
+                   ':v' => $valorhora, ':t' => $total,
+                   ':o' => $observacion !== '' ? $observacion : null, ':id' => $id];
+
+            if ($devolver > 0) {
+                /* Primero se devuelve (lo abonado baja hasta el total nuevo)
+                   y después se cambia la reserva: así el saldo nunca queda
+                   negativo. Todo o nada. */
+                $antes = substr((string)$actual['reserva_horainicio'], 0, 5) . '–' . substr((string)$actual['reserva_horafin'], 0, 5)
+                       . ' del ' . date('d/m/Y', strtotime((string)$actual['reserva_fecha']));
+                $despues = $inicio . '–' . $fin . ' del ' . date('d/m/Y', strtotime($fecha));
+                $motivoDev = 'Cambio a un horario de menor valor: de $' . number_format((float)$actual['reserva_total'], 2)
+                           . " ($antes) a $" . number_format($total, 2) . " ($despues).";
+                $con = $this->con();
+                if ($con === null) {
+                    return $this->alerta('simple', 'Error', 'Sin conexión a la base de datos.', 'error');
+                }
+                try {
+                    $con->beginTransaction();
+                    $this->registrarDevolucion($con, $actual, $devolver, $medio, $refDev, 'E', $motivoDev);
+                    $con->prepare($sqlU)->execute($pU);
+                    $con->commit();
+                } catch (\Throwable $e) {
+                    if ($con->inTransaction()) $con->rollBack();
+                    return $this->alerta('simple', 'No se pudo actualizar', $e->getMessage(), 'error');
+                }
+                return $this->alerta('redireccionar', 'Reserva actualizada',
+                    'Ahora vale $' . number_format($total, 2) . ' y queda pagada. Se devolvieron '
+                    . self::textoDevolucion($devolver, $medio, $refDev) . '.',
+                    'success', APP_URL . 'reservaList/');
+            }
+
+            $n = $this->escribir($sqlU, $pU);
 
             return $n >= 0
                 ? $this->alerta('redireccionar', 'Reserva actualizada',
@@ -2204,6 +2243,112 @@ class arenaController
         $m = trim(preg_replace('/\s+/u', ' ', (string)$texto) ?? '');
         $m = mb_substr($m, 0, 250);
         return preg_match_all('/[\p{L}\p{N}]/u', $m) >= self::MOTIVO_MINIMO ? $m : '';
+    }
+
+    /*======================================================================
+      Devoluciones de lo abonado (2026-11-23, migración 092)
+
+      Antes una reserva con abonos no se podía cancelar ni pasar a un
+      horario más barato: había que «devolver primero» y no había dónde
+      registrarlo. Ahora la devolución se hace en el mismo paso:
+
+        · al CANCELAR, se devuelve todo lo abonado (origen C);
+        · al EDITAR por un importe menor a lo abonado, la diferencia (E).
+
+      Por EFE efectivo, TRA transferencia (con su comprobante) o MON
+      monedero del cliente que pagó, como saldo a favor (movimiento DVR).
+      Todo va en una transacción: la fila de dsa_devolucion, el movimiento
+      del monedero y lo abonado de la reserva. Los pagos y sus recibos no
+      se tocan: siguen diciendo lo que el cliente pagó.
+      ====================================================================*/
+
+    /** Medios de devolución: código => nombre. */
+    public const MEDIOS_DEVOLUCION = ['EFE' => 'Efectivo', 'TRA' => 'Transferencia', 'MON' => 'Monedero del cliente'];
+
+    /**
+     * El medio y la referencia de una devolución, del POST.
+     * Devuelve [medio, referencia, error]; error vacío si todo está bien.
+     */
+    private function medioDevolucionDePost(): array
+    {
+        $medio = (string)($_POST['devolucion_medio'] ?? '');
+        $ref   = mb_substr(trim((string)($_POST['devolucion_referencia'] ?? '')), 0, 60);
+
+        if (!isset(self::MEDIOS_DEVOLUCION[$medio])) {
+            return ['', '', 'Elija cómo se devuelve el dinero: efectivo, transferencia o monedero del cliente.'];
+        }
+        if ($medio === 'TRA' && $ref === '') {
+            return [$medio, '', 'Indique el número o comprobante de la transferencia con la que se devuelve.'];
+        }
+        return [$medio, $medio === 'TRA' ? $ref : '', ''];
+    }
+
+    /** «$20.00 en efectivo», «$20.00 por transferencia 123», «$20.00 al monedero del cliente». */
+    private static function textoDevolucion(float $valor, string $medio, string $ref): string
+    {
+        $v = '$' . number_format($valor, 2);
+        return match ($medio) {
+            'EFE'   => "$v en efectivo",
+            'TRA'   => "$v por transferencia" . ($ref !== '' ? " ($ref)" : ''),
+            default => "$v al monedero del cliente",
+        };
+    }
+
+    /**
+     * Registra una devolución DENTRO de la transacción en curso de $con.
+     * Descuenta lo devuelto de reserva_abonado sólo si sigue habiendo ese
+     * abonado: si otro usuario lo cambió entretanto, lanza y quien llama
+     * deshace todo.
+     */
+    private function registrarDevolucion(PDO $con, array $reserva, float $valor, string $medio,
+                                         string $referencia, string $origen, string $motivo): void
+    {
+        $id = (int)$reserva['reserva_id'];
+        $movimiento = null;
+
+        if ($medio === 'MON') {
+            /* Al monedero de quien pagó: la reserva aún tiene su cliente
+               original (al editar se devuelve antes de cambiarlo). */
+            $mon = $this->asegurarMonedero((int)$reserva['reserva_clienteid']);
+            $this->moverMonedero($con, $mon, 'I', 'DVR', $valor,
+                ['reserva' => $id, 'detalle' => 'Devolución de la reserva ' . $reserva['reserva_codigo']]);
+            $movimiento = (int)$con->lastInsertId();
+        }
+
+        $con->prepare(
+            "INSERT INTO dsa_devolucion
+                (devolucion_reservaid, devolucion_valor, devolucion_medio, devolucion_referencia,
+                 devolucion_origen, devolucion_motivo, devolucion_movimientoid,
+                 devolucion_fecha, devolucion_usuarioid)
+             VALUES (:r, :v, :m, :ref, :o, :mot, :mv, CURDATE(), :u)"
+        )->execute([
+            ':r' => $id, ':v' => $valor, ':m' => $medio,
+            ':ref' => $referencia !== '' ? $referencia : null,
+            ':o' => $origen, ':mot' => mb_substr($motivo, 0, 250), ':mv' => $movimiento,
+            ':u' => (int)($_SESSION['usuarioid'] ?? 0) ?: null,
+        ]);
+
+        $st = $con->prepare(
+            "UPDATE dsa_reserva SET reserva_abonado = reserva_abonado - :v
+              WHERE reserva_id = :r AND reserva_abonado >= :v2");
+        $st->execute([':v' => $valor, ':r' => $id, ':v2' => $valor]);
+        if ($st->rowCount() !== 1) {
+            throw new \RuntimeException('Lo abonado en la reserva cambió mientras tanto. Vuelva a abrirla e inténtelo de nuevo.');
+        }
+    }
+
+    /** Las devoluciones de una reserva, de la más antigua a la más reciente. */
+    public function devoluciones(int $reservaid): array
+    {
+        return $this->filas(
+            "SELECT d.*, COALESCE(u.usuario_usuario, '—') AS usuario,
+                    UNIX_TIMESTAMP(d.devolucion_fecharegistro) AS registro_ts
+               FROM dsa_devolucion d
+               LEFT JOIN seguridad_usuario u ON u.usuario_id = d.devolucion_usuarioid
+              WHERE d.devolucion_reservaid = :r
+              ORDER BY d.devolucion_id",
+            [':r' => $reservaid]
+        );
     }
 
     public function cambiarEstadoReserva(): string
@@ -2258,12 +2403,18 @@ class arenaController
             }
         }
 
-        /* Cancelar con dinero ya abonado exige decidir qué se hace con él;
-           se bloquea aquí para que no quede un abono huérfano. */
-        if ($estado === 'X' && (float)$r['reserva_abonado'] > 0) {
-            return $this->alerta('simple', 'Reserva con abonos',
-                'Tiene $' . number_format((float)$r['reserva_abonado'], 2) .
-                ' abonados. Devuelva el importe o páselo al monedero antes de cancelar.', 'error');
+        /* Cancelar con dinero ya abonado exige decidir qué se hace con él:
+           se devuelve TODO en el mismo paso (registrarDevolucion), por el
+           medio elegido. Sin medio no se cancela, para que no quede un
+           abono huérfano en una reserva cancelada. */
+        $abonado = round((float)$r['reserva_abonado'], 2);
+        $medio = ''; $refDev = '';
+        if ($estado === 'X' && $abonado > 0) {
+            [$medio, $refDev, $error] = $this->medioDevolucionDePost();
+            if ($error !== '') {
+                return $this->alerta('simple', 'Falta cómo se devuelve el abono',
+                    'La reserva tiene $' . number_format($abonado, 2) . ' abonados. ' . $error, 'warning');
+            }
         }
 
         /*
@@ -2280,12 +2431,33 @@ class arenaController
                 return $this->alerta('simple', 'Falta el motivo',
                     'Escriba por qué se cancela la reserva (al menos ' . self::MOTIVO_MINIMO . ' letras).', 'warning');
             }
-            $n = $this->escribir(
-                "UPDATE dsa_reserva
-                    SET reserva_estado = 'X', reserva_motivocancelacion = :m,
-                        reserva_fechacancelacion = NOW(), reserva_usuariocancelacion = :u
-                  WHERE reserva_id = :id",
-                [':m' => $motivo, ':u' => (int)($_SESSION['usuarioid'] ?? 0) ?: null, ':id' => $id]);
+            $sqlX = "UPDATE dsa_reserva
+                        SET reserva_estado = 'X', reserva_motivocancelacion = :m,
+                            reserva_fechacancelacion = NOW(), reserva_usuariocancelacion = :u
+                      WHERE reserva_id = :id";
+            $pX = [':m' => $motivo, ':u' => (int)($_SESSION['usuarioid'] ?? 0) ?: null, ':id' => $id];
+
+            if ($abonado > 0) {
+                /* La devolución y la cancelación, juntas o ninguna. */
+                $con = $this->con();
+                if ($con === null) {
+                    return $this->alerta('simple', 'Error', 'Sin conexión a la base de datos.', 'error');
+                }
+                try {
+                    $con->beginTransaction();
+                    $this->registrarDevolucion($con, $r, $abonado, $medio, $refDev, 'C', $motivo);
+                    $con->prepare($sqlX)->execute($pX);
+                    $con->commit();
+                } catch (\Throwable $e) {
+                    if ($con->inTransaction()) $con->rollBack();
+                    return $this->alerta('simple', 'No se pudo cancelar', $e->getMessage(), 'error');
+                }
+                return $this->alerta('recargar', 'Reserva cancelada',
+                    "{$r['reserva_codigo']} quedó cancelada y su horario está libre. Motivo: {$motivo}. "
+                    . 'Se devolvieron ' . self::textoDevolucion($abonado, $medio, $refDev) . '.');
+            }
+
+            $n = $this->escribir($sqlX, $pX);
         } else {
             $n = $this->escribir(
                 "UPDATE dsa_reserva
@@ -3786,6 +3958,8 @@ class arenaController
               WHERE u.usuario_id IN (SELECT pago_usuarioid FROM dsa_pago WHERE pago_usuarioid IS NOT NULL)
                  OR u.usuario_id IN (SELECT movimiento_usuarioid FROM dsa_monedero_movimiento
                                       WHERE movimiento_usuarioid IS NOT NULL)
+                 OR u.usuario_id IN (SELECT devolucion_usuarioid FROM dsa_devolucion
+                                      WHERE devolucion_usuarioid IS NOT NULL)
               ORDER BY u.usuario_usuario");
     }
 
@@ -3871,11 +4045,46 @@ class arenaController
             $monedero = $this->filas($sqlM . " ORDER BY mv.movimiento_fecharegistro, mv.movimiento_id", $pM);
         }
 
+        /* Devoluciones de reservas (migración 092). En efectivo o por
+           transferencia es dinero que SALE: se resta del efectivo o de los
+           bancos. Al monedero no sale nada: queda como saldo a favor y sólo
+           se informa. Tienen sede (la de su reserva) y cajero. */
+        $sqlD = "SELECT d.devolucion_id, d.devolucion_valor, d.devolucion_medio, d.devolucion_referencia,
+                        d.devolucion_origen, d.devolucion_motivo,
+                        UNIX_TIMESTAMP(d.devolucion_fecharegistro) AS ts,
+                        r.reserva_id, r.reserva_codigo, c.cliente_nombre,
+                        r.reserva_horainicio, r.reserva_horafin,
+                        /* La franja de la reserva, como en los cobros: lo
+                           devuelto se descuenta de lo que produjo esa franja. */
+                        (SELECT CONCAT(h.horario_desde, '|', h.horario_hasta)
+                           FROM dsa_horario h
+                          WHERE h.horario_instalacionid = r.reserva_instalacionid
+                            AND h.horario_dia = WEEKDAY(r.reserva_fecha) + 1
+                            AND h.horario_estado = 'A'
+                            AND r.reserva_horainicio >= h.horario_desde
+                            AND r.reserva_horainicio <  h.horario_hasta
+                          ORDER BY h.horario_desde DESC LIMIT 1) AS franja,
+                        i.instalacion_nombre,
+                        COALESCE(u.usuario_usuario, '—') AS cajero
+                   FROM dsa_devolucion d
+                   JOIN dsa_reserva r ON r.reserva_id = d.devolucion_reservaid
+                   JOIN dsa_cliente c ON c.cliente_id = r.reserva_clienteid
+                   JOIN dsa_instalacion i ON i.instalacion_id = r.reserva_instalacionid
+                   LEFT JOIN seguridad_usuario u ON u.usuario_id = d.devolucion_usuarioid
+                  WHERE d.devolucion_fecha BETWEEN :d0 AND :h0
+                    AND d.devolucion_fecharegistro BETWEEN FROM_UNIXTIME(:a) AND FROM_UNIXTIME(:b)";
+        $pD = $base;
+        if ($f['cajero'] > 0) { $sqlD .= " AND d.devolucion_usuarioid = :u"; $pD[':u'] = $f['cajero']; }
+        if ($f['sede'] > 0)   { $sqlD .= " AND r.reserva_sedeid = :s"; $pD[':s'] = $f['sede']; }
+        $devReservas = $this->filas($sqlD . " ORDER BY d.devolucion_fecharegistro, d.devolucion_id", $pD);
+
         $r = [
             'recaudado' => 0.0, 'efectivo' => 0.0, 'bancos' => 0.0,
             'monederoAplicado' => 0.0, 'vueltoMonedero' => 0.0, 'devoluciones' => 0.0,
             'cobrosEfectivo' => 0.0, 'vueltoMonederoEfectivo' => 0.0, 'depositosEfectivo' => 0.0,
             'nPagos' => count($pagos), 'nMovimientos' => 0,
+            /* Devoluciones de reservas, por medio (092). */
+            'devEfectivo' => 0.0, 'devBancos' => 0.0, 'devMonedero' => 0.0, 'nDevReservas' => count($devReservas),
         ];
         $formas = [];          // nombre => [n, total, entra]
         $horas  = $this->franjasDefinidas($f['sede']);   // 'HH:MM-HH:MM' => franja de Horarios (ver abajo)
@@ -3979,6 +4188,45 @@ class arenaController
                 'detalle' => (string)($m['movimiento_detalle'] ?: 'Monedero'),
             ];
         }
+
+        $nombresDev = ['EFE' => 'Devolución de reserva · Efectivo', 'TRA' => 'Devolución de reserva · Transferencia',
+                       'MON' => 'Devolución de reserva · Monedero'];
+        $notasDev   = ['EFE' => 'salida: ya restada del efectivo', 'TRA' => 'salida: ya restada de los bancos',
+                       'MON' => 'no sale dinero: queda como saldo a favor'];
+        foreach ($devReservas as $d) {
+            $valor = (float)$d['devolucion_valor'];
+            $medio = $d['devolucion_medio'];
+            if ($medio === 'EFE')     { $r['devEfectivo'] += $valor; }
+            elseif ($medio === 'TRA') { $r['devBancos']   += $valor; }
+            else                      { $r['devMonedero'] += $valor; }
+
+            $nombre = $nombresDev[$medio] ?? 'Devolución de reserva';
+            $formas[$nombre] = $formas[$nombre] ?? ['n' => 0, 'total' => 0.0, 'monedero' => false, 'nota' => $notasDev[$medio] ?? ''];
+            $formas[$nombre]['n']++;
+            $formas[$nombre]['total'] += $valor;
+
+            /* «Ingresos por horario»: lo devuelto deja de ser ingreso de
+               la franja en la que se jugaba (o iba a jugarse) la reserva. */
+            [$fd, $fh] = $d['franja'] ? explode('|', $d['franja']) : [$d['reserva_horainicio'], $d['reserva_horafin']];
+            $clave = substr($fd, 0, 5) . '-' . substr($fh, 0, 5);
+            $horas[$clave] ??= $this->franjaVacia(substr($fd, 0, 5), substr($fh, 0, 5), $d['franja'] !== null);
+            $horas[$clave]['total'] -= $valor;
+            $horas[$clave]['instalaciones'][$d['instalacion_nombre']] = true;
+
+            $movs[] = [
+                'ts' => (int)$d['ts'], 'tipo' => 'devreserva', 'id' => (int)$d['devolucion_id'], 'recibo' => '',
+                'forma' => $nombre, 'codigoForma' => $medio, 'esMonedero' => false,
+                'valor' => $valor, 'entra' => $medio === 'MON' ? 0.0 : -$valor,
+                'recibido' => null, 'vuelto' => 0.0, 'vueltoAMonedero' => false,
+                'referencia' => (string)$d['devolucion_referencia'],
+                'cliente' => $d['cliente_nombre'], 'cajero' => $d['cajero'],
+                'reservaId' => (int)$d['reserva_id'], 'reserva' => $d['reserva_codigo'],
+                'detalle' => ($d['devolucion_origen'] === 'C' ? 'Al cancelar: ' : 'Al editar: ') . $d['devolucion_motivo'],
+            ];
+        }
+        /* Lo que debe haber: lo que entró menos lo que se devolvió por ese medio. */
+        $r['efectivoNeto'] = round($r['efectivo'] - $r['devEfectivo'], 2);
+        $r['bancosNeto']   = round($r['bancos'] - $r['devBancos'], 2);
 
         usort($movs, static fn ($x, $y) => [$x['ts'], $x['id']] <=> [$y['ts'], $y['id']]);
         ksort($horas);   // 'HH:MM-HH:MM' ordena por hora de inicio

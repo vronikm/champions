@@ -26,7 +26,10 @@ $movimientos = $insArena->movimientos($clienteid);
 /* 'DEV' es el código en base; la etiqueta usa el término del negocio:
    un egreso es la salida de dinero del monedero a pedido del cliente. */
 $origenes = ['VUE' => 'Vuelto', 'TRA' => 'Transferencia', 'EFE' => 'Depósito en efectivo',
-             'RES' => 'Aplicado a reserva', 'DEV' => 'Egreso a pedido del cliente', 'AJU' => 'Ajuste'];
+             'RES' => 'Aplicado a reserva', 'DEV' => 'Egreso a pedido del cliente', 'AJU' => 'Ajuste',
+             /* Lo abonado en una reserva que se canceló o se cambió por una
+                más barata, devuelto como saldo a favor (migración 092). */
+             'DVR' => 'Devolución de reserva'];
 
 $puedeRetirar   = puede_eliminar('monederoList') || puede_editar('monederoList');
 /* Al cliente dado de baja no se le acredita: el servidor lo rechaza. */

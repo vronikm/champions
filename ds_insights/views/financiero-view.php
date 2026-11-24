@@ -240,7 +240,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                                     <td><span class="text-muted small"><?php echo $c['modulo']; ?></span></td>
                                     <td><?php echo htmlspecialchars((string) $c['concepto'], ENT_QUOTES, 'UTF-8'); ?></td>
                                     <td class="text-end"><?php echo number_format($c['n']); ?></td>
-                                    <td class="text-end fw-semibold">$<?php echo number_format($c['valor'], 2); ?></td>
+                                    <td class="text-end fw-semibold<?php echo $c['valor'] < 0 ? ' text-warning-emphasis' : ''; ?>"><?php echo ($c['valor'] < 0 ? '−$' : '$') . number_format(abs($c['valor']), 2); ?></td>
                                 </tr>
                             <?php endforeach; ?>
                             </tbody>

@@ -175,7 +175,8 @@ require_once __DIR__ . "/inc/layout-top.php";
                                 <td class="small text-muted font-monospace">
                                     <?php echo htmlspecialchars((string) ($f['referencia'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>
                                 </td>
-                                <td class="text-end">$<?php echo number_format((float) $f['valor'], 2); ?></td>
+                                <?php /* Las devoluciones de Arena (092) vienen en negativo. */ ?>
+                                <td class="text-end<?php echo (float) $f['valor'] < 0 ? ' text-warning-emphasis' : ''; ?>"><?php echo ((float) $f['valor'] < 0 ? '−$' : '$') . number_format(abs((float) $f['valor']), 2); ?></td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>

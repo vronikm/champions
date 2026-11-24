@@ -55,7 +55,8 @@ if (isset($_GET['csv'])) {
     foreach ($movs as $m) {
         fputcsv($out, array_map($celda, [
             date('d/m/Y', $m['ts']), date('H:i', $m['ts']),
-            ['pago' => 'Cobro', 'deposito' => 'Depósito al monedero', 'devolucion' => 'Devolución del monedero'][$m['tipo']],
+            ['pago' => 'Cobro', 'deposito' => 'Depósito al monedero', 'devolucion' => 'Devolución del monedero',
+             'devreserva' => 'Devolución de reserva'][$m['tipo']],
             $m['recibo'], $m['reserva'], $m['cliente'], $m['detalle'], $m['forma'], $m['referencia'],
             $num($m['valor']), $num($m['entra']), $num($m['recibido']),
             $m['vuelto'] > 0 ? $num($m['vuelto']) : '', $m['vueltoAMonedero'] ? 'Sí' : '', $m['cajero'],
@@ -216,13 +217,13 @@ require_once __DIR__ . "/inc/layout-top.php";
     </div>
     <div class="ar-rp__cifra">
         <span class="ar-rp__rotulo"><i class="fas fa-money-bill-wave" aria-hidden="true"></i>Efectivo</span>
-        <strong class="ar-rp__valor"><?php echo $din($r['efectivo']); ?></strong>
-        <span class="ar-rp__nota">Debe estar en la caja</span>
+        <strong class="ar-rp__valor"><?php echo $din($r['efectivoNeto']); ?></strong>
+        <span class="ar-rp__nota">Debe estar en la caja<?php echo $r['devEfectivo'] > 0 ? ' · ya restados ' . $din($r['devEfectivo']) . ' devueltos' : ''; ?></span>
     </div>
     <div class="ar-rp__cifra">
         <span class="ar-rp__rotulo"><i class="fas fa-building-columns" aria-hidden="true"></i>Transferencia y tarjeta</span>
-        <strong class="ar-rp__valor"><?php echo $din($r['bancos']); ?></strong>
-        <span class="ar-rp__nota">Se verifica en el banco</span>
+        <strong class="ar-rp__valor"><?php echo $din($r['bancosNeto']); ?></strong>
+        <span class="ar-rp__nota">Se verifica en el banco<?php echo $r['devBancos'] > 0 ? ' · ya restados ' . $din($r['devBancos']) . ' devueltos' : ''; ?></span>
     </div>
     <div class="ar-rp__cifra ar-rp__cifra--info">
         <span class="ar-rp__rotulo"><i class="fas fa-wallet" aria-hidden="true"></i>Pagado con monedero</span>
@@ -235,7 +236,7 @@ require_once __DIR__ . "/inc/layout-top.php";
     <?php /* ===================== Cuadre de caja ===================== */ ?>
     <div class="col-lg-5">
         <div class="card h-100 ar-rp__cuadre" id="cuadre"
-             data-esperado="<?php echo number_format($r['efectivo'], 2, '.', ''); ?>">
+             data-esperado="<?php echo number_format($r['efectivoNeto'], 2, '.', ''); ?>">
             <div class="card-header">
                 <h3 class="card-title mb-0"><i class="fas fa-scale-balanced me-2" aria-hidden="true"></i>Cuadre de caja · efectivo</h3>
             </div>
@@ -249,6 +250,11 @@ require_once __DIR__ . "/inc/layout-top.php";
                         <div><dt>+ Depósitos en efectivo al monedero</dt><dd><?php echo $din($r['depositosEfectivo']); ?></dd></div>
                     <?php endif; ?>
                     <div class="ar-rp__cuentas-total"><dt>Efectivo cobrado</dt><dd><?php echo $din($r['efectivo']); ?></dd></div>
+                    <?php if ($r['devEfectivo'] > 0): ?>
+                        <?php /* Devoluciones de reservas entregadas en efectivo (092): salieron de la caja. */ ?>
+                        <div><dt>− Devoluciones de reservas en efectivo <small>salieron de la caja</small></dt><dd>−<?php echo $din($r['devEfectivo']); ?></dd></div>
+                        <div class="ar-rp__cuentas-total"><dt>Efectivo que queda</dt><dd><?php echo $din($r['efectivoNeto']); ?></dd></div>
+                    <?php endif; ?>
                 </dl>
 
                 <?php if ($r['devoluciones'] > 0): ?>
@@ -277,7 +283,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                     </div>
                 </div>
                 <div class="ar-rp__resultado mt-3" id="rpResultado" aria-live="polite">
-                    <div class="ar-rp__debe">Debe haber en caja <strong id="rpDebe"><?php echo $din($r['efectivo']); ?></strong></div>
+                    <div class="ar-rp__debe">Debe haber en caja <strong id="rpDebe"><?php echo $din($r['efectivoNeto']); ?></strong></div>
                     <div class="ar-rp__diferencia" id="rpDiferencia" hidden></div>
                 </div>
             </div>
@@ -298,7 +304,8 @@ require_once __DIR__ . "/inc/layout-top.php";
                             <span class="ar-rp__forma-nombre"><?php echo $e($nombre); ?>
                                 <small><?php echo $fm['n']; ?> movimiento<?php echo $fm['n'] === 1 ? '' : 's'; ?><?php
                                     echo $fm['monedero'] ? ' · no suma: saldo a favor' : ''; ?><?php
-                                    echo str_starts_with($nombre, 'Devolución') ? ' · salida, no se resta sola' : ''; ?></small></span>
+                                    /* Las de reservas (092) traen su nota: ya restadas, o saldo a favor. */
+                                    echo str_starts_with($nombre, 'Devolución') ? ' · ' . ($fm['nota'] ?? 'salida, no se resta sola') : ''; ?></small></span>
                             <strong><?php echo str_starts_with($nombre, 'Devolución') ? '−' : ''; ?><?php echo $din($fm['total']); ?></strong>
                         </li>
                     <?php endforeach; ?>
@@ -411,7 +418,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                     </thead>
                     <tbody>
                     <?php foreach ($movs as $m):
-                        $clase = $m['tipo'] === 'devolucion' ? 'ar-rp__mov--salida' : ($m['esMonedero'] ? 'ar-rp__mov--monedero' : ''); ?>
+                        $clase = in_array($m['tipo'], ['devolucion', 'devreserva'], true) ? 'ar-rp__mov--salida' : ($m['esMonedero'] ? 'ar-rp__mov--monedero' : ''); ?>
                         <tr class="<?php echo $clase; ?>">
                             <td class="ar-rp__c-hora">
                                 <strong><?php echo date('H:i', $m['ts']); ?></strong>
@@ -435,7 +442,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                             </td>
                             <td class="ar-rp__c-cajero"><i class="fas fa-user me-1 text-body-secondary d-lg-none" aria-hidden="true"></i><?php echo $e($m['cajero']); ?></td>
                             <td class="ar-rp__c-valor text-end">
-                                <strong><?php echo $m['tipo'] === 'devolucion' ? '−' : ''; ?><?php echo $din($m['valor']); ?></strong>
+                                <strong><?php echo in_array($m['tipo'], ['devolucion', 'devreserva'], true) ? '−' : ''; ?><?php echo $din($m['valor']); ?></strong>
                                 <?php if ($m['esMonedero']): ?><small class="d-block text-body-secondary">con saldo a favor</small><?php endif; ?>
                                 <?php if ($m['recibo'] !== ''): ?>
                                     <a class="ar-rp__recibo d-print-none" href="<?php echo APP_URL; ?>reciboPago/?id=<?php echo $m['id']; ?>"

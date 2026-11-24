@@ -97,6 +97,7 @@ $vistas = [
      'r' => 'Cuanto dinero entro de verdad en el periodo.',
      'f' => "SUM(alumno_pago.pago_valor) WHERE pago_estado='C'\n"
           . "  + SUM(dsa_pago.pago_valor)  WHERE pago_estado='A'\n"
+          . "  - SUM(dsa_devolucion.devolucion_valor)  (lo devuelto de reservas, 092)\n"
           . "  + SUM(dsl_abono.abono_valor) WHERE abono_anulado='N'\n"
           . "  ... todos con su fecha BETWEEN desde AND hasta",
      'o' => 'Es la SUMA de los tres modulos al centimo. Si el total no cuadra con las tres '
@@ -156,7 +157,9 @@ $vistas = [
     ['n' => 'Ingresos por sede',
      'r' => 'Cuanto cobro cada sede en el periodo.',
      'f' => "SUM(alumno_pago.pago_valor) GROUP BY pago_sedeid\n"
-          . "  + SUM(dsa_pago.pago_valor) GROUP BY reserva_sedeid",
+          . "  + SUM(dsa_pago.pago_valor) GROUP BY reserva_sedeid
+"
+          . "  - SUM(dsa_devolucion.devolucion_valor) GROUP BY reserva_sedeid",
      'o' => 'Se usa la sede CONGELADA del pago, no la actual del alumno. Las sedes sin '
           . 'movimiento en el periodo no se listan: una tabla de siete filas a cero no informa.'],
 

@@ -20,6 +20,8 @@ $tituloVista = 'Reserva ' . $reserva['reserva_codigo'];
 $vistaActual = 'reservaList';
 
 $pagos  = $insArena->pagos($id);
+$devoluciones = $insArena->devoluciones($id);   /* migración 092 */
+$devuelto = array_sum(array_map(static fn ($d) => (float)$d['devolucion_valor'], $devoluciones));
 $formas = $insArena->formasIngreso();
 $saldoMonedero = $insArena->saldoMonedero((int)$reserva['reserva_clienteid']);
 
@@ -129,6 +131,12 @@ require_once __DIR__ . "/inc/layout-top.php";
                     <span class="text-muted small">Abonado</span>
                     <strong class="text-success">$<?php echo number_format($abonado, 2); ?></strong>
                 </div>
+                <?php if ($devuelto > 0): ?>
+                    <div class="d-flex justify-content-between mb-1 small">
+                        <a href="#devoluciones" class="text-warning-emphasis text-decoration-none"><i class="fas fa-rotate-left me-1" aria-hidden="true"></i>Devuelto</a>
+                        <span class="text-warning-emphasis">$<?php echo number_format($devuelto, 2); ?></span>
+                    </div>
+                <?php endif; ?>
                 <div class="progress mb-2" style="height:8px;">
                     <div class="progress-bar bg-success" style="width:<?php echo $progreso; ?>%"></div>
                 </div>
@@ -208,6 +216,39 @@ require_once __DIR__ . "/inc/layout-top.php";
                         </tbody>
                     </table>
                 </div>
+
+                <?php if ($devoluciones):
+                    $mediosDev = arena\controllers\arenaController::MEDIOS_DEVOLUCION; ?>
+                    <?php /* Lo que se devolvió al cancelar o al pasar a un horario
+                             más barato (migración 092). Los abonos de arriba no
+                             cambian: siguen siendo lo que el cliente pagó. */ ?>
+                    <div class="ar-devs" id="devoluciones">
+                        <h4 class="ar-devs__titulo"><i class="fas fa-rotate-left me-2" aria-hidden="true"></i><?php
+                            echo count($devoluciones) === 1 ? '1 devolución' : count($devoluciones) . ' devoluciones'; ?></h4>
+                        <div class="table-responsive">
+                            <table class="table table-sm mb-0">
+                                <thead>
+                                    <tr><th>Fecha</th><th>Medio</th><th class="text-end">Valor</th><th>Motivo</th></tr>
+                                </thead>
+                                <tbody>
+                                <?php foreach ($devoluciones as $d): ?>
+                                    <tr>
+                                        <td class="text-nowrap"><?php echo date('d/m/Y H:i', (int)$d['registro_ts']); ?>
+                                            <small class="d-block text-muted"><?php echo htmlspecialchars($d['usuario'], ENT_QUOTES, 'UTF-8'); ?></small></td>
+                                        <td><?php echo htmlspecialchars($mediosDev[$d['devolucion_medio']] ?? $d['devolucion_medio'], ENT_QUOTES, 'UTF-8'); ?>
+                                            <?php if ($d['devolucion_referencia']): ?>
+                                                <small class="d-block text-muted"><?php echo htmlspecialchars($d['devolucion_referencia'], ENT_QUOTES, 'UTF-8'); ?></small>
+                                            <?php endif; ?></td>
+                                        <td class="text-end text-nowrap"><strong class="text-warning-emphasis">−$<?php echo number_format((float)$d['devolucion_valor'], 2); ?></strong></td>
+                                        <td><small><span class="badge text-bg-light border me-1"><?php echo $d['devolucion_origen'] === 'C' ? 'Al cancelar' : 'Al editar'; ?></span><?php
+                                            echo htmlspecialchars($d['devolucion_motivo'], ENT_QUOTES, 'UTF-8'); ?></small></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                <?php endif; ?>
             </div>
 
             <div class="card-footer ds-acciones">
@@ -340,5 +381,12 @@ require_once __DIR__ . "/inc/layout-top.php";
 })();
 </script>
 <?php endif; ?>
+
+<style>
+/* Devoluciones, bajo los abonos (migración 092). */
+.ar-devs { border-top: 1px solid var(--bs-border-color); padding: .75rem 1rem 0; }
+.ar-devs__titulo { font-size: .95rem; font-weight: 600; margin: 0 0 .5rem; color: var(--bs-warning-text-emphasis); }
+.ar-devs .table { --bs-table-bg: transparent; }
+</style>
 
 <?php require_once __DIR__ . "/inc/layout-bottom.php"; ?>

@@ -41,20 +41,37 @@
 -- la copia local de ADF Pedro Larrea). MyISAM no admite claves ajenas y
 -- la clave hacia dsa_reserva haría fallar toda la migración (error 1824).
 -- En ese caso la tabla se crea igual, sin esa clave.
+--
+--
+-- PHPMYADMIN Y information_schema (2026-11-24)
+--
+-- Al ejecutar un script, phpMyAdmin cambia la base activa a la que nombra
+-- cada sentencia: después de una consulta a information_schema, la
+-- conexión queda EN information_schema y el CREATE TABLE sin base explícita
+-- falla con #1044 (acceso negado). Por eso la base de la escuela se guarda
+-- en @db ANTES de mirar information_schema y la tabla se crea como
+-- `@db`.dsa_devolucion. Hay que abrir la base de la escuela antes de ejecutar.
 -- =====================================================================
 
 SET NAMES utf8mb4;
 
+-- La base de la escuela, antes de nombrar information_schema.
+SET @db := DATABASE();
+SET @sql := IF(@db IS NULL OR @db = 'information_schema',
+    'SELECT * FROM abra_primero_la_base_de_la_escuela',
+    'DO 0');
+PREPARE st FROM @sql; EXECUTE st; DEALLOCATE PREPARE st;
+
 SET @falta := (SELECT COUNT(*) = 1 FROM information_schema.TABLES
-                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dsa_reserva')
+                WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'dsa_reserva')
           AND (SELECT COUNT(*) = 0 FROM information_schema.TABLES
-                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dsa_devolucion');
+                WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'dsa_devolucion');
 SET @innodb := (SELECT COUNT(*) = 1 FROM information_schema.TABLES
-                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dsa_reserva' AND ENGINE = 'InnoDB');
+                 WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'dsa_reserva' AND ENGINE = 'InnoDB');
 SET @clave := IF(@innodb,
-    'CONSTRAINT fk_devolucion_reserva FOREIGN KEY (devolucion_reservaid) REFERENCES dsa_reserva (reserva_id),', '');
+    CONCAT('CONSTRAINT fk_devolucion_reserva FOREIGN KEY (devolucion_reservaid) REFERENCES `', @db, '`.dsa_reserva (reserva_id),'), '');
 SET @sql := IF(@falta,
-    CONCAT("CREATE TABLE dsa_devolucion (
+    CONCAT("CREATE TABLE `", @db, "`.dsa_devolucion (
         devolucion_id           INT           NOT NULL AUTO_INCREMENT,
         devolucion_reservaid    INT           NOT NULL COMMENT 'dsa_reserva.reserva_id',
         devolucion_valor        DECIMAL(10,2) NOT NULL,

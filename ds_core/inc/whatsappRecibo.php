@@ -152,7 +152,8 @@ $waArchivo = 'Recibo-' . preg_replace('/[^A-Za-z0-9_-]/', '', (string)($waDatos[
 		function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
 
 		function plantilla() {
-			return 'Hola ' + (D.repre || '') + ' 👋\n' + D.intro + '\n\n' +
+			/* Sin nombre (consumidor final en Arena › Punto de venta): «Hola 👋». */
+			return 'Hola ' + (D.repre ? D.repre + ' ' : '') + '👋\n' + D.intro + '\n\n' +
 				(D.lineas || []).join('\n') + '\n\n📎 Adjunto su recibo en PDF.\n\n¡Gracias por su confianza!';
 		}
 

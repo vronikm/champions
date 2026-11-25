@@ -29,7 +29,9 @@ $origenes = ['VUE' => 'Vuelto', 'TRA' => 'Transferencia', 'EFE' => 'Depósito en
              'RES' => 'Aplicado a reserva', 'DEV' => 'Egreso a pedido del cliente', 'AJU' => 'Ajuste',
              /* Lo abonado en una reserva que se canceló o se cambió por una
                 más barata, devuelto como saldo a favor (migración 092). */
-             'DVR' => 'Devolución de reserva'];
+             'DVR' => 'Devolución de reserva',
+             /* Punto de venta (migración 095). */
+             'VTA' => 'Compra en el punto de venta', 'AVT' => 'Venta anulada (devuelto)'];
 
 $puedeRetirar   = puede_eliminar('monederoList') || puede_editar('monederoList');
 /* Al cliente dado de baja no se le acredita: el servidor lo rechaza. */

@@ -81,7 +81,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                         <img src="<?php echo $h($logo); ?>" alt="" class="ra-recibo__logo">
                     <?php endif; ?>
                     <div class="flex-grow-1 min-w-0">
-                        <div class="fw-bold fs-5"><?php echo $h(ds_nombre_organizacion_may($sedeId)); ?></div>
+                        <div class="fw-bold fs-5"><?php echo $h(mb_strtoupper(trim((string)$r['instalacion_nombre']) ?: ds_nombre_organizacion($sedeId), 'UTF-8')); ?></div>
                         <div class="small text-body-secondary">Alquiler de instalaciones · Arena</div>
                         <div class="small text-body-secondary">
                             Sede <?php echo $h($r['sede_nombre']); ?>

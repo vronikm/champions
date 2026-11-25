@@ -89,6 +89,20 @@ if (!isset($_POST['modulo_arena'])) {
     ]);
 }
 
+/*----------  Punto de Venta y Caja (migración 095)  ----------*/
+$operacionesPos = [
+    'posAbrirCaja' => 'abrirCaja', 'posCerrarCaja' => 'cerrarCaja', 'posMovimientoCaja' => 'movimientoCaja',
+    'posVender' => 'vender', 'posAnularVenta' => 'anularVenta', 'posBuscarClientes' => 'buscarClientesPos',
+    'posGuardarProducto' => 'guardarProducto', 'posAjustarStock' => 'ajustarStock',
+    'posGuardarCompra' => 'guardarCompra', 'posPagarCompra' => 'pagarCompra', 'posAnularCompra' => 'anularCompra',
+];
+if (isset($operacionesPos[$_POST['modulo_arena']])) {
+    header('Content-Type: application/json; charset=utf-8');
+    $metodo = $operacionesPos[$_POST['modulo_arena']];
+    echo (new \arena\controllers\posController())->$metodo();
+    exit;
+}
+
 $insArena = new arenaController();
 
 switch ($_POST['modulo_arena']) {

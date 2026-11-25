@@ -82,3 +82,10 @@
 /ds_base_temporal/
 digitech_*.sql
 *_dump.sql
+
+# ---------------------------------------------------------------------
+# Imágenes de productos subidas en Arena › Punto de venta (migración 095).
+# No son datos personales, pero son del cliente y no del código.
+# ---------------------------------------------------------------------
+/ds_arena/imagenes/productos/*
+!/ds_arena/imagenes/productos/.htaccess

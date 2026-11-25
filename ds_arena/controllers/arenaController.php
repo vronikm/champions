@@ -30,12 +30,12 @@ class arenaController
 
     /*----------  Acceso a datos  ----------*/
 
-    private function con(): ?PDO
+    protected function con(): ?PDO
     {
         return seguridad_conexion();
     }
 
-    private function filas(string $sql, array $params = []): array
+    protected function filas(string $sql, array $params = []): array
     {
         try {
             $con = $this->con();
@@ -48,7 +48,7 @@ class arenaController
         }
     }
 
-    private function escalar(string $sql, array $params = [])
+    protected function escalar(string $sql, array $params = [])
     {
         try {
             $con = $this->con();
@@ -62,7 +62,7 @@ class arenaController
         }
     }
 
-    private function escribir(string $sql, array $params = []): int
+    protected function escribir(string $sql, array $params = []): int
     {
         try {
             $con = $this->con();
@@ -2979,7 +2979,7 @@ class arenaController
       ====================================================================*/
 
     /** Monedero del cliente; lo crea si aún no existe. Devuelve su id. */
-    private function asegurarMonedero(int $clienteid): int
+    protected function asegurarMonedero(int $clienteid): int
     {
         $id = (int)$this->escalar(
             "SELECT monedero_id FROM dsa_monedero WHERE monedero_clienteid = :c",
@@ -3009,7 +3009,7 @@ class arenaController
      * excepción si el saldo no alcanza: quien llama está dentro de una
      * transacción y debe deshacerla.
      */
-    private function moverMonedero(PDO $con, int $monederoId, string $tipo, string $origen,
+    protected function moverMonedero(PDO $con, int $monederoId, string $tipo, string $origen,
                                    float $valor, array $extra = []): void
     {
         $stmt = $con->prepare(
@@ -3347,10 +3347,17 @@ class arenaController
         $pdf->AddPage();
         $pdf->SetLineWidth(0.1);
 
-        /* Cabecera: organización y sede a la izquierda, número a la derecha */
+        /* Cabecera: la instalación alquilada y la sede a la izquierda, número
+           a la derecha. Encabeza el nombre de la instalación («CHAMPIONS
+           CANCHA SINTÉTICA»), no «ORGANIZACIÓN, SEDE X». Si no cabe en los
+           85 mm, la letra baja hasta 9 pt. */
         $pdf->Rect(10, 10, 190, 40);
         ds_logo_dibujar($pdf, (int)$sede, 15, 14, 30, 30);   /* a su proporción, sin estirar */
-        $pdf->SetXY(50, 14); $pdf->SetFont('Arial', 'B', 12); $pdf->Cell(85, 6, $t(ds_nombre_organizacion_may($sede)), 0, 0, 'L');
+        $encabezado = $t(mb_strtoupper(trim((string)$r['instalacion_nombre']) ?: ds_nombre_organizacion($sede), 'UTF-8'));
+        $tam = 12;
+        $pdf->SetFont('Arial', 'B', $tam);
+        while ($tam > 9 && $pdf->GetStringWidth($encabezado) > 85) { $tam -= 0.5; $pdf->SetFontSize($tam); }
+        $pdf->SetXY(50, 14); $pdf->Cell(85, 6, $encabezado, 0, 0, 'L');
         $pdf->SetXY(50, 20); $pdf->SetFont('Arial', '', 8);  $pdf->Cell(85, 5, $t('Alquiler de instalaciones · Arena'), 0, 0, 'L');
         $pdf->SetXY(50, 27); $pdf->Cell(85, 5, $t('Sede ' . $r['sede_nombre']), 0, 0, 'L');
         $pdf->SetXY(50, 32); $pdf->Cell(85, 5, $t('Dirección: ' . $r['sede_direccion']), 0, 0, 'L');

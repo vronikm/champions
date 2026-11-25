@@ -40,6 +40,26 @@ if ($vista === 'reciboPublico') {
     exit();
 }
 
+/*----------  Nota de venta compartida por WhatsApp  ----------*/
+/* Igual que el recibo: la firma del enlace es la puerta; sólo entrega el
+   PDF de esa venta (migración 095). */
+if ($vista === 'ventaPublica') {
+    header('X-Robots-Tag: noindex, nofollow');
+    header('Cache-Control: private, no-store');
+    header('Referrer-Policy: no-referrer');
+    $insPos = new \arena\controllers\posController();
+    $ventaPublica = $insPos->ventaDeEnlacePublico((string)($url[1] ?? ''));
+    if ($ventaPublica > 0) {
+        $v = $insPos->venta($ventaPublica);
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: inline; filename="Nota-de-venta-' . $v['venta_numero'] . '.pdf"');
+        echo $insPos->ticketPdf($v);
+    } else {
+        require_once __DIR__ . "/../ds_core/inc/reciboEnlaceInvalido.php";
+    }
+    exit();
+}
+
 /*----------  Nivel 0: sesion activa  ----------*/
 if (!usuario_autenticado()) {
     header("Location: " . DS_FUTBOL_URL . "login/");

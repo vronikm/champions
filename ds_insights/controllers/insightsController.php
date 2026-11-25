@@ -3330,12 +3330,24 @@ class insightsController
                     'filas'     => $filas,
                 ];
 
-            /* Un movimiento por fila, con su bloque: los cobros en positivo y
-               los egresos en negativo, para que la columna Importe sume el
-               neto. La sede llega en ?sede=. El periodo es siempre un mes. */
+            /* El Excel (.xlsx), el CSV y el PDF de este reporte tienen la forma
+               del Excel de la escuela (views/inc/exportar-ingresosMes.php), que lee
+               'informe'. 'filas' queda como lista plana de movimientos: es
+               la que cuenta la auditoría. La sede llega en ?sede= y sólo vale
+               si es una de las del usuario, como en la pantalla. El periodo
+               es siempre un mes. */
             case 'ingresosMes':
                 $pm = $this->mesIngresos(substr($p['desde'], 0, 7));
-                $r  = $this->ingresosDelMes($pm, (int) ($_GET['sede'] ?? 0));
+                $sedeId = (int) ($_GET['sede'] ?? 0);
+                $sedeNombre = 'Todas las sedes';
+                $ok = false;
+                foreach ($this->sedesIngresos() as $s) {
+                    if ((int) $s['id'] === $sedeId) { $sedeNombre = (string) $s['nombre']; $ok = true; }
+                }
+                if (!$ok) { $sedeId = 0; }
+                $r  = $this->ingresosDelMes($pm, $sedeId);
+                $MESES = [1 => 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto',
+                          'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
                 $dec = static fn(float $v): string => number_format($v, 2, '.', '');
                 $dia = static fn(string $f): string => $f !== '' ? date('d/m/Y', strtotime($f)) : '';
                 $filas = [];
@@ -3353,15 +3365,14 @@ class insightsController
                                     $dia($e['fecha']), '', '', $e['concepto'], $e['forma'], $dec(-$e['valor'])];
                     }
                 }
-                $vacios = array_fill(0, 9, '');
-                foreach ($r['columnas'] as $k => $etq) {
-                    $neto = ($r['totales'][$k] ?? 0) - ($r['egresosTotales'][$k] ?? 0);
-                    $filas[] = array_merge(['NETO ' . mb_strtoupper($etq)], $vacios, [$dec($neto)]);
-                }
-                $filas[] = array_merge(['TOTAL INGRESOS'], $vacios, [$dec($r['total'])]);
-                $filas[] = array_merge(['TOTAL EGRESOS'], $vacios, [$dec(-$r['egresosTotal'])]);
-                $filas[] = array_merge(['INGRESOS - EGRESOS'], $vacios, [$dec($r['neto'])]);
                 return [
+                    'informe'   => [
+                        'r'            => $r,
+                        'mes'          => $MESES[(int) substr($pm['desde'], 5, 2)] . ' ' . substr($pm['desde'], 0, 4),
+                        'sedeId'       => $sedeId,
+                        'sede'         => $sedeNombre,
+                        'organizacion' => function_exists('ds_nombre_organizacion') ? ds_nombre_organizacion() : '',
+                    ],
                     'titulo'    => 'Ingresos y egresos del mes ' . substr($pm['desde'], 5, 2) . '/' . substr($pm['desde'], 0, 4),
                     'vista'     => 'ingresosMes',
                     'cabeceras' => ['Bloque', 'Tipo', 'Sede', 'Identificación', 'Alumno / Detalle', 'Fecha', 'F. registro',

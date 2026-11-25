@@ -77,7 +77,11 @@ if (!function_exists('ds_botones_exportar')) {
      * @param array  $p       periodo, para que el archivo salga del mismo recorte
      * @param array  $extra   otros filtros de la pantalla (p. ej. ['sede' => 2])
      */
-    function ds_botones_exportar(string $reporte, string $vista, array $p, array $extra = []): string
+    /**
+     * $formatos: los botones, en orden. 'xlsx' (Excel con colores) sólo
+     * para los reportes que lo generan (Ingresos del mes, 2026-11-25).
+     */
+    function ds_botones_exportar(string $reporte, string $vista, array $p, array $extra = [], array $formatos = ['csv', 'pdf']): string
     {
         if (!puede_exportar($vista) || !insights_vista_visible($vista)) { return ''; }
 
@@ -88,13 +92,19 @@ if (!function_exists('ds_botones_exportar')) {
             $qs .= '&' . urlencode((string) $k) . '=' . urlencode((string) $v);
         }
 
-        return '<span class="btn-group btn-group-sm" role="group" aria-label="Exportar">'
-             . '<a href="' . APP_URL . 'exportar/?' . $qs . '&formato=csv"'
-             . ' class="btn btn-outline-secondary" title="Descargar en CSV, abre en Excel">'
-             . '<i class="fas fa-file-csv me-1"></i>CSV</a>'
-             . '<a href="' . APP_URL . 'exportar/?' . $qs . '&formato=pdf"'
-             . ' class="btn btn-outline-secondary" title="Descargar en PDF">'
-             . '<i class="fas fa-file-pdf me-1"></i>PDF</a>'
-             . '</span>';
+        $BOTON = [
+            'xlsx' => ['Descargar en Excel, con el formato del reporte', 'fa-file-excel', 'Excel'],
+            'csv'  => ['Descargar en CSV, abre en Excel', 'fa-file-csv', 'CSV'],
+            'pdf'  => ['Descargar en PDF', 'fa-file-pdf', 'PDF'],
+        ];
+        $html = '';
+        foreach ($formatos as $f) {
+            if (!isset($BOTON[$f])) { continue; }
+            [$titulo, $icono, $texto] = $BOTON[$f];
+            $html .= '<a href="' . APP_URL . 'exportar/?' . $qs . '&formato=' . $f . '"'
+                   . ' class="btn btn-outline-secondary" title="' . $titulo . '" data-formato="' . $f . '">'
+                   . '<i class="fas ' . $icono . ' me-1" aria-hidden="true"></i>' . $texto . '</a>';
+        }
+        return '<span class="btn-group btn-group-sm" role="group" aria-label="Exportar">' . $html . '</span>';
     }
 }

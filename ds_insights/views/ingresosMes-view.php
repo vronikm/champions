@@ -280,7 +280,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                         <i class="fas fa-rotate-left me-1" aria-hidden="true"></i>Mes en curso</a>
                 <?php endif; ?>
                 <?php if ($hayDatos): ?>
-                    <?php echo ds_botones_exportar('ingresosMes', 'ingresosMes', $pMes, $sedeSel > 0 ? ['sede' => $sedeSel] : []); ?>
+                    <?php echo ds_botones_exportar('ingresosMes', 'ingresosMes', $pMes, $sedeSel > 0 ? ['sede' => $sedeSel] : [], ['xlsx', 'pdf']); ?>
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="imImprimir">
                         <i class="fas fa-print me-1" aria-hidden="true"></i>Imprimir</button>
                 <?php endif; ?>

@@ -35,9 +35,13 @@ $reporte = isset($_GET['reporte']) ? (string) $_GET['reporte'] : '';
 $formato = isset($_GET['formato']) ? strtolower((string) $_GET['formato']) : 'csv';
 $p       = $insInsights->periodo($_GET['desde'] ?? null, $_GET['hasta'] ?? null);
 
-if (!in_array($formato, ['csv', 'pdf'], true)) { $formato = 'csv'; }
+if (!in_array($formato, ['csv', 'pdf', 'xlsx'], true)) { $formato = 'csv'; }
 
 $datos = $insInsights->datosExportables($reporte, $p);
+
+/* Excel (.xlsx) sólo lo tienen los reportes con forma propia (2026-11-25,
+   Ingresos del mes); a los demás se les entrega su CSV, que Excel abre. */
+if ($formato === 'xlsx' && !isset($datos['informe'])) { $formato = 'csv'; }
 
 /*----------  Nada que exportar  ----------*/
 if ($datos === null) {
@@ -76,6 +80,16 @@ $contexto = [
 
 $nombreArchivo = 'insights_' . preg_replace('~[^a-z0-9]+~i', '_', $reporte)
                . '_' . date('Ymd_Hi');
+
+/* Un reporte con forma propia (bloques, totales, recuadros) trae su
+   'informe' y su propio escritor; los demás, la tabla de abajo. */
+if (isset($datos['informe']) && $reporte === 'ingresosMes') {
+    $nombreArchivo = 'ingresos_del_mes_' . substr($p['desde'], 0, 7)
+                   . ($datos['informe']['sedeId'] > 0 ? '_' . trim(preg_replace('~[^a-z0-9]+~i', '_', function_exists('ds_sin_tildes') ? ds_sin_tildes($datos['informe']['sede']) : $datos['informe']['sede']), '_') : '')
+                   . '_' . date('Ymd_Hi');
+    require __DIR__ . '/inc/exportar-ingresosMes.php';
+    exit();
+}
 
 /*==============================================================
 | CSV

@@ -162,6 +162,7 @@
 
 		private function filasPagos(array $datos): string {
 			$this->totalesDePagos = self::totalesPagos($datos);
+			$this->datosDePagos   = $datos;
 			$h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
 
 			$tabla = '';
@@ -188,7 +189,7 @@
 							<span class="ds-reporte__valor">'.$h($rows['RUBRO']).'<span class="ds-reporte__sub">'.$h($rows['FORMA_PAGO']).'</span></span>
 						</td>
 						<td class="ds-ficha__dato text-end" data-etiqueta="Pagado" data-order="'.(float)$rows['VALOR_PAGADO'].'"><strong>'.self::dinero($rows['VALOR_PAGADO']).'</strong></td>
-						<td class="ds-ficha__dato text-end" data-etiqueta="Pendiente" data-order="'.(float)$rows['VALOR_PENDIENTE'].'">'.self::dinero($rows['VALOR_PENDIENTE']).'</td>
+						<td class="ds-ficha__dato text-end'.((float)$rows['VALOR_PENDIENTE'] > 0 ? ' rp-con-pendiente' : ' rp-sin-pendiente').'" data-etiqueta="Pendiente" data-order="'.(float)$rows['VALOR_PENDIENTE'].'">'.self::dinero($rows['VALOR_PENDIENTE']).'</td>
 						<td class="ds-ficha__estado">
 							<span class="badge rounded-pill '.($cancelado ? 'text-bg-success' : 'text-bg-warning').'">'.($cancelado ? 'Cancelado' : 'Pendiente').'</span>
 						</td>
@@ -218,6 +219,36 @@
 		 */
 		private $pieDePagos = '';
 		private $totalesDePagos = [];
+		private $datosDePagos = [];
+
+		/**
+		 * Las filas del informe, separadas campo a campo, para el Excel
+		 * (2026-11-24). Mismo origen que la tabla: lo que se ve es lo que se
+		 * exporta. Hay que llamar antes a listarPagos() o listarPagosConsolidado().
+		 */
+		public function filasExcelPagos(): array {
+			$limpio = static fn($v) => trim(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+			return array_map(static fn($r) => [
+				$limpio($r['SEDE']), $limpio($r['IDENTIFICACION']), $limpio($r['ALUMNO']),
+				substr((string)$r['FECHA_PAGO'], 0, 10), substr((string)$r['FECHA_REG_SISTEMA'], 0, 10),
+				$limpio($r['PERIODO']), $limpio($r['RUBRO']), $limpio($r['FORMA_PAGO']),
+				$limpio($r['CONCEPTO'] ?? ''),
+				round((float)$r['VALOR_PAGADO'], 2), round((float)$r['VALOR_PENDIENTE'], 2), $limpio($r['ESTADO_PAGO']),
+			], $this->datosDePagos);
+		}
+
+		/** Lo pagado por forma de pago, de mayor a menor (para las cifras de arriba). */
+		public function formasDePagos(): array {
+			$f = [];
+			foreach ($this->datosDePagos as $r) {
+				$v = (float)$r['VALOR_PAGADO'];
+				if ($v <= 0) { continue; }
+				$k = trim(html_entity_decode((string)$r['FORMA_PAGO'], ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+				$f[$k] = ($f[$k] ?? 0) + $v;
+			}
+			arsort($f);
+			return $f;
+		}
 
 		public function pieValoresPagos(): string {
 			return $this->pieDePagos;

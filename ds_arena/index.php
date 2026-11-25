@@ -31,9 +31,10 @@ if ($vista === 'reciboPublico') {
     $pagoPublico = $insRecibo->pagoDeEnlacePublico((string)($url[1] ?? ''));
     if ($pagoPublico > 0) {
         $r = $insRecibo->pagoRecibo($pagoPublico);
+        $contenido = $insRecibo->reciboPdf($r);   /* primero el PDF: si falla, el aviso no llega como «PDF» */
         header('Content-Type: application/pdf');
         header('Content-Disposition: inline; filename="Recibo-' . $r['recibo_numero'] . '.pdf"');
-        echo $insRecibo->reciboPdf($r);
+        echo $contenido;
     } else {
         require_once __DIR__ . "/../ds_core/inc/reciboEnlaceInvalido.php";
     }
@@ -51,9 +52,10 @@ if ($vista === 'ventaPublica') {
     $ventaPublica = $insPos->ventaDeEnlacePublico((string)($url[1] ?? ''));
     if ($ventaPublica > 0) {
         $v = $insPos->venta($ventaPublica);
+        $contenido = $insPos->ticketPdf($v);   /* primero el PDF: si falla, el aviso no llega como «PDF» */
         header('Content-Type: application/pdf');
         header('Content-Disposition: inline; filename="Nota-de-venta-' . $v['venta_numero'] . '.pdf"');
-        echo $insPos->ticketPdf($v);
+        echo $contenido;
     } else {
         require_once __DIR__ . "/../ds_core/inc/reciboEnlaceInvalido.php";
     }

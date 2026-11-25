@@ -3412,15 +3412,35 @@ class arenaController
            ni «FIRMA AUTORIZADA»: el recibo no lleva rúbrica. */
         $pdf->Rect(100, 88, 100, 33);
 
-        $qr  = (new \barcode_generator())->render_image('qr',
-                   'Recibo ' . $r['recibo_numero'] . "\nReserva " . $r['reserva_codigo'] . "\nUSD " . number_format((float)$r['pago_valor'], 2)
-                   . "\n" . date('d/m/Y', $fp) . "\n" . $r['sede_nombre'],
-                   ['sx' => 4, 'sy' => 4, 'p' => -12]);
-        $tmp = tempnam(sys_get_temp_dir(), 'qrra') . '.png';
-        imagepng($qr, $tmp);
-        imagedestroy($qr);
-        $pdf->Image($tmp, 136.5, 91, 27, 27, 'PNG');
-        @unlink($tmp);
+        /*
+        | El QR va como JPEG, aplanado sobre blanco (2026-11-25). Antes era un
+        | PNG con canal alfa (render_image hace imagesavealpha) y FPDF necesita
+        | la extensión zlib para leerlo: en un servidor sin zlib, el recibo no
+        | salía («Zlib not available, can't handle alpha channel»). Los carnets
+        | y los horarios ya usaban JPEG. Si aun así el QR fallara, el recibo
+        | sale sin él: un recibo sin QR sirve; una página de error, no.
+        |
+        | tempnam() crea el archivo: se escribe en ése (antes se le añadía
+        | «.png» y el vacío quedaba en la carpeta temporal en cada recibo).
+        */
+        $tmp = '';
+        try {
+            $qr = (new \barcode_generator())->render_image('qr',
+                      'Recibo ' . $r['recibo_numero'] . "\nReserva " . $r['reserva_codigo'] . "\nUSD " . number_format((float)$r['pago_valor'], 2)
+                      . "\n" . date('d/m/Y', $fp) . "\n" . $r['sede_nombre'],
+                      ['sx' => 4, 'sy' => 4, 'p' => -12]);
+            $lienzo = imagecreatetruecolor(imagesx($qr), imagesy($qr));
+            imagefill($lienzo, 0, 0, imagecolorallocate($lienzo, 255, 255, 255));
+            imagecopy($lienzo, $qr, 0, 0, 0, 0, imagesx($qr), imagesy($qr));
+            imagedestroy($qr);
+            $tmp = (string)tempnam(sys_get_temp_dir(), 'qrra');
+            imagejpeg($lienzo, $tmp, 95);
+            imagedestroy($lienzo);
+            $pdf->Image($tmp, 136.5, 91, 27, 27, 'JPG');
+        } catch (\Throwable $e) {
+            error_log('[DS pdf] recibo ' . $r['recibo_numero'] . ' sin QR: ' . $e->getMessage());
+        }
+        if ($tmp !== '') { @unlink($tmp); }
 
         /* Justo bajo el recuadro (termina en 121): al final de la hoja va el
            pie de Core › Organización (ds_pdf_pie), y a 122 se encimaban. */

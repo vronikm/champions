@@ -28,9 +28,10 @@ if (!$v) {
 }
 if (($_GET['pdf'] ?? '') === '1') {
     $disposicion = ($_GET['descargar'] ?? '') === '1' ? 'attachment' : 'inline';
+    $contenido = $pos->ticketPdf($v);   /* primero el PDF: si falla, el aviso no llega como «PDF» */
     header('Content-Type: application/pdf');
     header('Content-Disposition: ' . $disposicion . '; filename="Nota-de-venta-' . $v['venta_numero'] . '.pdf"');
-    echo $pos->ticketPdf($v);
+    echo $contenido;
     exit();
 }
 $h    = static fn ($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');

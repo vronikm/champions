@@ -17,8 +17,12 @@ if ($recibo === null) {
     exit();
 }
 
+/* Primero el PDF y después las cabeceras: si la generación falla, el aviso
+   de error («Referencia: …») llega como página, no como un «PDF» que el
+   navegador rechaza con ERR_INVALID_RESPONSE. */
+$contenido = $insArena->reciboPdf($recibo);
 header('Content-Type: application/pdf');
 header('Content-Disposition: ' . (isset($_GET['descargar']) ? 'attachment' : 'inline')
        . '; filename="Recibo-' . $recibo['recibo_numero'] . '.pdf"');
 header('Cache-Control: private, no-store');
-echo $insArena->reciboPdf($recibo);
+echo $contenido;

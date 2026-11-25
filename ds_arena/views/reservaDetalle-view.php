@@ -279,6 +279,15 @@ require_once __DIR__ . "/inc/layout-top.php";
                     <p class="text-muted small">
                         Saldo pendiente: <strong class="text-danger">$<?php echo number_format($saldo, 2); ?></strong>
                     </p>
+                    <?php /* De madrugada, el cobro de una reserva de ayer queda en el día de la reserva. */
+                    $fechaCobro = $insArena->fechaDelCobro((string)$reserva['reserva_fecha']);
+                    if ($fechaCobro !== date('Y-m-d')): ?>
+                        <div class="alert alert-info py-2 small d-flex gap-2 align-items-start" role="note">
+                            <i class="fas fa-moon mt-1" aria-hidden="true"></i>
+                            <span>Son las <?php echo date('H:i'); ?>: este cobro queda con fecha
+                                <strong><?php echo date('d/m/Y', strtotime($fechaCobro)); ?></strong>, el día de la reserva, y cuenta en la caja de ese día.</span>
+                        </div>
+                    <?php endif; ?>
 
                     <div class="mb-3">
                         <label for="pago_formaid">Forma de ingreso <span class="text-danger">*</span></label>

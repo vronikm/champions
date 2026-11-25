@@ -3534,6 +3534,33 @@ class arenaController
      * Si algo falla, no debe quedar un abono sin reflejar o un saldo movido
      * sin respaldo.
      */
+    /*
+    | LA FECHA DEL COBRO (2026-11-24)
+    |
+    | Los clientes pagan el saldo después de jugar, y la última hora pasa de
+    | las 00:00. Un cobro de una reserva de AYER registrado en la madrugada
+    | (antes de CIERRE_NOCHE) lleva la fecha de la reserva: es dinero de esa
+    | jornada. Cualquier otro cobro, la de hoy.
+    |
+    | La fecha la pone PHP (America/Guayaquil) y no CURDATE(): en un servidor
+    | en UTC, CURDATE() adelanta el día desde las 19:00 de Ecuador.
+    |
+    | Un cobro así queda con pago_fecha ANTERIOR al día de su registro; antes
+    | de este cambio pago_fecha nunca era anterior (CURDATE() sólo podía ir
+    | adelantada). El reporte de cobros se apoya en eso: la jornada de un
+    | cobro es la menor entre su pago_fecha y el día en que se registró.
+    */
+    public const CIERRE_NOCHE = '05:00';
+
+    /** La fecha con la que se registra un cobro de una reserva del día $fechaReserva. */
+    public function fechaDelCobro(string $fechaReserva, ?int $ahora = null): string
+    {
+        $ahora ??= time();
+        $hoy  = date('Y-m-d', $ahora);
+        $ayer = date('Y-m-d', strtotime($hoy . ' -1 day'));
+        return ($fechaReserva === $ayer && date('H:i', $ahora) < self::CIERRE_NOCHE) ? $ayer : $hoy;
+    }
+
     public function registrarPago(): string
     {
         if (!puede_crear('reservaList')) {
@@ -3595,6 +3622,8 @@ class arenaController
             return $this->alerta('simple', 'Error', 'Sin conexión a la base de datos.', 'error');
         }
 
+        $fechaCobro = $this->fechaDelCobro((string)$reserva['reserva_fecha']);
+
         try {
             $con->beginTransaction();
 
@@ -3613,9 +3642,9 @@ class arenaController
                     (pago_reservaid, pago_formaid, pago_valor, pago_recibido, pago_vuelto,
                      pago_vueltoamonedero, pago_referencia, pago_fecha, pago_observacion,
                      pago_usuarioid, pago_estado)
-                 VALUES (:r, :f, :v, :rec, :vu, :vm, :ref, CURDATE(), :o, :u, 'A')"
+                 VALUES (:r, :f, :v, :rec, :vu, :vm, :ref, :fe, :o, :u, 'A')"
             )->execute([
-                ':r' => $reservaid, ':f' => $formaid, ':v' => $valor,
+                ':r' => $reservaid, ':f' => $formaid, ':v' => $valor, ':fe' => $fechaCobro,
                 ':rec' => $recibido > 0 ? $recibido : null, ':vu' => $vuelto,
                 ':vm' => ($vuelto > 0 && $aMonedero) ? 'S' : 'N',
                 ':ref' => $referencia !== '' ? $referencia : null,
@@ -3661,6 +3690,9 @@ class arenaController
         $texto .= $nuevoSaldo <= 0.001
             ? 'La reserva queda totalmente pagada.'
             : 'Saldo pendiente: $' . number_format($nuevoSaldo, 2) . '.';
+        if ($fechaCobro !== date('Y-m-d')) {
+            $texto .= ' Queda con fecha ' . date('d/m/Y', strtotime($fechaCobro)) . ', el día de la reserva.';
+        }
 
         if ($vuelto > 0) {
             $texto .= $aMonedero
@@ -4029,7 +4061,7 @@ class arenaController
             ':a'  => $a, ':b' => $b,
         ];
 
-        $sqlP = "SELECT p.pago_id, p.pago_valor, p.pago_recibido, p.pago_vuelto, p.pago_vueltoamonedero,
+        $sqlP = "SELECT p.pago_id, p.pago_fecha, p.pago_valor, p.pago_recibido, p.pago_vuelto, p.pago_vueltoamonedero,
                         p.pago_referencia, p.pago_observacion,
                         UNIX_TIMESTAMP(p.pago_fecharegistro) AS ts,
                         f.forma_codigo, f.forma_nombre, f.forma_esmonedero,
@@ -4059,10 +4091,21 @@ class arenaController
                   WHERE p.pago_estado = 'A'
                     AND p.pago_fecha BETWEEN :d0 AND :h0
                     AND p.pago_fecharegistro BETWEEN FROM_UNIXTIME(:a) AND FROM_UNIXTIME(:b)";
+        /* Los cobros de la madrugada siguiente pueden ser de la jornada del
+           último día (fechaDelCobro): se piden hasta CIERRE_NOCHE y se
+           queda cada uno en su jornada, la menor entre su pago_fecha y el
+           día en que se registró. Los que la madrugada del primer día
+           cobró de la víspera, fuera. */
         $pP = $base;
+        [$hc, $mc] = array_map('intval', explode(':', self::CIERRE_NOCHE));
+        $pP[':b'] = $b + 1 + $hc * 3600 + $mc * 60;
         if ($f['cajero'] > 0) { $sqlP .= " AND p.pago_usuarioid = :u"; $pP[':u'] = $f['cajero']; }
         if ($f['sede'] > 0)   { $sqlP .= " AND r.reserva_sedeid = :s"; $pP[':s'] = $f['sede']; }
-        $pagos = $this->filas($sqlP . " ORDER BY p.pago_fecharegistro, p.pago_id", $pP);
+        $pagos = [];
+        foreach ($this->filas($sqlP . " ORDER BY p.pago_fecharegistro, p.pago_id", $pP) as $p) {
+            $p['dia'] = min((string)$p['pago_fecha'], date('Y-m-d', (int)$p['ts']));
+            if ($p['dia'] >= $f['desde'] && $p['dia'] <= $f['hasta']) { $pagos[] = $p; }
+        }
 
         /* Los movimientos del monedero no tienen sede: con una sede elegida
            no se pueden atribuir y se dejan fuera (la vista lo dice). */
@@ -4160,7 +4203,7 @@ class arenaController
                 } else {
                     $r['bancos'] += $entra;
                 }
-                $sumar($dias, date('Y-m-d', $ts), $entra);
+                $sumar($dias, $p['dia'], $entra);
             }
 
             /* Ingresos por horario: lo que pagó la reserva (también con
@@ -4179,6 +4222,8 @@ class arenaController
 
             $movs[] = [
                 'ts' => $ts, 'tipo' => 'pago', 'id' => (int)$p['pago_id'],
+                /* La jornada: distinta del día del registro si se cobró de madrugada. */
+                'dia' => $p['dia'],
                 'recibo' => $this->reciboNumero((int)$p['pago_id']),
                 'forma' => $p['forma_nombre'], 'codigoForma' => $p['forma_codigo'], 'esMonedero' => $esMon,
                 'valor' => $valor, 'entra' => $entra,
@@ -4268,7 +4313,8 @@ class arenaController
         $r['efectivoNeto'] = round($r['efectivo'] - $r['devEfectivo'], 2);
         $r['bancosNeto']   = round($r['bancos'] - $r['devBancos'], 2);
 
-        usort($movs, static fn ($x, $y) => [$x['ts'], $x['id']] <=> [$y['ts'], $y['id']]);
+        /* Por jornada y, dentro de ella, por hora: un cobro de madrugada va al final de su jornada. */
+        usort($movs, static fn ($x, $y) => [$x['dia'] ?? date('Y-m-d', $x['ts']), $x['ts'], $x['id']] <=> [$y['dia'] ?? date('Y-m-d', $y['ts']), $y['ts'], $y['id']]);
         ksort($horas);   // 'HH:MM-HH:MM' ordena por hora de inicio
         foreach ($horas as &$h) {
             $h['reservas']      = count($h['reservas']);

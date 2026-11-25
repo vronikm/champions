@@ -54,7 +54,9 @@ if (isset($_GET['csv'])) {
                    'Valor', 'Entra a caja', 'Recibido', 'Vuelto', 'Vuelto al monedero', 'Cajero'], ';');
     foreach ($movs as $m) {
         fputcsv($out, array_map($celda, [
-            date('d/m/Y', $m['ts']), date('H:i', $m['ts']),
+            /* La fecha es la de su jornada; un cobro de madrugada lo dice en la hora. */
+            date('d/m/Y', strtotime($m['dia'] ?? date('Y-m-d', $m['ts']))),
+            date('H:i', $m['ts']) . (isset($m['dia']) && $m['dia'] !== date('Y-m-d', $m['ts']) ? ' (madrugada del ' . date('d/m', $m['ts']) . ')' : ''),
             ['pago' => 'Cobro', 'deposito' => 'Depósito al monedero', 'devolucion' => 'Devolución del monedero',
              'devreserva' => 'Devolución de reserva'][$m['tipo']],
             $m['recibo'], $m['reserva'], $m['cliente'], $m['detalle'], $m['forma'], $m['referencia'],
@@ -422,7 +424,11 @@ require_once __DIR__ . "/inc/layout-top.php";
                         <tr class="<?php echo $clase; ?>">
                             <td class="ar-rp__c-hora">
                                 <strong><?php echo date('H:i', $m['ts']); ?></strong>
-                                <?php if (!$unDia): ?><small class="d-block text-body-secondary"><?php echo date('d/m/Y', $m['ts']); ?></small><?php endif; ?>
+                                <?php $diaMov = $m['dia'] ?? date('Y-m-d', $m['ts']); ?>
+                                <?php if (!$unDia): ?><small class="d-block text-body-secondary"><?php echo date('d/m/Y', strtotime($diaMov)); ?></small><?php endif; ?>
+                                <?php if ($diaMov !== date('Y-m-d', $m['ts'])): ?>
+                                    <small class="d-block text-body-secondary" title="Cobrado el <?php echo date('d/m/Y H:i', $m['ts']); ?>, después de jugar: cuenta en el día de la reserva"><i class="fas fa-moon me-1" aria-hidden="true"></i>madrugada</small>
+                                <?php endif; ?>
                             </td>
                             <td class="ar-rp__c-quien">
                                 <strong><?php echo $e($m['cliente']); ?></strong>

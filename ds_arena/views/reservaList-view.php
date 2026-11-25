@@ -187,6 +187,30 @@ require_once __DIR__ . "/inc/layout-top.php";
         <?php endfor; ?>
     </nav>
 
+    <?php
+    /* De madrugada (antes de CIERRE_NOCHE) los clientes de anoche todavía
+       pagan: lo que se cobre de una reserva de ayer queda con su fecha
+       (fechaDelCobro). Se avisa, y desde hoy se lleva a ayer de un toque. */
+    if (date('H:i') < arenaController::CIERRE_NOCHE):
+        $ayer = date('Y-m-d', strtotime($hoy . ' -1 day'));
+        $cierre = arenaController::CIERRE_NOCHE;
+        if ($dia === $ayer): ?>
+            <div class="ar-anoche" role="note">
+                <i class="fas fa-moon" aria-hidden="true"></i>
+                <span>Lo que cobres de estas reservas hasta las <?php echo $cierre; ?> queda con fecha de este día.</span>
+            </div>
+        <?php elseif ($dia === $hoy):
+            $cAyer = $insArena->resumenPorDia(array_merge($filtros, ['desde' => $ayer, 'hasta' => $ayer]))[$ayer] ?? $vacioDia;
+            if ($cAyer['saldo'] > 0): ?>
+                <div class="ar-anoche" role="note">
+                    <i class="fas fa-moon" aria-hidden="true"></i>
+                    <span>Anoche quedaron <strong><?php echo $dinero($cAyer['saldo']); ?></strong> por cobrar; hasta las <?php echo $cierre; ?> se cobran con fecha de ayer.</span>
+                    <a href="<?php echo htmlspecialchars($urlDia($ayer), ENT_QUOTES, 'UTF-8'); ?>">Cobrar lo de ayer <i class="fas fa-arrow-right ms-1" aria-hidden="true"></i></a>
+                </div>
+            <?php endif; ?>
+        <?php endif; ?>
+    <?php endif; ?>
+
     <?php /* Filtros del día. En el teléfono se pliegan (se abren solos si hay alguno puesto). */ ?>
     <details class="ar-filtros" id="arFiltros" open>
         <summary class="ar-filtros__abrir">
@@ -1309,36 +1333,41 @@ document.addEventListener('click', function (e) {
    ===================================================================== */
 /* ---- El día: flechas, fecha y la semana ---- */
 .ar-dia { overflow: hidden; }
-.ar-dia__barra { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: .5rem; padding: .75rem 1rem .5rem; }
+/* Compacto (2026-11-24): «Hoy» al lado de la fecha y los días de ~48 px de
+   alto (antes 72), que sigue siendo un blanco cómodo para el dedo. */
+.ar-dia__barra { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: .5rem; padding: .6rem .75rem .4rem; }
 .ar-dia__flecha {
-    width: 2.75rem; height: 2.75rem; display: inline-flex; align-items: center; justify-content: center;
+    width: 2.75rem; height: 2.75rem; display: inline-flex; align-items: center; justify-content: center; padding: 0;
     border-radius: 50%; border: 1px solid var(--bs-border-color); color: var(--bs-body-color); background: var(--bs-body-bg);
 }
 .ar-dia__flecha:hover, .ar-dia__flecha:focus-visible { background: var(--bs-tertiary-bg); color: var(--bs-body-color); }
-.ar-dia__titulo { text-align: center; min-width: 0; }
-.ar-dia__fecha { font-size: 1.25rem; font-weight: 700; line-height: 1.2; }
-.ar-dia__rel { display: inline-block; margin-top: .2rem; font-size: .78rem; font-weight: 600; padding: .1rem .55rem; border-radius: 1rem;
-               background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); text-decoration: none; }
+.ar-dia__titulo { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .15rem .5rem; min-width: 0; text-align: center; }
+.ar-dia__fecha { font-size: 1.2rem; font-weight: 700; line-height: 1.2; }
+.ar-dia__rel { display: inline-block; font-size: .75rem; font-weight: 600; padding: .1rem .55rem; border-radius: 1rem; line-height: 1.4;
+               background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); text-decoration: none; white-space: nowrap; }
 .ar-dia__rel--hoy { background: var(--bs-primary); color: #fff; }
 .ar-dia__rel--ir { color: var(--bs-link-color); }
-.ar-semana { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .3rem; padding: 0 .75rem .75rem; }
+.ar-semana { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .25rem; padding: 0 .75rem .6rem; width: 100%; max-width: 46rem; margin: 0 auto; }
 .ar-semana__dia {
-    display: flex; flex-direction: column; align-items: center; gap: .05rem; padding: .4rem .1rem .45rem;
-    border-radius: .65rem; text-decoration: none; color: var(--bs-body-color); border: 1px solid transparent;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; padding: .3rem .1rem; min-height: 2.75rem;
+    border-radius: .6rem; text-decoration: none; color: var(--bs-body-color); border: 1px solid transparent; line-height: 1.1;
 }
 .ar-semana__dia:hover { background: var(--bs-tertiary-bg); color: var(--bs-body-color); }
-.ar-semana__nombre { font-size: .72rem; text-transform: uppercase; letter-spacing: .03em; color: var(--bs-secondary-color); }
-.ar-semana__num { font-size: 1.05rem; line-height: 1.2; }
-.ar-semana__n {
-    min-width: 1.4rem; padding: 0 .3rem; border-radius: 1rem; font-size: .72rem; font-weight: 700; text-align: center;
-    background: var(--bs-primary-bg-subtle); color: var(--bs-primary-text-emphasis);
-}
-.ar-semana__n.is-cero { background: transparent; color: var(--bs-secondary-color); font-weight: 400; }
-.ar-semana__n.is-saldo { box-shadow: inset 0 0 0 1px var(--bs-danger); }
+.ar-semana__nombre { font-size: .6875rem; text-transform: uppercase; letter-spacing: .04em; color: var(--bs-secondary-color); }
+.ar-semana__num { font-size: 1rem; line-height: 1.15; font-variant-numeric: tabular-nums; }
+/* Cuántas reservas: texto pequeño (azul si hay, rojo si queda saldo). */
+.ar-semana__n { font-size: .6875rem; font-weight: 700; color: var(--bs-primary-text-emphasis); font-variant-numeric: tabular-nums; }
+.ar-semana__n.is-cero { color: var(--bs-secondary-color); font-weight: 400; opacity: .7; }
+.ar-semana__n.is-saldo { color: var(--bs-danger-text-emphasis); }
 .ar-semana__dia.is-hoy { border-color: var(--bs-primary-border-subtle); }
 .ar-semana__dia.is-activo { background: var(--bs-primary); border-color: var(--bs-primary); color: #fff; }
-.ar-semana__dia.is-activo .ar-semana__nombre { color: rgba(255,255,255,.85); }
-.ar-semana__dia.is-activo .ar-semana__n { background: rgba(255,255,255,.25); color: #fff; }
+.ar-semana__dia.is-activo .ar-semana__nombre, .ar-semana__dia.is-activo .ar-semana__n { color: rgba(255,255,255,.9); opacity: 1; }
+.ar-semana__dia.is-activo .ar-semana__n.is-saldo { color: #fff; text-decoration: underline; text-decoration-color: #fca5a5; text-decoration-thickness: 2px; text-underline-offset: 2px; }
+
+/* De madrugada: lo que quedó por cobrar de anoche, a un toque. */
+.ar-anoche { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .75rem; margin: 0 .75rem .6rem; padding: .5rem .75rem;
+             border-radius: .6rem; font-size: .85rem; background: var(--bs-info-bg-subtle); color: var(--bs-info-text-emphasis); border: 1px solid var(--bs-info-border-subtle); }
+.ar-anoche a { font-weight: 600; margin-left: auto; }
 
 /* ---- Filtros del día (plegables en el teléfono) ---- */
 .ar-filtros { border-top: 1px solid var(--bs-border-color); }
@@ -1392,10 +1421,10 @@ document.addEventListener('click', function (e) {
     .ar-filtros .form-select, .ar-filtros .form-control { min-height: 2.75rem; font-size: 1rem; }
 }
 @media (max-width: 575.98px) {
-    .ar-dia__barra { padding: .6rem .6rem .4rem; }
+    .ar-dia__barra { padding: .5rem .5rem .35rem; }
     .ar-dia__fecha { font-size: 1.05rem; }
-    .ar-semana { padding: 0 .4rem .6rem; gap: .15rem; }
-    .ar-semana__num { font-size: .95rem; }
+    .ar-semana { padding: 0 .4rem .5rem; gap: .15rem; }
+    .ar-anoche { margin: 0 .4rem .5rem; }
     /* Dos cifras por fila; «Por cobrar», que es lo que se persigue, a lo ancho. */
     .ar-kpis { grid-template-columns: 1fr 1fr; gap: .5rem; }
     .ar-kpi { padding: .6rem .7rem; }

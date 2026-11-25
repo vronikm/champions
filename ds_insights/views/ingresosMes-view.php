@@ -140,7 +140,7 @@ require_once __DIR__ . "/inc/layout-top.php";
     .ds-im-bloque__total strong { display: block; font-size: 1.125rem; font-variant-numeric: tabular-nums; }
     .ds-im-bloque__total span { font-size: .75rem; color: var(--bs-secondary-color); }
     .ds-im-bloque__chevron { transition: transform .2s; color: var(--bs-secondary-color); margin-left: .375rem; }
-    .ds-im-bloque[open] .ds-im-bloque__chevron { transform: rotate(180deg); }
+    .ds-im-bloque[open] > summary .ds-im-bloque__chevron { transform: rotate(180deg); }
     .ds-im-bloque__reparto { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: .25rem .875rem; font-size: .75rem; color: var(--bs-secondary-color); }
     .ds-im-bloque__reparto span { display: inline-flex; align-items: center; gap: .3rem; font-variant-numeric: tabular-nums; }
     .ds-im-bloque__cuentas { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: .25rem 1rem; font-size: .8125rem; font-variant-numeric: tabular-nums; }
@@ -151,14 +151,53 @@ require_once __DIR__ . "/inc/layout-top.php";
                  background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); border-bottom: 1px solid var(--bs-border-color); }
     .ds-im-sub--egreso { color: var(--bs-danger-text-emphasis); border-top: 1px solid var(--bs-border-color); }
 
+    /* Campeonato: los cobros agrupados por campeonato */
+    .ds-im-camps { display: flex; flex-wrap: wrap; gap: .5rem; padding: .75rem 1rem; border-bottom: 1px solid var(--bs-border-color); }
+    .ds-im-camps a { display: inline-flex; align-items: baseline; gap: .5rem; padding: .3rem .75rem; border-radius: 999px; font-size: .8125rem;
+                     border: 1px solid var(--bs-border-color); color: var(--bs-body-color); text-decoration: none; background: var(--bs-body-bg); }
+    .ds-im-camps a:hover, .ds-im-camps a:focus-visible { border-color: #15803d; }
+    .ds-im-camps strong { font-variant-numeric: tabular-nums; }
+    .ds-im-tabla tr.ds-im-grupo th { position: static; background: rgba(21,128,61,.08); color: var(--bs-emphasis-color);
+                                     text-transform: none; letter-spacing: 0; font-size: .8125rem; border-top: 2px solid var(--bs-border-color); scroll-margin-top: 2.5rem; }
+    .ds-im-tabla tr.ds-im-grupo th i { color: #15803d; }
+    [data-bs-theme="dark"] .ds-im-tabla tr.ds-im-grupo th { background: rgba(74,222,128,.10); }
+    [data-bs-theme="dark"] .ds-im-tabla tr.ds-im-grupo th i { color: #4ade80; }
+    .ds-im-grupo__cuenta { font-weight: 400; color: var(--bs-secondary-color); margin-left: .5rem; }
+    .ds-im-grupo-m { border-bottom: 1px solid var(--bs-border-color); }
+    .ds-im-grupo-m > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: 1fr auto; gap: .125rem .75rem;
+                               padding: .75rem 1rem; min-height: 2.75rem;
+                               /* Fija arriba mientras se recorren sus fichas: fondo opaco. */
+                               position: sticky; top: 0; z-index: 1;
+                               background: linear-gradient(rgba(21,128,61,.06), rgba(21,128,61,.06)), var(--bs-body-bg); }
+    [data-bs-theme="dark"] .ds-im-grupo-m > summary { background: linear-gradient(rgba(74,222,128,.08), rgba(74,222,128,.08)), var(--bs-body-bg); }
+    .ds-im-grupo-m > summary::-webkit-details-marker { display: none; }
+    .ds-im-grupo-m > summary:focus-visible { outline: 2px solid #15803d; outline-offset: -2px; }
+    .ds-im-grupo-m[open] > summary { border-bottom: 1px solid var(--bs-border-color-translucent); }
+    .ds-im-grupo-m[open] > summary .ds-im-bloque__chevron { transform: rotate(180deg); }
+    .ds-im-grupo-m__nombre { font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+    .ds-im-grupo-m__nombre i { color: #15803d; margin-right: .25rem; }
+    [data-bs-theme="dark"] .ds-im-grupo-m__nombre i { color: #4ade80; }
+    .ds-im-grupo-m__total { font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+    .ds-im-grupo-m__meta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: .125rem .75rem; font-size: .75rem; color: var(--bs-secondary-color); font-variant-numeric: tabular-nums; }
+    .ds-im-grupo-m__meta > span { display: inline-flex; align-items: center; gap: .3rem; }
+    .ds-im-grupo-m .ds-im-ficha { padding-left: 1.5rem; }
+    .ds-im-resumen__sub td { font-size: .8125rem; color: var(--bs-secondary-color); border-top: 0; padding-top: .125rem; padding-bottom: .125rem; }
+    .ds-im-resumen__sub td:first-child { padding-left: 1.5rem; }
+
     /* Escritorio: la tabla del reporte */
     .ds-im-tabla { margin: 0; font-size: .875rem; }
     .ds-im-tabla th { font-size: .75rem; text-transform: uppercase; letter-spacing: .02em; color: var(--bs-secondary-color);
-                      white-space: nowrap; background: var(--bs-tertiary-bg); position: sticky; top: 0; z-index: 1; }
+                      white-space: nowrap; background: var(--bs-tertiary-bg); }
+    /* Cada sección: la cabecera y el pie quedan fijos; sólo se mueven las filas. */
+    .ds-im-tabla-caja { max-height: min(36rem, 70vh); overflow: auto; }
+    .ds-im-tabla thead { position: sticky; top: 0; z-index: 2; }
+    .ds-im-tabla thead th { box-shadow: inset 0 -1px 0 var(--bs-border-color); }
+    .ds-im-tabla tfoot { position: sticky; bottom: 0; z-index: 2; }
+    .ds-im-telefono__filas { max-height: min(60vh, 32rem); overflow-y: auto; }
     .ds-im-tabla td { vertical-align: middle; }
     .ds-im-tabla .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .ds-im-tabla tfoot td { font-weight: 700; background: var(--bs-tertiary-bg); }
-    .ds-im-tabla tfoot tr:first-child td { border-top: 2px solid var(--bs-border-color); }
+    .ds-im-tabla tfoot tr:first-child td { box-shadow: inset 0 2px 0 var(--bs-border-color); }
     .ds-im-tabla .ds-im-tabla__alumno { min-width: 13rem; }
     .ds-im-tabla .ds-im-tabla__ident { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--bs-secondary-color); }
     .ds-im-tabla__detalle small { display: block; color: var(--bs-secondary-color); }
@@ -205,7 +244,9 @@ require_once __DIR__ . "/inc/layout-top.php";
         .ds-im-bloque__chevron { display: none; }
         .ds-im-escritorio { display: block !important; }
         .ds-im-telefono { display: none !important; }
-        .ds-im-tabla th { position: static; }
+        .ds-im-camps { display: none !important; }
+        .ds-im-tabla thead, .ds-im-tabla tfoot { position: static; }
+        .ds-im-tabla-caja, .ds-im-telefono__filas { max-height: none !important; overflow: visible !important; }
     }
 </style>
 
@@ -311,7 +352,11 @@ require_once __DIR__ . "/inc/layout-top.php";
 <?php foreach ($r['bloques'] as $b):
     $n  = count($b['filas']);
     $ne = count($b['egresos']);
-    $esEgr = $b['rubro'] === 'EGR'; ?>
+    $esEgr = $b['rubro'] === 'EGR';
+    /* Campeonato: los cobros, agrupados por campeonato; el resto, una sola tanda. */
+    $grupos = $b['grupos'] ?? [];
+    $ngr = count($grupos);
+    $segmentos = $ngr > 0 ? $grupos : [['nombre' => null, 'filas' => $b['filas'], 'formas' => [], 'total' => 0]]; ?>
     <details class="ds-im-bloque<?php echo $esEgr ? ' ds-im-bloque--egr' : ''; ?>" id="im-<?php echo $h($b['clave']); ?>" open>
         <summary>
             <span class="ds-im-bloque__icono" aria-hidden="true"><i class="fas <?php echo $ICONO[$b['rubro']] ?? 'fa-receipt'; ?>"></i></span>
@@ -322,7 +367,7 @@ require_once __DIR__ . "/inc/layout-top.php";
             </h3>
             <span class="ds-im-bloque__total">
                 <strong class="<?php echo $b['neto'] < 0 ? 'ds-im-neto-neg' : ''; ?>"><?php echo $dinero($b['neto']); ?><i class="fas fa-chevron-down ds-im-bloque__chevron small" aria-hidden="true"></i></strong>
-                <span><?php echo $ne > 0 ? 'neto' : ($n === 1 ? '1 cobro' : $n . ' cobros'); ?></span>
+                <span><?php echo $ne > 0 ? 'neto' : ($n === 1 ? '1 cobro' : $n . ' cobros'); ?><?php if ($ngr > 0): ?> · <?php echo $ngr === 1 ? '1 campeonato' : $ngr . ' campeonatos'; ?><?php endif; ?></span>
             </span>
             <?php if ($b['total'] > 0): ?>
                 <span class="ds-im-barra" aria-hidden="true">
@@ -352,7 +397,14 @@ require_once __DIR__ . "/inc/layout-top.php";
         <div class="ds-im-bloque__cuerpo">
             <!-- Escritorio: la tabla del reporte -->
             <div class="ds-im-escritorio d-none d-md-block">
-                <div class="table-responsive" style="max-height:36rem;">
+                <?php if ($ngr > 1): ?>
+                    <nav class="ds-im-camps" aria-label="Ir a un campeonato">
+                        <?php foreach ($grupos as $gi => $g): ?>
+                            <a href="#im-<?php echo $h($b['clave']); ?>-g<?php echo $gi; ?>"><span><?php echo $h($g['nombre']); ?></span><strong><?php echo $dinero($g['total']); ?></strong></a>
+                        <?php endforeach; ?>
+                    </nav>
+                <?php endif; ?>
+                <div class="ds-im-tabla-caja">
                     <table class="table table-sm table-hover ds-im-tabla">
                         <thead>
                             <tr>
@@ -371,7 +423,18 @@ require_once __DIR__ . "/inc/layout-top.php";
                         <?php if ($n > 0): ?>
                             <tbody>
                                 <?php if ($ne > 0): ?><tr><th colspan="<?php echo 7 + count($cols); ?>" class="ds-im-sub">Ingresos</th></tr><?php endif; ?>
-                                <?php foreach ($b['filas'] as $f): ?>
+                                <?php foreach ($segmentos as $gi => $g): ?>
+                                <?php if ($g['nombre'] !== null):
+                                    $ng = count($g['filas']); ?>
+                                    <tr class="ds-im-grupo" id="im-<?php echo $h($b['clave']); ?>-g<?php echo $gi; ?>">
+                                        <th colspan="7" scope="rowgroup"><i class="fas fa-trophy me-2" aria-hidden="true"></i><?php echo $h($g['nombre']); ?>
+                                            <span class="ds-im-grupo__cuenta"><?php echo $ng === 1 ? '1 cobro' : $ng . ' cobros'; ?> · <?php echo $dinero($g['total']); ?></span></th>
+                                        <?php foreach ($cols as $k => $etq): $vg = $g['formas'][$k] ?? 0; ?>
+                                            <th class="num"><?php echo $vg > 0 ? $dinero($vg) : ''; ?></th>
+                                        <?php endforeach; ?>
+                                    </tr>
+                                <?php endif; ?>
+                                <?php foreach ($g['filas'] as $f): ?>
                                     <tr>
                                         <td><?php echo $h($f['sede']); ?></td>
                                         <td class="ds-im-tabla__ident"><?php echo $h($f['ident']); ?></td>
@@ -384,6 +447,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                                             <td class="num"><?php echo $k === $f['col'] ? $dinero($f['valor']) : ''; ?></td>
                                         <?php endforeach; ?>
                                     </tr>
+                                <?php endforeach; ?>
                                 <?php endforeach; ?>
                             </tbody>
                         <?php endif; ?>
@@ -437,10 +501,28 @@ require_once __DIR__ . "/inc/layout-top.php";
 
             <!-- Teléfono: una ficha por movimiento -->
             <div class="ds-im-telefono d-md-none">
+                <div class="ds-im-telefono__filas">
                 <?php if ($n > 0): ?>
                     <?php if ($ne > 0): ?><div class="ds-im-sub">Ingresos</div><?php endif; ?>
+                    <?php foreach ($segmentos as $gi => $g):
+                        $ng = count($g['filas']); ?>
+                    <?php if ($g['nombre'] !== null): ?>
+                    <details class="ds-im-grupo-m"<?php echo $ngr === 1 ? ' open' : ''; ?>>
+                        <summary>
+                            <span class="ds-im-grupo-m__nombre"><i class="fas fa-trophy" aria-hidden="true"></i> <?php echo $h($g['nombre']); ?></span>
+                            <strong class="ds-im-grupo-m__total"><?php echo $dinero($g['total']); ?><i class="fas fa-chevron-down ds-im-bloque__chevron small" aria-hidden="true"></i></strong>
+                            <span class="ds-im-grupo-m__meta">
+                                <span><?php echo $ng === 1 ? '1 cobro' : $ng . ' cobros'; ?></span>
+                                <?php foreach ($cols as $k => $etq):
+                                    $vg = $g['formas'][$k] ?? 0;
+                                    if ($vg <= 0) { continue; } ?>
+                                    <span><span class="ds-im-punto ds-im-punto--<?php echo $tono($k); ?>" aria-hidden="true"></span><?php echo $h($etq); ?> <?php echo $dinero($vg); ?></span>
+                                <?php endforeach; ?>
+                            </span>
+                        </summary>
+                    <?php endif; ?>
                     <ul class="ds-im-fichas">
-                        <?php foreach ($b['filas'] as $f): ?>
+                        <?php foreach ($g['filas'] as $f): ?>
                             <li class="ds-im-ficha">
                                 <span class="ds-im-ficha__nombre"><?php echo $h($f['alumno']); ?><?php if ($f['tipo'] === 'abono'): ?> <span class="ds-im-abono">Abono</span><?php endif; ?></span>
                                 <span class="ds-im-ficha__valor"><?php echo $dinero($f['valor']); ?></span>
@@ -454,6 +536,8 @@ require_once __DIR__ . "/inc/layout-top.php";
                             </li>
                         <?php endforeach; ?>
                     </ul>
+                    <?php if ($g['nombre'] !== null): ?></details><?php endif; ?>
+                    <?php endforeach; ?>
                 <?php endif; ?>
                 <?php if ($ne > 0): ?>
                     <div class="ds-im-sub ds-im-sub--egreso">Egresos</div>
@@ -472,6 +556,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                         <?php endforeach; ?>
                     </ul>
                 <?php endif; ?>
+                </div>
                 <dl class="ds-im-cuadre m-0">
                     <?php if ($ne > 0 && $n === 0): ?>
                         <dt class="ds-im-cuadre__neto">Total egresos</dt><dd class="ds-im-cuadre__neto ds-im-neto-neg"><?php echo $dinero(-$b['egresosTotal']); ?></dd>
@@ -517,6 +602,16 @@ require_once __DIR__ . "/inc/layout-top.php";
                             <td class="num ds-im-egreso"><?php echo $b['egresosTotal'] > 0 ? $dinero(-$b['egresosTotal']) : '<span class="text-body-secondary">—</span>'; ?></td>
                             <td class="num fw-semibold<?php echo $b['neto'] < 0 ? ' ds-im-neto-neg' : ''; ?>"><?php echo $dinero($b['neto']); ?></td>
                         </tr>
+                        <?php if (count($b['grupos'] ?? []) > 1): ?>
+                            <?php foreach ($b['grupos'] as $g): ?>
+                                <tr class="ds-im-resumen__sub">
+                                    <td><?php echo $h($g['nombre']); ?></td>
+                                    <td class="num"><?php echo $dinero($g['total']); ?></td>
+                                    <td></td>
+                                    <td></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
                     <?php endforeach; ?>
                 </tbody>
                 <tfoot>

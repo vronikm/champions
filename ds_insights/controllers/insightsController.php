@@ -2758,13 +2758,16 @@ class insightsController
                                FROM asistencia_asignahorario ah
                                JOIN asistencia_horario_detalle d ON d.detalle_horarioid = ah.asignahorario_horarioid
                               GROUP BY ah.asignahorario_alumnoid) LA ON LA.alumno = a.alumno_id
-                  LEFT JOIN asistencia_lugar l ON l.lugar_id = LA.lugar";
+                  LEFT JOIN asistencia_lugar l ON l.lugar_id = LA.lugar
+                  LEFT JOIN torneo_torneo tor ON tor.torneo_id = p.pago_campeonatoid";
 
+        /* El campeonato de cada cobro (rubro RPC): el bloque «Campeonato» se
+           agrupa por él (2026-11-24). */
         $comunes = "a.alumno_identificacion ident,
                     CONCAT_WS(' ', a.alumno_primernombre, NULLIF(a.alumno_segundonombre, ''),
                               a.alumno_apellidopaterno, NULLIF(a.alumno_apellidomaterno, '')) alumno,
                     p.pago_sedeid sede_id, s.sede_nombre sede, p.pago_rubroid rubro,
-                    l.lugar_nombre lugar";
+                    l.lugar_nombre lugar, p.pago_campeonatoid campeonato_id, tor.torneo_nombre campeonato";
 
         $filas = $this->filas(
             "SELECT * FROM (
@@ -2870,6 +2873,7 @@ class insightsController
             'clave' => $clave, 'rubro' => $rubro, 'titulo' => $titulo, 'lugar' => $lugar,
             'filas' => [], 'egresos' => [], 'formas' => [], 'egresosFormas' => [],
             'total' => 0.0, 'egresosTotal' => 0.0, 'neto' => 0.0,
+            'grupos' => [],   /* sólo Campeonato: un grupo por campeonato */
         ];
 
         $totales = [];
@@ -2899,9 +2903,20 @@ class insightsController
                 'forma'    => $catalogo[$f['forma']] ?? (string) $f['forma'],
                 'col'      => $col,
                 'valor'    => $valor,
+                'campeonato' => $f['rubro'] === 'RPC' ? trim((string) ($f['campeonato'] ?? '')) ?: 'Sin campeonato' : '',
             ];
             $bloques[$clave]['formas'][$col] = ($bloques[$clave]['formas'][$col] ?? 0) + $valor;
             $bloques[$clave]['total'] += $valor;
+
+            /* Campeonato: cada cobro en el grupo de su campeonato. */
+            if ($f['rubro'] === 'RPC') {
+                $g = 'C' . (int) ($f['campeonato_id'] ?? 0);
+                $bloques[$clave]['grupos'][$g] ??= ['nombre' => trim((string) ($f['campeonato'] ?? '')) ?: 'Sin campeonato',
+                                                    'filas' => [], 'formas' => [], 'total' => 0.0];
+                $bloques[$clave]['grupos'][$g]['filas'][] = end($bloques[$clave]['filas']);
+                $bloques[$clave]['grupos'][$g]['formas'][$col] = ($bloques[$clave]['grupos'][$g]['formas'][$col] ?? 0) + $valor;
+                $bloques[$clave]['grupos'][$g]['total'] += $valor;
+            }
         }
 
         $egresosTotales = [];
@@ -2938,6 +2953,11 @@ class insightsController
             $b['total']        = round($b['total'], 2);
             $b['egresosTotal'] = round($b['egresosTotal'], 2);
             $b['neto']         = round($b['total'] - $b['egresosTotal'], 2);
+            /* Los campeonatos, del que más recaudó al que menos. */
+            uasort($b['grupos'], static fn(array $x, array $y): int => [$y['total'], $x['nombre']] <=> [$x['total'], $y['nombre']]);
+            foreach ($b['grupos'] as &$g) { $g['total'] = round($g['total'], 2); }
+            unset($g);
+            $b['grupos'] = array_values($b['grupos']);
         }
         unset($b);
 
@@ -3323,7 +3343,8 @@ class insightsController
                     $bloque = $b['titulo'] . ($b['lugar'] !== null ? ' · ' . $b['lugar'] : '');
                     foreach ($b['filas'] as $f) {
                         $filas[] = [$bloque, $f['tipo'] === 'abono' ? 'Abono' : 'Ingreso', $f['sede'], $f['ident'], $f['alumno'],
-                                    $dia($f['fecha']), $dia($f['registro']), $f['periodo'], $f['rubro'],
+                                    $dia($f['fecha']), $dia($f['registro']), $f['periodo'],
+                                    $f['rubro'] . ($f['campeonato'] !== '' ? ' · ' . $f['campeonato'] : ''),
                                     $f['forma'], $dec($f['valor'])];
                     }
                     foreach ($b['egresos'] as $e) {

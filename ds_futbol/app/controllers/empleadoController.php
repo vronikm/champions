@@ -279,6 +279,30 @@
 			return $option;
 		}
 
+		/** Sedes para el filtro: las activas y las que tienen empleados. */
+		public function sedesFiltroEmpleado(): array{
+			$lista = [];
+			foreach ($this->ejecutarConsulta("SELECT sede_id, sede_nombre FROM general_sede
+					WHERE " . sql_sede_activa('sede_id', 0) . "
+					   OR sede_id IN (SELECT DISTINCT empleado_sedeid FROM sujeto_empleado WHERE empleado_estado IN ('A','I'))
+					ORDER BY sede_nombre")->fetchAll() as $f) {
+				$lista[(int)$f['sede_id']] = $f['sede_nombre'];
+			}
+			return $lista;
+		}
+
+		/** Tipos de personal para el filtro: ['TPP' => 'Profesor', …]. */
+		public function tiposFiltroEmpleado(): array{
+			$lista = [];
+			foreach ($this->ejecutarConsulta("SELECT C.catalogo_valor, C.catalogo_descripcion
+					FROM general_tabla_catalogo C INNER JOIN general_tabla T ON T.tabla_id = C.catalogo_tablaid
+					WHERE T.tabla_nombre = 'tipo_personal' AND C.catalogo_estado = 'A'
+					ORDER BY C.catalogo_descripcion")->fetchAll() as $f) {
+				$lista[$f['catalogo_valor']] = $f['catalogo_descripcion'];
+			}
+			return $lista;
+		}
+
 		/*----------  Empleados ingresados (vista empleadoList)  ----------*/
 		/*
 		| Una fila por empleado: quién es (foto, cédula, tipo y especialidad),
@@ -289,9 +313,27 @@
 		| texto del botón Activar/Inactivar lo delataba) y los datos sin
 		| escapar. El botón «Registrar» de honorarios abría otra pestaña.
 		*/
-		public function listarEmpleados(){
-			$datos = $this->ejecutarConsulta("SELECT E.empleado_id, E.empleado_identificacion, E.empleado_nombre, E.empleado_correo,
+		/*
+		| CRITERIOS DE BÚSQUEDA (2026-11-25)
+		|
+		|   sede     0 = todas
+		|   tipo     tipo de personal ('' = todos)
+		|   estado   'A' activos, 'I' inactivos, '' los dos
+		|   acceso   'con' usuario activo, 'sin' sin usuario, 'inactivo' usuario inactivo
+		|   q        nombre, identificación, correo o celular
+		|
+		| $resumen recibe las cifras de lo filtrado: total, activos,
+		| inactivos y sin usuario.
+		|
+		| El botón Editar ya no lleva a /empleadoList/{id}/: abre el modal con
+		| los datos de la fila (data-empleado). Esos datos sólo salen para
+		| quien puede editar.
+		*/
+		public function listarEmpleados(array $f = [], ?array &$resumen = null){
+			$sql = "SELECT E.empleado_id, E.empleado_identificacion, E.empleado_nombre, E.empleado_correo,
 						E.empleado_celular, E.empleado_foto, E.empleado_estado, S.sede_nombre,
+						E.empleado_sedeid, E.empleado_tipoidentificacion, E.empleado_direccion, E.empleado_tipopersonalid,
+						E.empleado_especialidadid, E.empleado_fechaingreso, E.empleado_genero, E.empleado_sueldo,
 						TP.catalogo_descripcion AS tipo, ES.catalogo_descripcion AS especialidad,
 						U.usuario_estado
 					FROM sujeto_empleado E
@@ -301,8 +343,29 @@
 					       AND TP.catalogo_tablaid = (SELECT tabla_id FROM general_tabla WHERE tabla_nombre = 'tipo_personal' LIMIT 1)
 					LEFT JOIN general_tabla_catalogo ES ON ES.catalogo_valor = E.empleado_especialidadid
 					       AND ES.catalogo_tablaid = (SELECT tabla_id FROM general_tabla WHERE tabla_nombre = 'especialidad_empleado' LIMIT 1)
-					WHERE E.empleado_estado IN ('A','I')
-					ORDER BY E.empleado_estado, E.empleado_nombre")->fetchAll();
+					WHERE E.empleado_estado IN ('A','I')";
+			$p = [];
+			if ((int)($f['sede'] ?? 0) > 0) { $sql .= " AND E.empleado_sedeid = :sede"; $p[':sede'] = (int)$f['sede']; }
+			if ((string)($f['tipo'] ?? '') !== '') { $sql .= " AND E.empleado_tipopersonalid = :tipo"; $p[':tipo'] = (string)$f['tipo']; }
+			if (in_array($f['estado'] ?? '', ['A', 'I'], true)) { $sql .= " AND E.empleado_estado = :estado"; $p[':estado'] = $f['estado']; }
+			switch ($f['acceso'] ?? '') {
+				case 'con':      $sql .= " AND U.usuario_estado = 'A'"; break;
+				case 'inactivo': $sql .= " AND U.usuario_estado = 'I'"; break;
+				case 'sin':      $sql .= " AND U.usuario_estado IS NULL"; break;
+			}
+			$q = trim((string)($f['q'] ?? ''));
+			if ($q !== '') {
+				$sql .= " AND (E.empleado_nombre LIKE :q1 OR E.empleado_identificacion LIKE :q2 OR E.empleado_correo LIKE :q3 OR E.empleado_celular LIKE :q4)";
+				foreach ([':q1', ':q2', ':q3', ':q4'] as $k) { $p[$k] = '%' . $q . '%'; }
+			}
+			$datos = $this->ejecutarConsulta($sql . " ORDER BY E.empleado_estado, E.empleado_nombre", $p)->fetchAll();
+
+			$resumen = ['total' => count($datos), 'activos' => 0, 'inactivos' => 0, 'sinUsuario' => 0];
+			foreach ($datos as $r) {
+				$resumen[$r['empleado_estado'] === 'A' ? 'activos' : 'inactivos']++;
+				if ($r['usuario_estado'] === null) { $resumen['sinUsuario']++; }
+			}
+			$puedeEditar = puede('editar', 'empleadoList');
 
 			/* Crear el usuario de sistema de un empleado es competencia de
 			   DigiSports Core; el enlace sale de aquí por comodidad, pero
@@ -343,8 +406,20 @@
 				}
 
 				$botones = '<a href="' . APP_URL . 'empleadoIE/' . $id . '/" class="btn btn-primary btn-sm ds-ficha__primario"><i class="fas fa-dollar-sign me-1" aria-hidden="true"></i>Honorarios</a>';
+				/* Lo que el modal necesita (decodificado: el modal lo pone en
+				   campos de texto, que no interpretan HTML). */
+				$dec = static fn($v) => html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+				$datosModal = $puedeEditar ? json_encode([
+					'id' => $id, 'sede' => (string)$rows['empleado_sedeid'], 'tipoid' => (string)$rows['empleado_tipoidentificacion'],
+					'identificacion' => $dec($rows['empleado_identificacion']), 'nombre' => $nombre, 'correo' => $dec($rows['empleado_correo']),
+					'celular' => $dec($rows['empleado_celular']), 'direccion' => $dec($rows['empleado_direccion']),
+					'tipo' => (string)$rows['empleado_tipopersonalid'], 'especialidad' => (string)$rows['empleado_especialidadid'],
+					'ingreso' => (string)$rows['empleado_fechaingreso'] === '0000-00-00' ? '' : (string)$rows['empleado_fechaingreso'],
+					'genero' => (string)$rows['empleado_genero'], 'sueldo' => rtrim(rtrim(number_format((float)$rows['empleado_sueldo'], 2, '.', ''), '0'), '.'),
+					'foto' => trim((string)$rows['empleado_foto']) !== '' ? media_url('empleado', $rows['empleado_foto']) : '',
+				], JSON_UNESCAPED_UNICODE) : '';
 				$botones .= $this->siPuede('editar', 'empleadoList',
-					'<a href="' . APP_URL . 'empleadoList/' . $id . '/#empleado-form" class="btn btn-info btn-sm" title="Editar" aria-label="Editar a ' . $h($nombre) . '"><i class="fas fa-pen" aria-hidden="true"></i></a>'
+					'<button type="button" class="btn btn-info btn-sm emp-editar" data-empleado="' . htmlspecialchars($datosModal, ENT_QUOTES, 'UTF-8') . '" title="Editar" aria-label="Editar a ' . $h($nombre) . '"><i class="fas fa-pen" aria-hidden="true"></i></button>'
 					. '<form class="FormularioAjax" action="' . APP_URL . 'app/ajax/empleadoAjax.php" method="POST" autocomplete="off">
 						<input type="hidden" name="modulo_empleado" value="actualizarestado">
 						<input type="hidden" name="empleado_id" value="' . $id . '">

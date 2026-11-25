@@ -113,7 +113,7 @@ $acciones = static function (array $f, string $clase = '') use ($puedeEditar, $p
 	if ($puedeEliminar) {
 		$html .= '<form class="FormularioAjax d-inline" action="' . APP_URL . 'app/ajax/balanceAjax.php" method="POST" autocomplete="off">'
 		       . '<input type="hidden" name="modulo_egreso" value="eliminar"><input type="hidden" name="egreso_id" value="' . (int)$f['egreso_id'] . '">'
-		       . '<button type="submit" class="btn btn-outline-danger btn-sm' . $clase . '" title="Eliminar" aria-label="Eliminar egreso de ' . $h($f['egreso_empresa']) . '"><i class="fas fa-trash" aria-hidden="true"></i><span class="egr-accion__txt">Eliminar</span></button></form>';
+		       . '<button type="submit" class="btn btn-danger btn-sm' . $clase . '" title="Eliminar" aria-label="Eliminar egreso de ' . $h($f['egreso_empresa']) . '"><i class="fas fa-trash" aria-hidden="true"></i><span class="egr-accion__txt">Eliminar</span></button></form>';
 	}
 	return $html;
 };

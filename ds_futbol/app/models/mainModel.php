@@ -327,6 +327,22 @@ class mainModel
 		| alumno_sedeid=0 para ver los alumnos —menores, con sus datos— de las
 		| otras sedes. Ahora la sede se acota aquí, siempre.
 		*/
+		/**
+		 * ¿Está aplicada la migración 096 (sujeto_alumno.alumno_origenid)? Un
+		 * alumno inscrito también en la sede con código (PERSONALIZADO) tiene
+		 * un segundo registro que apunta al original. Una vez por petición.
+		 */
+		public function hayVinculoAlumnos(): bool{
+			static $hay = null;
+			if ($hay === null) {
+				try {
+					$hay = (int)$this->ejecutarConsulta("SELECT COUNT(*) FROM information_schema.COLUMNS
+							WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sujeto_alumno' AND COLUMN_NAME = 'alumno_origenid'")->fetchColumn() === 1;
+				} catch (\Throwable $e) { $hay = false; }
+			}
+			return $hay;
+		}
+
 		protected function sedesDeLaSesion(): ?array{
 			return sedes_de_la_sesion();
 		}

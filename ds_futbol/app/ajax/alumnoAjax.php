@@ -31,6 +31,12 @@
 			echo $insAlumno->actualizarEstadoAlumnoControlador();
 		}
 
+		/* Inscribir a un alumno existente en la sede con código interno
+		   (PERSONALIZADO, migración 096). «registrar…»: la guardia exige crear. */
+		if($_POST['modulo_alumno']=="registrarSedeCodigo"){
+			echo $insAlumno->inscribirEnSedeCodigo();
+		}
+
 		/* eliminarFoto / actualizarFoto se retiraron: venían de la plantilla
 		   y escribían en la tabla «usuario», que en esta base no existe, así
 		   que acababan en error fatal. Ninguna pantalla las llamaba. La foto

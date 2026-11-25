@@ -207,7 +207,7 @@
 			if($registrar_equipo->rowCount()==1){
 				$alerta=[
 					"tipo"=>"redireccionar",
-					"url"=>APP_URL.'equipoList/'.$equipo_torneoid.'/'.$equipo_id,
+					"url"=>APP_URL.'equipoList/'.(int)$equipo_torneoid.'/',   /* a la lista: con el id abría el modal otra vez */
 					"titulo"=>"Equipo registrado",
 					"texto"=>"El equipo ".$equipo_nombre." se registró correctamente",
 					"icono"=>"success"
@@ -241,23 +241,84 @@
 		| Textos decodificados y vueltos a escapar: limpiarHtml() los guarda
 		| ya escapados y lo heredado está en crudo (ver torneoController).
 		*/
-		public function listarEquiposTorneo($equipo_torneoid){
+		/*
+		| CRITERIOS DE BÚSQUEDA (2026-11-25)
+		|
+		|   q          equipo, categoría o profesor
+		|   categoria  exacta ('' = todas)
+		|   sede       id; 'T' = equipos de todas las sedes; '' = cualquiera
+		|   profesor   empleado_id (0 = todos)
+		|   estado     'A', 'I' o '' (los dos)
+		|
+		| $resumen recibe: total, activos, jugadores inscritos y equipos sin
+		| valor de inscripción.
+		*/
+
+		/** Lo que ofrecen los criterios: categorías, sedes y profesores de los equipos del torneo. */
+		public function opcionesFiltroEquipos(int $torneo): array{
+			$filas = $this->ejecutarConsulta("SELECT e.equipo_categoria, e.equipo_sedeid, s.sede_nombre, e.equipo_profesorid, emp.empleado_nombre
+					FROM torneo_equipo e
+					LEFT JOIN general_sede s ON s.sede_id = e.equipo_sedeid
+					LEFT JOIN sujeto_empleado emp ON emp.empleado_id = e.equipo_profesorid
+					WHERE e.equipo_torneoid = :t AND e.equipo_estado IN ('A','I')", [':t' => $torneo])->fetchAll();
+			$dec = static fn($v) => html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+			$r = ['categorias' => [], 'sedes' => [], 'profesores' => []];
+			foreach ($filas as $f) {
+				if (trim((string)$f['equipo_categoria']) !== '') { $r['categorias'][$dec($f['equipo_categoria'])] = true; }
+				$r['sedes'][(int)$f['equipo_sedeid'] === 0 ? self::TODAS_LAS_SEDES : (string)(int)$f['equipo_sedeid']] =
+					(int)$f['equipo_sedeid'] === 0 ? 'Todas las sedes' : $dec($f['sede_nombre']);
+				if ((int)$f['equipo_profesorid'] > 0 && $f['empleado_nombre'] !== null) { $r['profesores'][(int)$f['equipo_profesorid']] = $dec($f['empleado_nombre']); }
+			}
+			$r['categorias'] = array_keys($r['categorias']);
+			natcasesort($r['categorias']); $r['categorias'] = array_values($r['categorias']);
+			asort($r['sedes']); asort($r['profesores']);
+			return $r;
+		}
+
+		public function listarEquiposTorneo($equipo_torneoid, array $f = [], ?array &$resumen = null){
 			$tabla="";
 			$torneo = (int)$equipo_torneoid;
+			$cond = ["e.equipo_torneoid = :torneo", "e.equipo_estado IN ('A','I')"];
+			$par  = [':torneo' => $torneo];
+			$q = trim((string)($f['q'] ?? ''));
+			if ($q !== '') {
+				$cond[] = "(e.equipo_nombre LIKE :q1 OR e.equipo_categoria LIKE :q2 OR emp.empleado_nombre LIKE :q3)";
+				foreach ([':q1', ':q2', ':q3'] as $k) { $par[$k] = '%' . $q . '%'; }
+			}
+			if ((string)($f['categoria'] ?? '') !== '') {
+				/* Guardada escapada (limpiarHtml) o en crudo: se comparan las dos. */
+				$cond[] = "(e.equipo_categoria = :cat OR e.equipo_categoria = :catH)";
+				$par[':cat'] = $f['categoria']; $par[':catH'] = htmlspecialchars($f['categoria'], ENT_QUOTES, 'UTF-8');
+			}
+			$sede = (string)($f['sede'] ?? '');
+			if ($sede === self::TODAS_LAS_SEDES) { $cond[] = "e.equipo_sedeid = 0"; }
+			elseif ((int)$sede > 0) { $cond[] = "e.equipo_sedeid = :sede"; $par[':sede'] = (int)$sede; }
+			if ((int)($f['profesor'] ?? 0) > 0) { $cond[] = "e.equipo_profesorid = :prof"; $par[':prof'] = (int)$f['profesor']; }
+			if (in_array($f['estado'] ?? '', ['A', 'I'], true)) { $cond[] = "e.equipo_estado = :estado"; $par[':estado'] = $f['estado']; }
+
 			$consulta_datos="SELECT s.sede_nombre, e.equipo_sedeid, e.equipo_valorinscripcion, e.equipo_id, e.equipo_nombre, e.equipo_foto, e.equipo_categoria,
-								emp.empleado_nombre,
+								e.equipo_profesorid, emp.empleado_nombre, COALESCE(J.n, 0) AS jugadores,
 								CASE WHEN e.equipo_estado='A' THEN 'Activo'
 								     WHEN e.equipo_estado='I' THEN 'Inactivo'
 								     ELSE e.equipo_estado END AS ESTADO
 							 FROM torneo_equipo e
 							 LEFT JOIN general_sede s      ON s.sede_id = e.equipo_sedeid
 							 LEFT JOIN sujeto_empleado emp ON emp.empleado_id = e.equipo_profesorid
-							 WHERE e.equipo_torneoid = :torneo
-							   AND e.equipo_estado IN ('A','I')
+							 LEFT JOIN (SELECT jugador_equipoid, COUNT(*) AS n FROM torneo_jugador GROUP BY jugador_equipoid) J ON J.jugador_equipoid = e.equipo_id
+							 WHERE " . implode(' AND ', $cond) . "
 							 ORDER BY e.equipo_categoria, e.equipo_nombre";
 
-			$datos = $this->ejecutarConsulta($consulta_datos, [':torneo' => $torneo]);
+			$datos = $this->ejecutarConsulta($consulta_datos, $par);
 			$datos = $datos->fetchAll();
+
+			$resumen = ['total' => count($datos), 'activos' => 0, 'jugadores' => 0, 'sinValor' => 0];
+			foreach ($datos as $r) {
+				if ($r['ESTADO'] === 'Activo') { $resumen['activos']++; }
+				$resumen['jugadores'] += (int)$r['jugadores'];
+				if ($r['equipo_valorinscripcion'] === null) { $resumen['sinValor']++; }
+			}
+			$puedeEditar = puede('editar', 'torneoList');
+			$dec = static fn($v) => html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 
 			$h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
 			$dirFotos = __DIR__ . '/../views/imagenes/fotos/equipos/';
@@ -291,6 +352,17 @@
 				$valor = $rows['equipo_valorinscripcion'] !== null
 					? '$' . number_format((float)$rows['equipo_valorinscripcion'], 2, '.', ',')
 					: '<span class="text-body-secondary">Sin definir</span>';
+				$nJug = (int)$rows['jugadores'];
+
+				/* Lo que el modal necesita para editar (decodificado; sólo para quien edita). */
+				$tieneFoto = $foto !== '' && is_file($dirFotos . basename($foto));
+				$datosModal = $puedeEditar ? htmlspecialchars(json_encode([
+					'id' => $id, 'nombre' => $dec($rows['equipo_nombre']), 'categoria' => $dec($rows['equipo_categoria']),
+					'sede' => (int)$rows['equipo_sedeid'] === 0 ? self::TODAS_LAS_SEDES : (string)(int)$rows['equipo_sedeid'],
+					'profesor' => (string)(int)$rows['equipo_profesorid'],
+					'valor' => $rows['equipo_valorinscripcion'] !== null ? number_format((float)$rows['equipo_valorinscripcion'], 2, '.', '') : '',
+					'foto' => $tieneFoto ? APP_URL . 'app/views/imagenes/fotos/equipos/' . rawurlencode(basename($foto)) : '',
+				], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') : '';
 
 				$tabla.='
 					<tr>
@@ -305,12 +377,15 @@
 							</div>
 						</td>
 						<td class="ds-ficha__dato" data-etiqueta="Profesor">'.$profesor.'</td>
+						<td class="ds-ficha__dato eq-jugadores" data-etiqueta="Jugadores" data-order="'.$nJug.'">
+							<a href="'.APP_URL.'jugadorLista/'.$torneo.'/'.$id.'/" class="badge rounded-pill text-decoration-none '.($nJug > 0 ? 'text-bg-primary' : 'text-bg-light border').'" title="Ver los jugadores">'.$nJug.'</a>
+						</td>
 						<td class="ds-ficha__dato ds-equipo__valor ds-col-opcional" data-etiqueta="Inscripción por alumno" data-order="'.(float)$rows['equipo_valorinscripcion'].'">'.$valor.'</td>
 						<td class="ds-ficha__estado" data-order="'.$h($rows['ESTADO']).'">'.$badge.'</td>
 						<td class="ds-tabla-acciones ds-ficha__acciones"><div class="ds-ficha__botones">
 							<a href="'.APP_URL.'jugadorLista/'.$torneo.'/'.$id.'/" class="btn btn-primary btn-sm ds-ficha__primario"><i class="fas fa-list me-1" aria-hidden="true"></i>Jugadores</a>
 							<a href="'.APP_URL.'jugadorNew/'.$torneo.'/'.$id.'/" class="btn btn-outline-primary btn-sm" title="Asignar jugadores" aria-label="Asignar jugadores"><i class="fas fa-user-plus"></i></a>
-							'.$this->siPuede('editar','torneoList','<a href="'.APP_URL.'equipoList/'.$torneo.'/'.$id.'/" class="btn btn-outline-success btn-sm" title="Editar" aria-label="Editar"><i class="fas fa-pen"></i></a>').'
+							'.$this->siPuede('editar','torneoList','<a href="'.APP_URL.'equipoList/'.$torneo.'/'.$id.'/" class="btn btn-outline-success btn-sm eq-editar" data-equipo="'.$datosModal.'" title="Editar" aria-label="Editar el equipo '.$h($rows['equipo_nombre']).'"><i class="fas fa-pen"></i></a>').'
 							'.$this->siPuede('editar','torneoList','<form class="FormularioAjax" action="'.APP_URL.'app/ajax/equipoAjax.php" method="POST" autocomplete="off">
 								<input type="hidden" name="modulo_equipo" value="actualizarestado">
 								<input type="hidden" name="equipo_id" value="'.$id.'">
@@ -543,7 +618,7 @@
 				
 				$alerta=[
 					"tipo"=>"redireccionar",
-					"url"=>APP_URL.'equipoList/'.$equipo_torneoid.'/'.$equipoid,
+					"url"=>APP_URL.'equipoList/'.(int)$equipo_torneoid.'/',   /* a la lista: con el id abría el modal otra vez */
 					"titulo"=>"Equipo actualizado",
 					"texto"=>"El equipo ".$equipo_nombre." se actualizó correctamente",
 					"icono"=>"success"
@@ -651,7 +726,7 @@
 
 				$alerta=[
 					"tipo"=>"redireccionar",
-					"url"=>APP_URL.'equipoList/'.$equipo_torneoid.'/'.$equipoid,
+					"url"=>APP_URL.'equipoList/'.(int)$equipo_torneoid.'/',   /* a la lista: con el id abría el modal otra vez */
 					"titulo"=>"Equipo eliminado",
 					"texto"=>"El equipo ".$equipo['equipo_nombre']." se eliminó correctamente",
 					"icono"=>"success"

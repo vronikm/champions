@@ -52,9 +52,15 @@
 			$parametros  = [];
 			$busqueda    = [];
 
+			$vinculo = $this->hayVinculoAlumnos();   /* migración 096: alumnos también en la sede con código */
 			if ($identificacion != "") {
 				$busqueda[] = "A.alumno_identificacion LIKE :identificacion";
 				$parametros[':identificacion'] = $identificacion.'%';
+				/* La cédula real encuentra también su registro en PERSONALIZADO (PA000001…). */
+				if ($vinculo) {
+					$busqueda[] = "O.alumno_identificacion LIKE :identificacionO";
+					$parametros[':identificacionO'] = $identificacion.'%';
+				}
 			}
 			if ($primernombre != "") {
 				$busqueda[] = "A.alumno_primernombre LIKE :primernombre";
@@ -75,9 +81,16 @@
 						TIMESTAMPDIFF(YEAR, A.alumno_fechanacimiento, CURDATE()) AS edad,
 						S.sede_nombre, S.sede_pension, D.descuento_valor, D.descuento_rubroid,
 						UP.ultima, UP.periodo, UP.ultimo_mes, COALESCE(PP.saldo, 0) AS saldo,
-						COALESCE(AS1.dias, 0) AS dias, COALESCE(AS1.asistidos, 0) AS asistidos, AS1.ultima_asis
+						COALESCE(AS1.dias, 0) AS dias, COALESCE(AS1.asistidos, 0) AS asistidos, AS1.ultima_asis,
+						" . ($vinculo ? "O.alumno_identificacion AS origen_identificacion, OS.sede_nombre AS origen_sede,
+						(SELECT GROUP_CONCAT(DS.sede_nombre ORDER BY DS.sede_nombre SEPARATOR ', ') FROM sujeto_alumno D
+						   JOIN general_sede DS ON DS.sede_id = D.alumno_sedeid
+						  WHERE D.alumno_origenid = A.alumno_id AND D.alumno_estado = 'A') AS otras_sedes"
+						           : "NULL AS origen_identificacion, NULL AS origen_sede, NULL AS otras_sedes") . "
 					FROM sujeto_alumno A
 					LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
+					" . ($vinculo ? "LEFT JOIN sujeto_alumno O ON O.alumno_id = A.alumno_origenid
+					LEFT JOIN general_sede OS ON OS.sede_id = O.alumno_sedeid" : "") . "
 					LEFT JOIN alumno_pago_descuento D ON D.descuento_alumnoid = A.alumno_id
 					       AND D.descuento_estado = 'S' AND D.descuento_rubroid IN ('DBC', 'DBP', 'DDS')   /* beca 100 %, beca 50 % o descuento: el valor es la pensión que paga (como pagosNew) */
 					LEFT JOIN (SELECT pago_alumnoid, MAX(pago_fecha) AS ultima,
@@ -99,6 +112,7 @@
 			$dinero = static fn(float $v) => '$' . number_format($v, 2, '.', ',');
 
 			$this->totalAdeudado = 0.0;
+			$this->resumen = ['alDia' => 0, 'conDeuda' => 0];
 			$tabla = "";
 			foreach ($filas as $al) {
 				$id      = (int)$al['alumno_id'];
@@ -147,6 +161,18 @@
 					: '<span class="text-body-secondary">Sin pagos de pensión</span>';
 
 				$conDescuento = $al['descuento_valor'] !== null;
+				$this->resumen[$deuda > 0 ? 'conDeuda' : 'alDia']++;
+
+				/* Sede: el mismo alumno puede estar en dos (096): el registro de
+				   PERSONALIZADO lleva un código (PA…) y su cédula real va aquí; el
+				   original dice en qué otra sede está. */
+				$celdaSede = '<span class="ds-pagos__sede">' . $h($al['sede_nombre'] ?: '—') . '</span>';
+				if (!empty($al['origen_identificacion'])) {
+					$celdaSede .= '<span class="d-block small text-body-secondary" title="Código interno de ' . $h($al['sede_nombre']) . '">Cédula ' . $h($al['origen_identificacion'])
+					            . ($al['origen_sede'] ? ' · ' . $h($al['origen_sede']) : '') . '</span>';
+				} elseif (!empty($al['otras_sedes'])) {
+					$celdaSede .= '<span class="d-block small text-body-secondary">También en ' . $h($al['otras_sedes']) . '</span>';
+				}
 				$tabla .= '
 					<tr>
 						<td class="ds-ficha__principal" data-order="' . $h($orden) . '">
@@ -160,6 +186,7 @@
 								</div>
 							</div>
 						</td>
+						<td class="ds-ficha__dato" data-etiqueta="Sede" data-order="' . $h($al['sede_nombre']) . '">' . $celdaSede . '</td>
 						<td class="ds-ficha__dato ds-col-opcional" data-etiqueta="Fecha de ingreso" data-order="' . $h($ingreso) . '">' . $celdaIngreso . '</td>
 						<td class="ds-ficha__dato" data-etiqueta="Último pago de pensión" data-order="' . $h($ultima) . '">' . $celdaUltima . '</td>
 						' . $this->tdUltimaAsistencia((int)$al['dias'], (int)$al['asistidos'], $al['ultima_asis']) . '
@@ -177,6 +204,9 @@
 		/** Lo que suma la columna «Valor adeudado» del último listarAlumnosPagos(). */
 		public float $totalAdeudado = 0.0;
 
+		/** Cuántos del último listarAlumnosPagos() están al día y cuántos deben. */
+		public array $resumen = ['alDia' => 0, 'conDeuda' => 0];
+
 		public function listarOptionSede($sedeid, $rolid = null, $usuario = null){
 			$option="";
 			/* El parametro acompana solo a la rama que lo usa: la consulta
@@ -184,8 +214,11 @@
 			   sobran. */
 			$parametros=[];
 
-			/* Las sedes de la sesión: sedes_de_la_sesion() (ds_core/inc/seguridad.php). */
-			$consulta_datos = "SELECT sede_id, sede_nombre FROM general_sede WHERE " . sql_sedes_de_la_sesion('sede_id') . " ORDER BY sede_nombre";
+			/* Las sedes de la sesión (sedes_de_la_sesion(), ds_core/inc/seguridad.php)
+			   y sólo las ACTIVAS (2026-11-25): las cerradas no se ofrecen; sus
+			   alumnos siguen saliendo con «Todas». */
+			$consulta_datos = "SELECT sede_id, sede_nombre FROM general_sede WHERE " . sql_sedes_de_la_sesion('sede_id')
+			                . " AND " . sql_sede_activa('sede_id', 0) . " ORDER BY sede_nombre";
 			$parametros = [];	
 					
 			$datos = $this->ejecutarConsulta($consulta_datos, $parametros);

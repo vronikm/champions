@@ -36,6 +36,12 @@
 	$filas = $insPago->listarAlumnosPagos($alumno_identificacion, $alumno_apellidopaterno, $alumno_primernombre, $alumno_estado, $alumno_sedeid);
 	$total = substr_count($filas, '<tr>');
 	$deuda = $insPago->totalAdeudado;
+	$resumen = $insPago->resumen;
+
+	/* En el celular, los criterios que no son la identificación van plegados
+	   salvo que alguno esté en uso. */
+	$filtrosExtra = ($alumno_apellidopaterno !== '') + ($alumno_primernombre !== '') + ($alumno_estado !== 'A') + ($alumno_sedeid > 0);
+	$hayCriterio  = $filtrosExtra + ($alumno_identificacion !== '');
 
 	/* Para imprimirlos dentro de un atributo HTML sin abrirlo. */
 	$h = static fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
@@ -60,6 +66,7 @@
 				<div class="row mb-2 g-2 align-items-center">
 					<div class="col-sm-7">
 						<h4 class="m-0">Registro de pagos</h4>
+						<div class="small text-body-secondary">Busque al alumno para registrar su pago o ver lo que debe</div>
 					</div>
 					<div class="col-sm-5">
 						<ol class="breadcrumb float-sm-end mb-0">
@@ -75,52 +82,85 @@
 			<div class="container-fluid ds-crud">
 
 				<!-- =================== Criterios de búsqueda =================== -->
-				<form action="<?php echo APP_URL."pagosList/" ?>" method="GET" autocomplete="off" class="card ds-alumnos__filtros">
-					<div class="card-header">
-						<h3 class="card-title"><i class="fas fa-filter me-2" aria-hidden="true"></i>Criterios de búsqueda</h3>
-						<div class="card-tools">
-							<button type="button" class="btn btn-tool" data-lte-toggle="card-collapse" title="Plegar o desplegar" aria-label="Plegar o desplegar"><i data-lte-icon="expand" class="fas fa-plus"></i><i data-lte-icon="collapse" class="fas fa-minus"></i></button>
-						</div>
+				<form action="<?php echo APP_URL."pagosList/" ?>" method="GET" autocomplete="off" class="card ds-alumnos__filtros pg-filtros">
+					<div class="card-header pg-filtros__cab">
+						<h3 class="card-title mb-0"><i class="fas fa-filter me-2" aria-hidden="true"></i>Criterios de búsqueda</h3>
+						<button type="button" class="btn btn-sm btn-outline-secondary d-md-none pg-filtros__plegar" data-bs-toggle="collapse" data-bs-target="#pgFiltrosCuerpo"
+						        aria-expanded="<?php echo $filtrosExtra ? 'true' : 'false'; ?>" aria-controls="pgFiltrosCuerpo">
+							<i class="fas fa-sliders me-1" aria-hidden="true"></i><span><?php echo $filtrosExtra ? 'Filtros (' . $filtrosExtra . ')' : 'Filtros'; ?></span>
+							<i class="fas fa-chevron-down ms-1" aria-hidden="true"></i>
+						</button>
 					</div>
-					<div class="card-body">
-						<div class="row g-3">
-							<div class="col-12 col-sm-6 col-lg-4 col-xl">
+					<div class="card-body pb-2">
+						<div class="row g-2 g-md-3">
+							<div class="col-12 col-md-4 col-xl">
 								<label for="alumno_identificacion" class="form-label">Identificación</label>
-								<input type="text" class="form-control" id="alumno_identificacion" name="alumno_identificacion" inputmode="numeric" placeholder="Cédula" value="<?php echo $h($alumno_identificacion); ?>">
+								<input type="search" class="form-control" id="alumno_identificacion" name="alumno_identificacion" inputmode="numeric" placeholder="Cédula o código" value="<?php echo $h($alumno_identificacion); ?>">
 							</div>
-							<div class="col-6 col-sm-6 col-lg-4 col-xl">
-								<label for="alumno_apellido1" class="form-label">Apellido paterno</label>
-								<input type="text" class="form-control" id="alumno_apellido1" name="alumno_apellido1" placeholder="Primer apellido" value="<?php echo $h($alumno_apellidopaterno); ?>">
-							</div>
-							<div class="col-6 col-sm-6 col-lg-4 col-xl">
-								<label for="alumno_nombre1" class="form-label">Primer nombre</label>
-								<input type="text" class="form-control" id="alumno_nombre1" name="alumno_nombre1" placeholder="Primer nombre" value="<?php echo $h($alumno_primernombre); ?>">
-							</div>
-							<div class="col-6 col-sm-6 col-lg-4 col-xl">
-								<label for="alumno_estado" class="form-label">Estado</label>
-								<select class="form-select" id="alumno_estado" name="alumno_estado">
-									<?php foreach ($ESTADOS as $valor => $texto): ?>
-										<option value="<?php echo $valor; ?>" <?php echo $alumno_estado === $valor ? 'selected' : ''; ?>><?php echo $texto; ?></option>
-									<?php endforeach; ?>
-								</select>
-							</div>
-							<div class="col-6 col-sm-6 col-lg-4 col-xl">
-								<label for="alumno_sedeid" class="form-label">Sede</label>
-								<select class="form-select" id="alumno_sedeid" name="alumno_sedeid">
-									<?php if ($ofrecerTodas): ?>
-										<option value="0" <?php echo $alumno_sedeid === 0 ? 'selected' : ''; ?>>Todas</option>
-									<?php endif; ?>
-									<?php echo $opcionesSede; ?>
-								</select>
-							</div>
-							<div class="col-12 col-lg-4 col-xl-auto d-flex align-items-end">
-								<div class="w-100">
-									<?php echo ds_boton_buscar(); ?>
+							<div class="collapse pg-filtros__extra<?php echo $filtrosExtra ? ' show' : ''; ?>" id="pgFiltrosCuerpo">
+							<div class="row g-2 g-md-3 mt-0 pg-filtros__extra">
+								<div class="col-6 col-md-4 col-xl">
+									<label for="alumno_apellido1" class="form-label">Apellido paterno</label>
+									<input type="text" class="form-control" id="alumno_apellido1" name="alumno_apellido1" placeholder="Primer apellido" value="<?php echo $h($alumno_apellidopaterno); ?>">
 								</div>
+								<div class="col-6 col-md-4 col-xl">
+									<label for="alumno_nombre1" class="form-label">Primer nombre</label>
+									<input type="text" class="form-control" id="alumno_nombre1" name="alumno_nombre1" placeholder="Primer nombre" value="<?php echo $h($alumno_primernombre); ?>">
+								</div>
+								<div class="col-6 col-md-4 col-xl">
+									<label for="alumno_estado" class="form-label">Estado</label>
+									<select class="form-select" id="alumno_estado" name="alumno_estado">
+										<?php foreach ($ESTADOS as $valor => $texto): ?>
+											<option value="<?php echo $valor; ?>" <?php echo $alumno_estado === $valor ? 'selected' : ''; ?>><?php echo $texto; ?></option>
+										<?php endforeach; ?>
+									</select>
+								</div>
+								<div class="col-6 col-md-4 col-xl">
+									<label for="alumno_sedeid" class="form-label">Sede</label>
+									<select class="form-select" id="alumno_sedeid" name="alumno_sedeid">
+										<?php if ($ofrecerTodas): ?>
+											<option value="0" <?php echo $alumno_sedeid === 0 ? 'selected' : ''; ?>>Todas</option>
+										<?php endif; ?>
+										<?php echo $opcionesSede; ?>
+									</select>
+								</div>
+							</div>
+							</div>
+							<div class="col-12 col-md-4 col-xl-auto d-flex align-items-end gap-2">
+								<div class="flex-grow-1"><?php echo ds_boton_buscar(); ?></div>
+								<?php if ($hayCriterio): ?>
+									<a href="<?php echo APP_URL; ?>pagosList/" class="btn btn-outline-secondary" title="Quitar los criterios">
+										<i class="fas fa-eraser" aria-hidden="true"></i><span class="visually-hidden">Limpiar</span>
+									</a>
+								<?php endif; ?>
 							</div>
 						</div>
 					</div>
 				</form>
+
+				<!-- =================== Resumen =================== -->
+				<div class="pg-kpis mb-3">
+					<div class="pg-kpi pg-kpi--total">
+						<span class="pg-kpi__et">Alumnos</span>
+						<strong class="pg-kpi__val"><?php echo (int)$total; ?></strong>
+						<span class="pg-kpi__nota"><?php echo $h(mb_strtolower($ESTADOS[$alumno_estado])); ?></span>
+					</div>
+					<div class="pg-kpi">
+						<span class="pg-kpi__et">Al día</span>
+						<strong class="pg-kpi__val text-success"><?php echo (int)$resumen['alDia']; ?></strong>
+						<span class="pg-kpi__nota"><?php echo $total ? round($resumen['alDia'] * 100 / $total) . ' %' : '&nbsp;'; ?></span>
+					</div>
+					<div class="pg-kpi">
+						<span class="pg-kpi__et">Con deuda</span>
+						<strong class="pg-kpi__val <?php echo $resumen['conDeuda'] ? 'text-danger' : ''; ?>"><?php echo (int)$resumen['conDeuda']; ?></strong>
+						<span class="pg-kpi__nota"><?php echo $total ? round($resumen['conDeuda'] * 100 / $total) . ' %' : '&nbsp;'; ?></span>
+					</div>
+					<div class="pg-kpi pg-kpi--deuda">
+						<span class="pg-kpi__et">Total adeudado</span>
+						<strong class="pg-kpi__val <?php echo $deuda > 0 ? 'text-danger' : 'text-success'; ?>">$<?php echo number_format($deuda, 2, '.', ','); ?></strong>
+						<span class="pg-kpi__nota">de esta búsqueda</span>
+					</div>
+				</div>
 
 				<!-- =================== Resultado de la búsqueda =================== -->
 				<div class="card ds-crud__lista" id="pagos-resultado">
@@ -129,10 +169,6 @@
 							<i class="fas fa-file-invoice-dollar me-2" aria-hidden="true"></i>Resultado de la búsqueda
 							<span class="badge text-bg-secondary ms-1" title="<?php echo $ESTADOS[$alumno_estado]; ?>"><?php echo $total; ?></span>
 						</h3>
-						<div class="ds-pagos__resumen" title="Suma de la columna «Valor adeudado» de esta búsqueda">
-							<span class="text-body-secondary">Adeudado</span>
-							<strong class="<?php echo $deuda > 0 ? 'text-danger' : 'text-success'; ?>">$<?php echo number_format($deuda, 2, '.', ','); ?></strong>
-						</div>
 						<button type="button" class="btn btn-tool" data-lte-toggle="card-collapse" title="Plegar o desplegar" aria-label="Plegar o desplegar"><i data-lte-icon="expand" class="fas fa-plus"></i><i data-lte-icon="collapse" class="fas fa-minus"></i></button>
 					</div>
 					<div class="card-body">
@@ -140,6 +176,7 @@
 							<thead>
 								<tr>
 									<th>Alumno</th>
+									<th>Sede</th>
 									<th class="ds-col-opcional">Fecha de ingreso</th>
 									<th>Último pago de pensión</th>
 									<th>Asistencia</th>
@@ -191,9 +228,9 @@
 			lengthMenu: [LARGOS, [10, 25, 50, 100, 'Todos']],
 			order: [[0, 'asc']],
 			columnDefs: [
-				{ targets: [1, 2, 3], type: 'string' },  /* data-order: fechas ISO (ingreso, último pago, última asistencia) */
-				{ targets: 4, type: 'num' },             /* data-order: importe */
-				{ targets: 5, orderable: false, searchable: false }
+				{ targets: [1, 2, 3, 4], type: 'string' },  /* data-order: sede y fechas ISO (ingreso, último pago, última asistencia) */
+				{ targets: 5, type: 'num' },                /* data-order: importe */
+				{ targets: 6, orderable: false, searchable: false }
 			],
 			layout: {
 				topStart: 'pageLength',
@@ -208,7 +245,7 @@
 				infoFiltered: "(de _MAX_)",
 				lengthMenu: "Mostrar _MENU_",
 				search: "",
-				searchPlaceholder: "Filtrar por nombre o cédula…",
+				searchPlaceholder: "Filtrar por nombre, cédula o sede…",
 				zeroRecords: "Ningún alumno coincide con el filtro",
 				paginate: { next: "Siguiente", previous: "Anterior" },
 				aria: {
@@ -226,5 +263,43 @@
 	<script src="<?php echo ds_recurso('ds_futbol/app/views/dist/js/ajax.js'); ?>" ></script>
 	<script src="<?php echo ds_recurso('ds_futbol/app/views/dist/js/main.js'); ?>" ></script>
 	<script src="<?php echo APP_URL; ?>app/views/dist/js/sweetalert2.all.min.js" ></script>
+
+	<style>
+		/* Criterios: en el celular se ve la identificación y «Filtros» despliega el resto;
+		   en el escritorio, todo en una fila. */
+		.pg-filtros__cab { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+		.pg-filtros .form-label { font-size: .8rem; font-weight: 600; color: var(--bs-secondary-color); margin-bottom: .25rem; }
+		.pg-filtros__plegar { white-space: nowrap; flex: 0 0 auto; }
+		.pg-filtros__plegar[aria-expanded="true"] .fa-chevron-down { transform: rotate(180deg); }
+		@media (min-width: 768px) { .pg-filtros__extra { display: contents !important; } }
+
+		/* Resumen */
+		.pg-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
+		.pg-kpi { display: flex; flex-direction: column; gap: .1rem; padding: .8rem 1rem; border-radius: var(--ds-radius-sm, 10px);
+		          background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); min-width: 0; }
+		.pg-kpi__et { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; color: var(--bs-secondary-color); font-weight: 600; }
+		.pg-kpi__val { font-size: 1.45rem; line-height: 1.2; font-variant-numeric: tabular-nums; }
+		.pg-kpi__nota { font-size: .8rem; color: var(--bs-secondary-color); }
+		.pg-kpi--total { border-top: 3px solid var(--bs-primary); }
+		.pg-kpi--deuda { border-top: 3px solid var(--bs-danger); }
+		.ds-pagos__sede { font-weight: 600; }
+		/* Tabla (escritorio): con la columna Sede no cabía todo en una
+		   portátil; el nombre se partía en cuatro líneas y los botones se
+		   salían. Entre 992 y 1399 px se oculta «Fecha de ingreso» (opcional;
+		   la ficha del celular la sigue mostrando). */
+		@media (min-width: 992px) {
+			#pagos-resultado td.ds-ficha__principal { min-width: 13.5rem; }
+			#pagos-resultado td[data-etiqueta="Sede"] .ds-pagos__sede { white-space: nowrap; }
+			#pagos-resultado td.ds-ficha__acciones { width: 1%; }
+		}
+		@media (min-width: 992px) and (max-width: 1399.98px) {
+			#pagos-resultado .ds-col-opcional { display: none; }
+		}
+		@media (max-width: 991.98px) { .pg-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+		@media (max-width: 767.98px) {
+			.pg-kpi { padding: .65rem .8rem; }
+			.pg-kpi__val { font-size: 1.2rem; }
+		}
+	</style>
   </body>
 </html>

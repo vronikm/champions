@@ -646,6 +646,12 @@
 			if ($identificacion != "") {
 				$busqueda[] = "A.alumno_identificacion LIKE :ident";
 				$parametros[':ident'] = $identificacion . '%';
+				/* La cédula real también encuentra su registro en la sede con
+				   código (PA000001…), que lleva el código como identificación. */
+				if ($this->hayVinculoAlumnos()) {
+					$busqueda[] = "A.alumno_origenid IN (SELECT O.alumno_id FROM sujeto_alumno O WHERE O.alumno_identificacion LIKE :identO)";
+					$parametros[':identO'] = $identificacion . '%';
+				}
 			}
 			if ($primernombre != "") {
 				$busqueda[] = "A.alumno_primernombre LIKE :nombre";
@@ -1814,6 +1820,23 @@
 					WHERE asignahorario_alumnoid = :alumno ORDER BY 1", $p)->fetchAll(\PDO::FETCH_COLUMN);
 			$horarios = array_values(array_filter(array_map(fn($id) => $this->horarioDias($id), $ids)));
 
+			/*
+			| Vínculos (096): el registro del que salió éste (origen) y los que
+			| salieron de él en una sede con código (PA000001…). Son la MISMA
+			| persona: se muestran aparte y no salen entre los hermanos.
+			*/
+			$vinculos = [];
+			$excluir = [];
+			if ($this->hayVinculoAlumnos()) {
+				$raiz = (int)($alumno['alumno_origenid'] ?: $alumnoid);
+				$vinculos = $this->ejecutarConsulta("SELECT A.alumno_id, A.alumno_identificacion, A.alumno_estado, A.alumno_origenid, S.sede_nombre
+						FROM sujeto_alumno A LEFT JOIN general_sede S ON S.sede_id = A.alumno_sedeid
+						WHERE (A.alumno_id = :r1 OR A.alumno_origenid = :r2) AND A.alumno_id <> :yo AND A.alumno_estado IN ('A','I')
+						ORDER BY A.alumno_origenid IS NULL DESC, A.alumno_id",
+						[':r1' => $raiz, ':r2' => $raiz, ':yo' => (int)$alumnoid])->fetchAll(\PDO::FETCH_ASSOC);
+				$excluir = array_map('intval', array_column($vinculos, 'alumno_id'));
+			}
+
 			/* Hermanos: los demás alumnos (activos e inactivos) del mismo
 			   representante, con su beneficio vigente (descuento_valor es la
 			   pensión que PAGA). Los activos primero. */
@@ -1827,6 +1850,7 @@
 						LEFT JOIN alumno_pago_descuento D ON D.descuento_alumnoid = A.alumno_id AND D.descuento_estado = 'S'
 						LEFT JOIN general_tabla_catalogo DC ON DC.catalogo_valor = D.descuento_rubroid AND DC.catalogo_tablaid = 7
 						WHERE A.alumno_repreid = :repre AND A.alumno_id <> :alumno AND A.alumno_estado IN ('A','I')
+						" . ($excluir ? "AND A.alumno_id NOT IN (" . implode(',', $excluir) . ")" : "") . "
 						ORDER BY A.alumno_estado = 'A' DESC, A.alumno_fechanacimiento",
 						[':repre' => (int)$alumno['alumno_repreid'], ':alumno' => (int)$alumnoid])->fetchAll(\PDO::FETCH_ASSOC)
 				: [];
@@ -1881,7 +1905,215 @@
 				'horarios'      => $horarios,
 				'hermanos'      => $hermanos,
 				'torneos'       => $torneos,
+				'vinculos'      => $vinculos,
 			];
+		}
+
+		/*======================================================================
+		  INSCRIPCIÓN EN UNA SEDE CON CÓDIGO (migración 096, 2026-11-25)
+		  ======================================================================
+		| La sede PERSONALIZADO (entrenamiento individual) recibe alumnos de
+		| otras sedes y les cobra su propia pensión. La pensión, la deuda y la
+		| cobranza van por REGISTRO de alumno con la pensión de su sede, y la
+		| cédula no se repite: se crea un registro propio en esa sede, con el
+		| código interno de la sede (PA000001…) como identificación, el mismo
+		| representante y alumno_origenid apuntando al alumno original.
+		|
+		| Qué sede: la que tiene general_sede.sede_codigoalumno (el prefijo).
+		| Sin la migración 096 o sin esa sede, nada de esto aparece.
+		|
+		| El registro nuevo es un alumno más de esa sede: pagos, cobranza,
+		| asistencia, carnets e Insights lo tratan igual que a cualquiera.
+		*/
+
+		/* hayVinculoAlumnos(): ¿está la 096? (mainModel) */
+
+		/** La sede activa con código interno: [sede_id, sede_nombre, prefijo, pension, inscripcion] o null. */
+		private function sedeConCodigo(): ?array{
+			if (!$this->hayVinculoAlumnos()) { return null; }
+			try {
+				$s = $this->ejecutarConsulta("SELECT sede_id, sede_nombre, sede_codigoalumno AS prefijo, sede_pension AS pension, sede_inscripcion AS inscripcion
+						FROM general_sede
+						WHERE sede_codigoalumno IS NOT NULL AND sede_codigoalumno <> '' AND " . sql_sede_activa('sede_id', 0) . "
+						ORDER BY sede_id LIMIT 1")->fetch(\PDO::FETCH_ASSOC);
+			} catch (\Throwable $e) { return null; }
+			if (!$s || !preg_match('/^[A-Z]{1,3}$/', strtoupper((string)$s['prefijo']))) { return null; }
+			$s['prefijo'] = strtoupper($s['prefijo']);
+			return $s;
+		}
+
+		/** El siguiente código libre del prefijo: PA000001, PA000002… */
+		private function proximoCodigoAlumno(string $prefijo, ?\PDO $pdo = null): string{
+			$sql = "SELECT COALESCE(MAX(CAST(SUBSTRING(alumno_identificacion, " . (strlen($prefijo) + 1) . ") AS UNSIGNED)), 0)
+					  FROM sujeto_alumno WHERE alumno_identificacion REGEXP :patron";
+			$p = [':patron' => '^' . $prefijo . '[0-9]{6}$'];
+			if ($pdo) { $q = $pdo->prepare($sql); $q->execute($p); $max = (int)$q->fetchColumn(); }
+			else { $max = (int)$this->ejecutarConsulta($sql, $p)->fetchColumn(); }
+			return $prefijo . str_pad((string)($max + 1), 6, '0', STR_PAD_LEFT);
+		}
+
+		/**
+		 * Lo que la ficha necesita para ofrecer «Inscribir en …»: la sede, su
+		 * pensión e inscripción, sus horarios activos, el próximo código y, si
+		 * ya está inscrito, ese registro. null si no corresponde: no hay sede
+		 * con código, el alumno ya es de ella, el alumno ya es un registro
+		 * derivado, o el usuario no trabaja con esa sede.
+		 */
+		public function sedeParaInscribir(array $al): ?array{
+			$sede = $this->sedeConCodigo();
+			if (!$sede || (int)$al['alumno_sedeid'] === (int)$sede['sede_id'] || !empty($al['alumno_origenid'])) { return null; }
+			$permitidas = sedes_de_la_sesion();
+			if ($permitidas !== null && !in_array((int)$sede['sede_id'], $permitidas, true)) { return null; }
+
+			$existente = $this->ejecutarConsulta("SELECT alumno_id, alumno_identificacion, alumno_estado FROM sujeto_alumno
+					WHERE alumno_origenid = :a AND alumno_sedeid = :s AND alumno_estado IN ('A','I')
+					ORDER BY alumno_estado = 'A' DESC, alumno_id DESC LIMIT 1",
+					[':a' => (int)$al['alumno_id'], ':s' => (int)$sede['sede_id']])->fetch(\PDO::FETCH_ASSOC) ?: null;
+
+			$horarios = [];
+			foreach ($this->ejecutarConsulta("SELECT H.horario_id, H.horario_nombre, H.horario_detalle,
+						MIN(HO.hora_inicio) AS inicio, MAX(HO.hora_fin) AS fin
+					FROM asistencia_horario H
+					LEFT JOIN asistencia_horario_detalle D ON D.detalle_horarioid = H.horario_id
+					LEFT JOIN asistencia_hora HO ON HO.hora_id = D.detalle_horaid
+					WHERE H.horario_estado = 'A' AND H.horario_sedeid = :s
+					GROUP BY H.horario_id, H.horario_nombre, H.horario_detalle
+					ORDER BY H.horario_nombre", [':s' => (int)$sede['sede_id']])->fetchAll(\PDO::FETCH_ASSOC) as $h) {
+				$texto = trim(html_entity_decode((string)($h['horario_detalle'] ?: $h['horario_nombre']), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+				if ($h['inicio']) { $texto .= ' · ' . substr($h['inicio'], 0, 5) . '–' . substr((string)$h['fin'], 0, 5); }
+				$horarios[(int)$h['horario_id']] = $texto;
+			}
+
+			return $sede + [
+				'codigo'    => $existente ? $existente['alumno_identificacion'] : $this->proximoCodigoAlumno($sede['prefijo']),
+				'existente' => $existente,
+				'horarios'  => $horarios,
+			];
+		}
+
+		/*
+		| POST modulo_alumno=registrarSedeCodigo: alumno_id, alumno_fechaingreso y
+		| horarioid (opcional). Copia del original los datos personales, la foto
+		| y las imágenes de la cédula (como archivos nuevos: si el original las
+		| cambia, éste no se queda sin ellas), la última información médica y el
+		| último contacto de emergencia. El código sale bajo un bloqueo con
+		| nombre (GET_LOCK): dos inscripciones a la vez no se llevan el mismo.
+		*/
+		public function inscribirEnSedeCodigo(){
+			$error = static fn(string $t) => json_encode(["tipo" => "simple", "titulo" => "No se pudo inscribir", "texto" => $t, "icono" => "error"]);
+
+			if (!puede('crear', 'alumnoList')) {
+				return $error('Su rol no puede inscribir alumnos.');
+			}
+			$id = (int)($_POST['alumno_id'] ?? 0);
+			$al = $id > 0 ? $this->ejecutarConsulta("SELECT * FROM sujeto_alumno WHERE alumno_id = :a", [':a' => $id])->fetch(\PDO::FETCH_ASSOC) : false;
+			if (!$al) {
+				return $error('El alumno no existe.');
+			}
+			if ($al['alumno_estado'] !== 'A') {
+				return $error('Sólo se puede inscribir a un alumno activo.');
+			}
+			$destino = $this->sedeParaInscribir($al);
+			if (!$destino) {
+				return $error('Este alumno no se puede inscribir en otra sede.');
+			}
+			if ($destino['existente']) {
+				return $error('Ya está inscrito en ' . $destino['sede_nombre'] . ' con el código ' . $destino['existente']['alumno_identificacion'] . '.');
+			}
+			$fecha = (string)($_POST['alumno_fechaingreso'] ?? '');
+			$f = \DateTime::createFromFormat('!Y-m-d', $fecha);
+			if (!$f || $f->format('Y-m-d') !== $fecha) {
+				return $error('Elija la fecha de ingreso.');
+			}
+			$horario = (int)($_POST['horarioid'] ?? 0);
+			if ($horario > 0 && !isset($destino['horarios'][$horario])) {
+				return $error('El horario elegido no es de ' . $destino['sede_nombre'] . '.');
+			}
+
+			/* Foto e imágenes de la cédula: copias con el nombre del código. */
+			$dirFoto   = __DIR__ . '/../views/imagenes/fotos/alumno/';
+			$dirCedula = __DIR__ . '/../views/imagenes/cedulas/';
+			$copiados = [];
+			$copiar = static function (?string $archivo, string $dir, string $codigo, string $sufijo) use (&$copiados): string {
+				$archivo = basename((string)$archivo);
+				if ($archivo === '' || !is_file($dir . $archivo)) { return ''; }
+				$nuevo = $codigo . $sufijo . '_' . random_int(10, 99) . '.' . strtolower(pathinfo($archivo, PATHINFO_EXTENSION) ?: 'jpg');
+				if (!@copy($dir . $archivo, $dir . $nuevo)) { return ''; }
+				$copiados[] = $dir . $nuevo;
+				return $nuevo;
+			};
+
+			$pdo = $this->conectar();
+			$bloqueo = 'ds_codigo_alumno_' . $destino['prefijo'];
+			try {
+				if ((int)$pdo->query("SELECT GET_LOCK(" . $pdo->quote($bloqueo) . ", 10)")->fetchColumn() !== 1) {
+					throw new \RuntimeException('Otra inscripción está en curso. Inténtelo de nuevo en un momento.');
+				}
+				$codigo = $this->proximoCodigoAlumno($destino['prefijo'], $pdo);
+				$q = $pdo->prepare("SELECT COUNT(*) FROM sujeto_alumno WHERE alumno_identificacion = :c");
+				$q->execute([':c' => $codigo]);
+				if ((int)$q->fetchColumn() > 0) {
+					throw new \RuntimeException('El código ' . $codigo . ' ya está en uso. Inténtelo de nuevo.');
+				}
+				$foto    = $copiar($al['alumno_imagen'], $dirFoto, $codigo, '');
+				$cedulaA = $copiar($al['alumno_cedulaA'], $dirCedula, $codigo, '_A');
+				$cedulaR = $copiar($al['alumno_cedulaR'], $dirCedula, $codigo, '_R');
+
+				$pdo->beginTransaction();
+				$pdo->prepare("INSERT INTO sujeto_alumno
+						(alumno_sedeid, alumno_posicionid, alumno_nacionalidadid, alumno_repreid, alumno_origenid,
+						 alumno_tipoidentificacion, alumno_identificacion, alumno_primernombre, alumno_segundonombre,
+						 alumno_apellidopaterno, alumno_apellidomaterno, alumno_nombrecorto, alumno_direccion,
+						 alumno_fechanacimiento, alumno_fechaingreso, alumno_genero, alumno_hermanos, alumno_estado,
+						 alumno_imagen, alumno_numcamiseta, alumno_cedulaA, alumno_cedulaR)
+					VALUES (:sede, :pos, :nac, :repre, :origen, 'COD', :codigo, :n1, :n2, :a1, :a2, :corto, :dir,
+					        :nacim, :ingreso, :genero, :hermanos, 'A', :foto, 0, :ceda, :cedr)")
+				    ->execute([
+						':sede' => (int)$destino['sede_id'], ':pos' => $al['alumno_posicionid'] ?: '3ND', ':nac' => $al['alumno_nacionalidadid'],
+						':repre' => $al['alumno_repreid'], ':origen' => (int)$al['alumno_id'], ':codigo' => $codigo,
+						':n1' => $al['alumno_primernombre'], ':n2' => $al['alumno_segundonombre'], ':a1' => $al['alumno_apellidopaterno'],
+						':a2' => $al['alumno_apellidomaterno'], ':corto' => $al['alumno_nombrecorto'], ':dir' => $al['alumno_direccion'],
+						':nacim' => $al['alumno_fechanacimiento'], ':ingreso' => $fecha, ':genero' => $al['alumno_genero'],
+						':hermanos' => $al['alumno_hermanos'], ':foto' => $foto, ':ceda' => $cedulaA, ':cedr' => $cedulaR,
+					]);
+				$nuevo = (int)$pdo->lastInsertId();
+
+				/* La última información médica y el último contacto de emergencia. */
+				$pdo->prepare("INSERT INTO alumno_infomedic
+						(infomedic_alumnoid, infomedic_fecha, infomedic_tiposangre, infomedic_peso, infomedic_talla, infomedic_enfermedad,
+						 infomedic_medicamentos, infomedic_alergia1, infomedic_alergia2, infomedic_cirugias, infomedic_observacion,
+						 infomedic_covid, infomedic_vacunas)
+					SELECT :nuevo, NOW(), infomedic_tiposangre, infomedic_peso, infomedic_talla, infomedic_enfermedad,
+						 infomedic_medicamentos, infomedic_alergia1, infomedic_alergia2, infomedic_cirugias, infomedic_observacion,
+						 infomedic_covid, infomedic_vacunas
+					  FROM alumno_infomedic WHERE infomedic_alumnoid = :a ORDER BY infomedic_id DESC LIMIT 1")
+				    ->execute([':nuevo' => $nuevo, ':a' => (int)$al['alumno_id']]);
+				$pdo->prepare("INSERT INTO alumno_cemergencia (cemer_alumnoid, cemer_nombre, cemer_celular, cemer_parentesco)
+					SELECT :nuevo, cemer_nombre, cemer_celular, cemer_parentesco
+					  FROM alumno_cemergencia WHERE cemer_alumnoid = :a ORDER BY cemer_id DESC LIMIT 1")
+				    ->execute([':nuevo' => $nuevo, ':a' => (int)$al['alumno_id']]);
+
+				if ($horario > 0) {
+					$pdo->prepare("INSERT INTO asistencia_asignahorario (asignahorario_horarioid, asignahorario_alumnoid) VALUES (:h, :a)")
+					    ->execute([':h' => $horario, ':a' => $nuevo]);
+				}
+				$pdo->commit();
+			} catch (\Throwable $e) {
+				if ($pdo->inTransaction()) { $pdo->rollBack(); }
+				foreach ($copiados as $archivo) { @unlink($archivo); }
+				try { $pdo->query("SELECT RELEASE_LOCK(" . $pdo->quote($bloqueo) . ")"); } catch (\Throwable $e2) {}
+				return $error($e instanceof \RuntimeException ? $e->getMessage() : 'No fue posible inscribir al alumno. Inténtelo de nuevo.');
+			}
+			try { $pdo->query("SELECT RELEASE_LOCK(" . $pdo->quote($bloqueo) . ")"); } catch (\Throwable $e) {}
+
+			$nombre = html_entity_decode(trim($al['alumno_primernombre'] . ' ' . $al['alumno_apellidopaterno']), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+			return json_encode([
+				"tipo"   => "redireccionar",
+				"url"    => APP_URL . 'alumnoProfile/' . $nuevo . '/',
+				"titulo" => "Inscrito en " . $destino['sede_nombre'],
+				"texto"  => $nombre . " quedó inscrito en " . $destino['sede_nombre'] . " con el código " . $codigo . ".",
+				"icono"  => "success",
+			]);
 		}
 
 		/*----------  El representante al que se le añade un alumno  ----------*/

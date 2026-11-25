@@ -76,6 +76,15 @@
 	$hora = static fn($v) => $v ? substr((string)$v, 0, 5) : '';
 
 	$puedeEditar = function_exists('puede_editar') && puede_editar('alumnoList');
+
+	/* Sede con código interno (PERSONALIZADO, migración 096): el mismo alumno
+	   inscrito allí (PA000001…) o el original del que salió, y si se le puede
+	   inscribir ahora. alumnoController::sedeParaInscribir decide. */
+	$vinculos  = $ficha['vinculos'] ?? [];
+	$inscribir = ($activo && function_exists('puede_crear') && puede_crear('alumnoList')) ? $insAlumno->sedeParaInscribir($al) : null;
+	if ($inscribir && $inscribir['existente']) { $inscribir = null; }   /* ya inscrito: lo dice el vínculo */
+	$nombreRepre = $repre ? preg_replace('/\s+/', ' ', trim($repre['repre_primernombre'] . ' ' . $repre['repre_segundonombre'] . ' '
+	             . $repre['repre_apellidopaterno'] . ' ' . $repre['repre_apellidomaterno'])) : '';
 	$verPermiso  = static fn(string $vista) => !function_exists('usuario_tiene_permiso') || usuario_tiene_permiso($vista);
 
 	/* La cabecera es común a todas las vistas: ds_futbol/app/views/inc/cabecera.php */
@@ -141,6 +150,24 @@
 									</div>
 								</div>
 
+								<?php if ($vinculos): ?>
+									<?php /* La misma persona en otra sede (096): el original o su registro con código. */ ?>
+									<ul class="ds-perfil__vinculos">
+										<?php foreach ($vinculos as $vn): $esOrigen = (int)$vn['alumno_id'] === (int)($al['alumno_origenid'] ?? 0); ?>
+											<li>
+												<a href="<?php echo APP_URL; ?>alumnoProfile/<?php echo (int)$vn['alumno_id']; ?>/" class="ds-perfil__vinculo">
+													<i class="fas <?php echo $esOrigen ? 'fa-user' : 'fa-dumbbell'; ?>" aria-hidden="true"></i>
+													<span>
+														<?php echo $esOrigen ? 'Alumno de' : 'También en'; ?> <strong><?php echo $h($vn['sede_nombre']); ?></strong>
+														<span class="d-block small"><?php echo $h($vn['alumno_identificacion']); ?><?php echo $vn['alumno_estado'] === 'A' ? '' : ' · inactivo'; ?></span>
+													</span>
+													<i class="fas fa-chevron-right ms-auto" aria-hidden="true"></i>
+												</a>
+											</li>
+										<?php endforeach; ?>
+									</ul>
+								<?php endif; ?>
+
 								<dl class="ds-perfil__datos">
 									<div><dt>Sede</dt><dd><?php echo $ver($al['sede_nombre']); ?></dd></div>
 									<div><dt>Categoría</dt><dd><?php echo $nacimiento ? $nacimiento->format('Y') : $vacio; ?></dd></div>
@@ -166,6 +193,11 @@
 									<?php endif; ?>
 									<?php if ($verPermiso('pagosList')): ?>
 										<a href="<?php echo APP_URL; ?>pagosNew/<?php echo (int)$alumnoid; ?>/" class="btn btn-sm btn-secondary"><i class="fas fa-dollar-sign me-1" aria-hidden="true"></i>Pagos</a>
+									<?php endif; ?>
+									<?php if ($inscribir): ?>
+										<button type="button" class="btn btn-sm btn-outline-primary ds-perfil__inscribir" data-bs-toggle="modal" data-bs-target="#modalInscribirSede">
+											<i class="fas fa-dumbbell me-1" aria-hidden="true"></i>Inscribir en <?php echo $h($inscribir['sede_nombre']); ?>
+										</button>
 									<?php endif; ?>
 								</div>
 							</div>
@@ -529,6 +561,61 @@
       <?php require_once "app/views/inc/footer.php"; ?>
     </div>
 
+	<?php if ($inscribir): ?>
+	<!-- =================== Inscribir en la sede con código (096) =================== -->
+	<div class="modal fade" id="modalInscribirSede" tabindex="-1" aria-labelledby="modalInscribirSedeTitulo" aria-hidden="true">
+		<div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down">
+			<form class="modal-content FormularioAjax" id="formInscribirSede" action="<?php echo APP_URL; ?>app/ajax/alumnoAjax.php" method="POST" autocomplete="off" novalidate>
+				<input type="hidden" name="modulo_alumno" value="registrarSedeCodigo">
+				<input type="hidden" name="alumno_id" value="<?php echo (int)$alumnoid; ?>">
+				<div class="modal-header">
+					<h5 class="modal-title" id="modalInscribirSedeTitulo"><i class="fas fa-dumbbell me-2" aria-hidden="true"></i>Inscribir en <?php echo $h($inscribir['sede_nombre']); ?></h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+				</div>
+				<div class="modal-body">
+					<div class="ds-insc__codigo">
+						<span>Código que se le asignará</span>
+						<strong id="inscCodigo"><?php echo $h($inscribir['codigo']); ?></strong>
+						<small>Va como identificación en <?php echo $h($inscribir['sede_nombre']); ?>. Se confirma al guardar.</small>
+					</div>
+
+					<dl class="ds-insc__resumen">
+						<div><dt>Alumno</dt><dd><?php echo $h($nombreCompleto); ?> <span class="text-body-secondary">· <?php echo $h($al['alumno_identificacion']); ?></span></dd></div>
+						<div><dt>Representante</dt><dd><?php echo $nombreRepre !== '' ? $h($nombreRepre) . ' <span class="text-body-secondary">(el mismo)</span>' : $vacio; ?></dd></div>
+						<div><dt>Sede</dt><dd><?php echo $h($inscribir['sede_nombre']); ?></dd></div>
+						<div><dt>Pensión</dt><dd>$<?php echo number_format((float)$inscribir['pension'], 2); ?> al mes · inscripción $<?php echo number_format((float)$inscribir['inscripcion'], 2); ?></dd></div>
+					</dl>
+					<p class="small text-body-secondary mb-3">
+						<i class="fas fa-copy me-1" aria-hidden="true"></i>Se copian sus datos personales, la foto, la información médica y el contacto de emergencia.
+						Su registro en <?php echo $h($al['sede_nombre']); ?> no cambia: cada sede lleva su propia pensión.
+					</p>
+
+					<div class="row g-3">
+						<div class="col-12 col-sm-6">
+							<label for="inscFecha" class="form-label">Fecha de ingreso <span class="text-danger">*</span></label>
+							<input type="date" class="form-control" id="inscFecha" name="alumno_fechaingreso" value="<?php echo date('Y-m-d'); ?>" required>
+							<div class="invalid-feedback">Elija la fecha de ingreso.</div>
+						</div>
+						<div class="col-12 col-sm-6">
+							<label for="inscHorario" class="form-label">Horario</label>
+							<select class="form-select" id="inscHorario" name="horarioid">
+								<option value="">Sin horario por ahora</option>
+								<?php foreach ($inscribir['horarios'] as $hid => $htexto): ?>
+									<option value="<?php echo (int)$hid; ?>"><?php echo $h($htexto); ?></option>
+								<?php endforeach; ?>
+							</select>
+						</div>
+					</div>
+				</div>
+				<div class="modal-footer ds-insc__pie">
+					<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+					<button type="submit" class="btn btn-primary"><i class="fas fa-user-plus me-1" aria-hidden="true"></i>Inscribir</button>
+				</div>
+			</form>
+		</div>
+	</div>
+	<?php endif; ?>
+
 	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/overlayscrollbars/js/overlayscrollbars.browser.es6.min.js"></script>
 	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/bootstrap5/js/bootstrap.bundle.min.js"></script>
 	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/adminlte4/js/adminlte.min.js"></script>
@@ -550,6 +637,47 @@
 			history.back();
 		});
 	})();
+
+	/* Inscribir en la sede con código: si falta la fecha, se marca y no se
+	   envía (antes de la confirmación de ajax.js, que escucha el mismo submit). */
+	(function () {
+		var form = document.getElementById('formInscribirSede');
+		if (!form) { return; }
+		form.addEventListener('submit', function (e) {
+			if (!form.checkValidity()) {
+				e.preventDefault(); e.stopImmediatePropagation();
+				form.classList.add('was-validated');
+				var malo = form.querySelector(':invalid'); if (malo) { malo.focus(); }
+			}
+		}, true);
+	})();
 	</script>
+
+	<style>
+		/* La misma persona en otra sede (096) */
+		.ds-perfil__vinculos { list-style: none; padding: 0; margin: 0 0 1rem; display: grid; gap: .4rem; }
+		.ds-perfil__vinculo { display: flex; align-items: center; gap: .6rem; padding: .55rem .75rem; border-radius: var(--ds-radius-sm, 10px);
+		                      background: var(--bs-info-bg-subtle); color: var(--bs-info-text-emphasis); border: 1px solid var(--bs-info-border-subtle);
+		                      text-decoration: none; line-height: 1.25; }
+		.ds-perfil__vinculo:hover { filter: brightness(.97); }
+		/* El botón, en su propia fila: en la tarjeta angosta el nombre de la sede se cortaba. */
+		.ds-perfil__acciones .ds-perfil__inscribir { flex: 1 1 100%; }
+		/* Modal de inscripción */
+		.ds-insc__codigo { text-align: center; padding: .9rem; margin-bottom: 1rem; border-radius: var(--ds-radius-sm, 10px);
+		                   background: var(--bs-tertiary-bg); border: 1px dashed var(--bs-border-color); }
+		.ds-insc__codigo span { display: block; font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; color: var(--bs-secondary-color); font-weight: 600; }
+		.ds-insc__codigo strong { display: block; font-size: 1.8rem; letter-spacing: .08em; font-variant-numeric: tabular-nums; }
+		.ds-insc__codigo small { color: var(--bs-secondary-color); }
+		.ds-insc__resumen { display: grid; grid-template-columns: 8.5rem 1fr; gap: .35rem .75rem; margin-bottom: .75rem; }
+		.ds-insc__resumen > div { display: contents; }
+		.ds-insc__resumen dt { color: var(--bs-secondary-color); font-weight: 600; }
+		.ds-insc__resumen dd { margin: 0; overflow-wrap: anywhere; }
+		@media (max-width: 575.98px) {
+			.ds-insc__resumen { grid-template-columns: 1fr; gap: 0; }
+			.ds-insc__resumen dd { margin-bottom: .5rem; }
+			.ds-insc__pie { flex-direction: column-reverse; align-items: stretch; }
+			.ds-insc__pie .btn { width: 100%; margin: 0; min-height: 2.9rem; }
+		}
+	</style>
   </body>
 </html>

@@ -219,9 +219,61 @@
 			return json_encode($alerta);
         }
 
-		/* Listar todos los torneos*/
-		public function listarTorneos(){
+		/*
+		| CRITERIOS DE BÚSQUEDA (2026-11-25)
+		|
+		|   anio     año de inicio ('' = todos)
+		|   estado   'A' activos, 'I' inactivos, '' los dos
+		|   cuando   'curso' en curso hoy, 'proximo' aún no empieza, 'fin' ya terminó
+		|   ciudad   ciudad exacta ('' = todas)
+		|   q        nombre, lugar u organizador
+		|
+		| $resumen recibe las cifras de lo filtrado: total, en curso,
+		| próximos y equipos inscritos.
+		*/
+
+		/** Años de inicio con torneos, del más reciente: [2026 => 15, …]. */
+		public function aniosTorneo(): array{
+			$r = [];
+			foreach ($this->ejecutarConsulta("SELECT YEAR(torneo_fechainicio) AS anio, COUNT(*) AS n FROM torneo_torneo
+					WHERE torneo_estado IN ('A','I') AND torneo_fechainicio > '1900-01-01' GROUP BY anio ORDER BY anio DESC")->fetchAll() as $f) {
+				$r[(int)$f['anio']] = (int)$f['n'];
+			}
+			return $r;
+		}
+
+		/** Ciudades con torneos (como están escritas), de la más usada. */
+		public function ciudadesTorneo(): array{
+			return array_values(array_filter(array_map(static fn($f) => html_entity_decode((string)$f['torneo_ciudad'], ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+				$this->ejecutarConsulta("SELECT torneo_ciudad, COUNT(*) AS n FROM torneo_torneo
+					WHERE torneo_estado IN ('A','I') AND TRIM(torneo_ciudad) <> '' GROUP BY torneo_ciudad ORDER BY n DESC, torneo_ciudad")->fetchAll()), 'strlen'));
+		}
+
+		/* Listar los torneos (con los criterios de búsqueda) */
+		public function listarTorneos(array $f = [], ?array &$resumen = null){
 			$tabla="";
+			$cond = ["t.torneo_estado IN ('A','I')"];
+			$par  = [];
+			if (preg_match('/^\d{4}$/', (string)($f['anio'] ?? ''))) {
+				$cond[] = "t.torneo_fechainicio BETWEEN :ini AND :fin"; $par[':ini'] = $f['anio'] . '-01-01'; $par[':fin'] = $f['anio'] . '-12-31';
+			}
+			if (in_array($f['estado'] ?? '', ['A', 'I'], true)) { $cond[] = "t.torneo_estado = :estado"; $par[':estado'] = $f['estado']; }
+			switch ($f['cuando'] ?? '') {
+				case 'curso':   $cond[] = "CURDATE() BETWEEN t.torneo_fechainicio AND t.torneo_fechafin"; break;
+				case 'proximo': $cond[] = "t.torneo_fechainicio > CURDATE()"; break;
+				case 'fin':     $cond[] = "t.torneo_fechafin < CURDATE()"; break;
+			}
+			if ((string)($f['ciudad'] ?? '') !== '') {
+				/* Guardada escapada o en crudo (limpiarHtml / SoccerEasy): se comparan las dos. */
+				$cond[] = "(t.torneo_ciudad = :ciudad OR t.torneo_ciudad = :ciudadH)";
+				$par[':ciudad'] = $f['ciudad']; $par[':ciudadH'] = htmlspecialchars($f['ciudad'], ENT_QUOTES, 'UTF-8');
+			}
+			$q = trim((string)($f['q'] ?? ''));
+			if ($q !== '') {
+				$cond[] = "(t.torneo_nombre LIKE :q1 OR t.torneo_lugar LIKE :q2 OR t.torneo_organizador LIKE :q3 OR t.torneo_ciudad LIKE :q4)";
+				foreach ([':q1', ':q2', ':q3', ':q4'] as $k) { $par[$k] = '%' . $q . '%'; }
+			}
+			$puedeEditar = puede('editar', 'torneoList');
 			/* Equipos inscritos por torneo: los no eliminados (activos e
 			   inactivos), igual que los que muestra equipoList. Una sola
 			   subconsulta agrupada —usa el índice fk_torneo— en vez de una
@@ -238,11 +290,19 @@
 							              FROM torneo_equipo
 							             WHERE equipo_estado IN ('A','I')
 							             GROUP BY equipo_torneoid) eq ON eq.equipo_torneoid = t.torneo_id
-							 WHERE t.torneo_estado IN ('A','I')
+							 WHERE " . implode(' AND ', $cond) . "
 							 ORDER BY t.torneo_fechainicio DESC, t.torneo_id DESC";
 
-			$datos = $this->ejecutarConsulta($consulta_datos);
+			$datos = $this->ejecutarConsulta($consulta_datos, $par);
 			$datos = $datos->fetchAll();
+
+			$hoy = date('Y-m-d');
+			$resumen = ['total' => count($datos), 'curso' => 0, 'proximos' => 0, 'equipos' => 0];
+			foreach ($datos as $r) {
+				if ($r['torneo_fechainicio'] <= $hoy && $r['torneo_fechafin'] >= $hoy) { $resumen['curso']++; }
+				if ($r['torneo_fechainicio'] > $hoy) { $resumen['proximos']++; }
+				$resumen['equipos'] += (int)$r['EQUIPOS'];
+			}
 
 			/*
 			| UNA FILA, DOS PRESENTACIONES
@@ -274,6 +334,22 @@
 					$icono = "fa-toggle-off";
 				}
 
+				/* En curso / próximo / finalizado, por las fechas. */
+				$ini = (string)$rows['torneo_fechainicio']; $fin = (string)$rows['torneo_fechafin'];
+				$momento = $ini > $hoy ? '<span class="badge text-bg-info tor-momento">Próximo</span>'
+				         : ($fin >= $hoy ? '<span class="badge text-bg-warning tor-momento">En curso</span>'
+				         : '<span class="badge text-bg-light border tor-momento">Finalizado</span>');
+
+				/* Lo que el modal necesita para editar (decodificado: va a campos
+				   de texto). Sólo para quien puede editar. */
+				$dec = static fn($v) => html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+				$datosModal = $puedeEditar ? htmlspecialchars(json_encode([
+					'id' => $id, 'nombre' => $dec($rows['torneo_nombre']), 'ciudad' => $dec($rows['torneo_ciudad']),
+					'lugar' => $dec($rows['torneo_lugar']), 'inicio' => $ini !== '0000-00-00' ? $ini : '', 'fin' => $fin !== '0000-00-00' ? $fin : '',
+					'organizador' => $dec($rows['torneo_organizador']), 'descripcion' => $dec($rows['torneo_descripcion']),
+					'foto' => trim((string)$rows['torneo_foto']) !== '' ? APP_URL . 'app/views/imagenes/fotos/torneos/' . rawurlencode($rows['torneo_foto']) : '',
+				], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') : '';
+
 				$sitio = implode(' · ', array_filter([$h($rows['torneo_ciudad']), $h($rows['torneo_lugar'])], 'strlen'));
 				$descripcion = trim((string)$rows['torneo_descripcion']) !== ''
 					? '<div class="ds-ficha__desc">'.$h($rows['torneo_descripcion']).'</div>' : '';
@@ -288,6 +364,7 @@
 						<td class="ds-ficha__dato ds-ficha__nowrap" data-order="'.$h($rows['torneo_fechainicio']).'">
 							<i class="far fa-calendar" aria-hidden="true"></i>
 							<span>'.$fecha($rows['torneo_fechainicio']).'</span> – <span>'.$fecha($rows['torneo_fechafin']).'</span>
+							'.$momento.'
 						</td>
 						<td class="ds-ficha__dato ds-torneo__equipos" data-etiqueta="Equipos" data-order="'.(int)$rows['EQUIPOS'].'">
 							<span class="badge rounded-pill '.((int)$rows['EQUIPOS'] > 0 ? 'text-bg-primary' : 'text-bg-light border').'" title="Equipos inscritos">'.(int)$rows['EQUIPOS'].'</span>
@@ -296,7 +373,7 @@
 						<td class="ds-ficha__estado" data-order="'.$h($rows['ESTADO']).'">'.$badge.'</td>
 						<td class="ds-tabla-acciones ds-ficha__acciones"><div class="ds-ficha__botones">
 							<a href="'.APP_URL.'equipoList/'.$id.'/" class="btn btn-primary btn-sm ds-ficha__primario"><i class="fas fa-users me-1" aria-hidden="true"></i>Equipos</a>
-							'.$this->siPuede('editar','torneoList','<a href="'.APP_URL.'torneoList/'.$id.'/" class="btn btn-outline-success btn-sm" title="Editar" aria-label="Editar"><i class="fas fa-pen"></i></a>').'
+							'.$this->siPuede('editar','torneoList','<a href="'.APP_URL.'torneoList/'.$id.'/" class="btn btn-outline-success btn-sm tor-editar" data-torneo="'.$datosModal.'" title="Editar" aria-label="Editar el torneo '.$h($rows['torneo_nombre']).'"><i class="fas fa-pen"></i></a>').'
 							'.$this->siPuede('editar','torneoList','<form class="FormularioAjax" action="'.APP_URL.'app/ajax/torneoAjax.php" method="POST" autocomplete="off">
 								<input type="hidden" name="modulo_torneo" value="actualizarestado">
 								<input type="hidden" name="torneo_id" value="'.$id.'">

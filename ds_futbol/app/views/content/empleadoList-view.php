@@ -342,7 +342,12 @@ require_once "app/views/inc/cabecera.php";
 		/*
 		| Sin la extensión Responsive: en el teléfono cada empleado es una
 		| ficha (futbol.css, .ds-crud). «Mostrar N» elige cuántos por página y
-		| se recuerda. Primero los activos. La búsqueda va en los criterios.
+		| se recuerda. Primero los activos.
+		|
+		| Dos búsquedas que se complementan: los «Criterios de búsqueda» van al
+		| servidor (sede, tipo, estado…); el filtro de la tabla (arriba a la
+		| derecha) filtra al escribir lo que ya está cargado. «1 a N de N
+		| empleados» va debajo de la tabla, a la izquierda.
 		*/
 		var CLAVE = 'ds-empleados-por-pagina', LARGOS = [10, 25, 50, 100, -1], largo = 10;
 		try { var g = parseInt(localStorage.getItem(CLAVE), 10); if (LARGOS.indexOf(g) !== -1) { largo = g; } } catch (e) {}
@@ -358,14 +363,18 @@ require_once "app/views/inc/cabecera.php";
 			],
 			layout: {
 				topStart: 'pageLength',
-				topEnd: 'info',
-				bottomStart: null,
+				topEnd: 'search',
+				bottomStart: 'info',
 				bottomEnd: { paging: { firstLast: false } }
 			},
 			language: {
 				emptyTable: <?php echo json_encode($filtros ? 'Ningún empleado coincide con los criterios de búsqueda' : 'Aún no hay empleados ingresados'); ?>,
 				info: "_START_ a _END_ de _TOTAL_ empleados",
 				infoEmpty: "Sin empleados",
+				infoFiltered: "(filtrados de _MAX_)",
+				zeroRecords: "Ningún empleado coincide con el filtro",
+				search: "",
+				searchPlaceholder: "Filtrar en la tabla…",
 				lengthMenu: "Mostrar _MENU_",
 				paginate: { next: "Siguiente", previous: "Anterior" },
 				aria: {
@@ -521,6 +530,12 @@ require_once "app/views/inc/cabecera.php";
 		.emp-genero .btn { min-height: 2.5rem; }
 		.was-validated .emp-genero:has(:invalid) + .emp-genero__error { display: block; }
 		.was-validated .emp-genero:has(:invalid) .btn { border-color: var(--bs-form-invalid-border-color); }
+
+		/* Pie de la tabla: «1 a N de N empleados» a la izquierda, la paginación a la derecha. */
+		#empleados-ingresados .dt-info { color: var(--bs-secondary-color); }
+		@media (min-width: 768px) {
+			#empleados-ingresados .dt-layout-start .dt-info { text-align: left; padding-top: .35rem; }
+		}
 
 		.emp-fab { position: fixed; right: 1rem; bottom: 1.25rem; z-index: 1030; width: 3.5rem; height: 3.5rem; border-radius: 50%;
 		           font-size: 1.25rem; box-shadow: 0 .4rem 1rem rgba(0,0,0,.25); display: grid; place-items: center; padding: 0; }

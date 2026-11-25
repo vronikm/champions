@@ -112,14 +112,18 @@ CSS;
 						</div>
 					</div>
 					<div class="card-body">
-						<div class="row g-3">
-							<div class="col-6 col-md-5 col-lg">
+						<?php /* Año, sede y Buscar en una fila, alineados por abajo (2026-11-25):
+						         la ayuda iba bajo el año y alargaba esa columna, y el botón
+						         quedaba más abajo que los campos. Ahora la ayuda va en una
+						         línea propia, debajo. En el celular: año y sede lado a lado,
+						         Buscar a todo el ancho. */ ?>
+						<div class="row g-2 g-md-3 align-items-end jn-busqueda">
+							<div class="col-6 col-md">
 								<label for="f_anios" class="form-label">Año</label>
 								<input type="text" class="form-control<?php echo $aniosMal ? ' is-invalid' : ''; ?>" id="f_anios" name="anios" inputmode="numeric"
-								       placeholder="2014, 2015" value="<?php echo $h($filtro['anios_texto']); ?>" aria-describedby="f_anios_ayuda">
-								<div class="form-text" id="f_anios_ayuda"><?php echo $aniosMal ? 'No se entendió el año: use 2014, 2015 o 2014-2016.' : 'Varios, separados por coma; o un rango: 2014-2016.'; ?></div>
+								       placeholder="2014, 2015" value="<?php echo $h($filtro['anios_texto']); ?>" aria-describedby="f_anios_ayuda"<?php echo $aniosMal ? ' aria-invalid="true"' : ''; ?>>
 							</div>
-							<div class="col-6 col-md-4 col-lg">
+							<div class="col-6 col-md">
 								<label for="f_sede" class="form-label">Sede</label>
 								<select class="form-select" id="f_sede" name="sede" <?php echo count($sedes) <= 1 ? 'disabled' : ''; ?>>
 									<?php if (count($sedes) > 1): ?><option value="0" <?php echo $filtro['sede'] === 0 ? 'selected' : ''; ?>><?php echo sedes_de_la_sesion() === null ? 'Todas las sedes' : 'Todas mis sedes'; ?></option><?php endif; ?>
@@ -128,11 +132,23 @@ CSS;
 									<?php endforeach; ?>
 								</select>
 							</div>
-							<div class="col-12 col-md-3 col-lg-auto d-flex align-items-end">
-								<button type="submit" class="btn btn-primary w-100"><i class="fas fa-magnifying-glass me-1" aria-hidden="true"></i>Buscar</button>
+							<div class="col-12 col-md-auto">
+								<button type="submit" class="btn btn-primary w-100 jn-busqueda__boton"><i class="fas fa-magnifying-glass me-1" aria-hidden="true"></i>Buscar</button>
 							</div>
 						</div>
-						<p class="small text-body-secondary mt-2 mb-0">Sólo alumnos <strong>activos</strong> que no juegan ya en otro equipo de esta categoría del torneo.</p>
+						<p class="small mt-2 mb-0 jn-busqueda__ayuda" id="f_anios_ayuda">
+							<?php if ($aniosMal): ?>
+								<span class="text-danger"><i class="fas fa-circle-exclamation me-1" aria-hidden="true"></i>No se entendió el año: use 2014, 2015 o 2014-2016.</span>
+							<?php else: ?>
+								<span class="text-body-secondary"><i class="fas fa-circle-info me-1" aria-hidden="true"></i>Año: varios separados por coma o un rango (2014-2016).</span>
+							<?php endif; ?>
+							<span class="text-body-secondary d-block d-md-inline ms-md-2">Sólo alumnos <strong>activos</strong> que no juegan ya en otro equipo de esta categoría del torneo.</span>
+						</p>
+						<style>
+							/* El botón con la misma altura que los campos, a su lado. */
+							.jn-busqueda .form-control, .jn-busqueda .form-select, .jn-busqueda__boton { min-height: 2.75rem; }
+							@media (min-width: 768px) { .jn-busqueda__boton { padding-inline: 1.5rem; } }
+						</style>
 					</div>
 				</form>
 

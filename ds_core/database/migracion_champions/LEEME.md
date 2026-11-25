@@ -14,7 +14,7 @@ MYSQL=/ruta/a/mysql MYSQL_OPTS="-u USUARIO -pCLAVE" \
   ds_core/database/migracion_champions/aplicar_migracion.sh BASE
 ```
 
-Aplica los 96 archivos en el orden correcto y se detiene en el primer error.
+Aplica los 97 archivos en el orden correcto y se detiene en el primer error.
 Antes de empezar comprueba que `BASE` sea una copia de SoccerEasy **sin migrar**:
 si ya tiene `facturas_electronicas`, no aplica nada, porque varias migraciones no
 se pueden repetir.
@@ -174,6 +174,20 @@ en desarrollo y llevar el resultado a producción con un volcado (ver más abajo
     entrenamiento (`egreso_lugarid`). Añade las formas de entrega EBL
     Transferencia Banco de Loja y EBP Transferencia Banco Pichincha. No
     asigna bloque a los egresos ya registrados. Repetible.
+36. `095_arena_punto_venta.sql` (de `ds_core/database/`, común; sólo
+    Champions usa Arena): Punto de Venta y Caja. Productos y categorías,
+    kardex, compras con sus pagos, cajas (una abierta por usuario) con sus
+    movimientos, y ventas con su detalle y su pago. Menú «Punto de Venta y
+    Caja» después de «Monedero» (Vender, Ventas, Caja, Productos, Compras
+    y la nota de venta oculta) con los permisos que cada rol ya tiene sobre
+    «Monedero». No consulta information_schema. Repetible.
+37. `096_alumno_sede_personalizado.sql` (de `ds_core/database/`, común):
+    alumnos de otra sede inscritos en una sede «personalizada». Prefijo del
+    código interno por sede (`general_sede.sede_codigoalumno`; se pone
+    `PA` en la sede llamada PERSONALIZADO), vínculo del registro con el
+    alumno original (`sujeto_alumno.alumno_origenid`) y tipo de documento
+    `COD` «CÓDIGO INTERNO». En las escuelas sin esa sede no cambia nada
+    visible. Repetible.
 
 ```bash
 mysql -u USUARIO -p --default-character-set=utf8mb4 BASE < ARCHIVO.sql

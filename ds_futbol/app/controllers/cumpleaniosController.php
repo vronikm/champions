@@ -5,6 +5,17 @@
 	class cumpleaniosController extends mainModel {
 
 		/**
+		 * Una persona inscrita también en la sede con código (PERSONALIZADO,
+		 * migración 096) tiene dos registros: se felicita una sola vez. Se
+		 * omite el registro derivado si su original está activo y en una sede
+		 * que el usuario ve. Sin la 096, no añade nada.
+		 */
+		private function sinRegistroDuplicado(): string {
+			return $this->hayVinculoAlumnos() ? " AND NOT EXISTS (SELECT 1 FROM sujeto_alumno O WHERE O.alumno_id = sujeto_alumno.alumno_origenid
+			                                 AND O.alumno_estado = 'A' AND " . sql_sedes_de_la_sesion('O.alumno_sedeid') . ")" : '';
+		}
+
+		/**
 		 * Lista alumnos activos cuyo cumpleaños coincide con el día/mes indicado.
 		 * @param string $fecha Fecha en formato Y-m-d (por defecto hoy)
 		 * @return \PDOStatement
@@ -31,7 +42,7 @@
 						 WHERE DAY(alumno_fechanacimiento)   = :dia
 						   AND MONTH(alumno_fechanacimiento) = :mes
 						   AND alumno_estado = 'A'
-						   AND " . sql_sedes_de_la_sesion('alumno_sedeid') . "
+						   AND " . sql_sedes_de_la_sesion('alumno_sedeid') . $this->sinRegistroDuplicado() . "
 						 ORDER BY alumno_apellidopaterno, alumno_apellidomaterno, alumno_primernombre";
 
 			$datos = $this->ejecutarConsulta($consulta, [
@@ -57,7 +68,7 @@
 				"SELECT DATE_FORMAT(alumno_fechanacimiento, '%m-%d') AS dia, COUNT(*) AS n
 				   FROM sujeto_alumno
 				  WHERE alumno_estado = 'A' AND alumno_fechanacimiento IS NOT NULL
-				    AND " . sql_sedes_de_la_sesion('alumno_sedeid') . "
+				    AND " . sql_sedes_de_la_sesion('alumno_sedeid') . $this->sinRegistroDuplicado() . "
 				  GROUP BY dia"
 			)->fetchAll();
 
@@ -78,7 +89,7 @@
 						 WHERE DAY(alumno_fechanacimiento)   = :dia
 						   AND MONTH(alumno_fechanacimiento) = :mes
 						   AND alumno_estado = 'A'
-						   AND " . sql_sedes_de_la_sesion('alumno_sedeid');
+						   AND " . sql_sedes_de_la_sesion('alumno_sedeid') . $this->sinRegistroDuplicado();
 
 			$datos = $this->ejecutarConsulta($consulta, [
 				':dia' => (int) date('d'),

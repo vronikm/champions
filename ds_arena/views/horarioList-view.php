@@ -193,6 +193,21 @@ require_once __DIR__ . "/inc/layout-top.php";
                 </div>
                 <small class="text-muted d-block mt-1">' . $ayuda . '</small>';
     };
+
+    /* «Hasta», igual en los tres modales. El reloj del navegador no llega a
+       24:00: la casilla «24:00 (fin del día)» envía esa hora (en el campo
+       oculto) para que la última hora quede completa, de 23:00 a 24:00. */
+    $campoHasta = static function (string $id, string $etiqueta, string $valor = '', bool $obligatorio = true): string {
+        $es24 = $valor === '24:00';
+        return '<label for="' . $id . '" class="form-label">' . $etiqueta . ($obligatorio ? ' <span class="text-danger">*</span>' : '') . '</label>
+                <input type="time" class="form-control" id="' . $id . '" name="horario_hasta" value="' . ($es24 ? '' : htmlspecialchars($valor, ENT_QUOTES, 'UTF-8')) . '"'
+                . ($es24 ? ' disabled' : '') . ' required>
+                <input type="hidden" name="horario_hasta" value="24:00" data-hasta24-de="' . $id . '"' . ($es24 ? '' : ' disabled') . '>
+                <div class="form-check mt-1">
+                    <input class="form-check-input" type="checkbox" id="' . $id . '_24" data-hasta24="' . $id . '"' . ($es24 ? ' checked' : '') . '>
+                    <label class="form-check-label small" for="' . $id . '_24">24:00 (fin del día)</label>
+                </div>';
+    };
     ?>
 
     <?php if ($puedeCrear): ?>
@@ -232,8 +247,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                                     <input type="time" class="form-control" id="horario_desde" name="horario_desde" required>
                                 </div>
                                 <div class="mb-3 col-6">
-                                    <label for="horario_hasta" class="form-label">Hasta <span class="text-danger">*</span></label>
-                                    <input type="time" class="form-control" id="horario_hasta" name="horario_hasta" required>
+                                    <?php echo $campoHasta('horario_hasta', 'Hasta'); ?>
                                 </div>
                             </div>
 
@@ -282,8 +296,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                                     <input type="time" class="form-control" id="edit_desde" name="horario_desde" required>
                                 </div>
                                 <div class="mb-3 col-6">
-                                    <label for="edit_hasta" class="form-label">Hasta</label>
-                                    <input type="time" class="form-control" id="edit_hasta" name="horario_hasta" required>
+                                    <?php echo $campoHasta('edit_hasta', 'Hasta', '', false); ?>
                                 </div>
                             </div>
                             <div class="mb-0">
@@ -347,8 +360,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                                     <input type="time" class="form-control" id="val_desde" name="horario_desde" value="<?php echo $e($minHora); ?>" required>
                                 </div>
                                 <div class="mb-3 col-6">
-                                    <label for="val_hasta" class="form-label">Hasta</label>
-                                    <input type="time" class="form-control" id="val_hasta" name="horario_hasta" value="<?php echo $e($maxHora); ?>" required>
+                                    <?php echo $campoHasta('val_hasta', 'Hasta', $maxHora, false); ?>
                                 </div>
                             </div>
 
@@ -391,6 +403,9 @@ require_once __DIR__ . "/inc/layout-top.php";
         (function () {
             var $ = function (id) { return document.getElementById(id); };
 
+            /* De «24:00 (fin del día)», más abajo (se cargan después que este script). */
+            var poner24 = function (id, si) { window.arPoner24(id, si); }, hastaDe = function (id) { return window.arHastaDe(id); };
+
             /* Editar una franja: el botón trae sus datos. */
             var mEdit = $('modalEditarFranja');
             mEdit.addEventListener('show.bs.modal', function (ev) {
@@ -398,7 +413,8 @@ require_once __DIR__ . "/inc/layout-top.php";
                 $('edit_id').value = d.id || '0';
                 $('edit_dia').value = d.dia || '1';
                 $('edit_desde').value = d.desde || '';
-                $('edit_hasta').value = d.hasta || '';
+                poner24('edit_hasta', d.hasta === '24:00');
+                if (d.hasta !== '24:00') { $('edit_hasta').value = d.hasta || ''; }
                 $('edit_valor').value = d.valor || '';
             });
             $('edit_general').addEventListener('click', function () { $('edit_valor').value = ''; $('edit_valor').focus(); });
@@ -413,7 +429,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                 campo.disabled = general;
                 $('val_campo').classList.toggle('opacity-50', general);
                 var sel = Array.prototype.filter.call(dias, function (c) { return c.checked; }).map(function (c) { return +c.value; });
-                var a = $('val_desde').value, b = $('val_hasta').value;
+                var a = $('val_desde').value, b = hastaDe('val_hasta');
                 if (!a || !b || b <= a) {
                     resumen.className = 'ar-hor__resumen text-danger';
                     resumen.textContent = 'La hora final debe ser posterior a la inicial.';
@@ -444,6 +460,31 @@ require_once __DIR__ . "/inc/layout-top.php";
         })();
         </script>
     <?php endif; ?>
+
+    <script>
+    /* «24:00 (fin del día)» en los campos «Hasta» de los tres modales: el
+       reloj del navegador no llega a 24:00; la casilla lo desactiva y envía
+       24:00 en el campo oculto. Fuera de los permisos: lo usan alta y edición. */
+    (function () {
+        var $ = function (id) { return document.getElementById(id); };
+        window.arPoner24 = function (id, si) {
+            var reloj = $(id), oculto = document.querySelector('input[data-hasta24-de="' + id + '"]');
+            if (!reloj || !oculto) { return; }
+            $(id + '_24').checked = si;
+            reloj.disabled = si; oculto.disabled = !si;
+            if (si) { reloj.value = ''; reloj.classList.remove('is-invalid'); }
+        };
+        /* La hora final efectiva de un campo «Hasta» («24:00» si está marcada). */
+        window.arHastaDe = function (id) { return $(id + '_24') && $(id + '_24').checked ? '24:00' : $(id).value; };
+        document.querySelectorAll('input[data-hasta24]').forEach(function (c) {
+            c.addEventListener('change', function () {
+                window.arPoner24(c.dataset.hasta24, c.checked);
+                if (!c.checked) { $(c.dataset.hasta24).focus(); }
+                c.closest('form').dispatchEvent(new Event('change'));   /* el resumen del valor en bloque */
+            });
+        });
+    })();
+    </script>
 
 <?php endif; ?>
 

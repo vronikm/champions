@@ -41,6 +41,8 @@ $puedeCobrar = puede_crear('reservaList') && $saldo > 0.001 && $reserva['reserva
    no: lo abonado ya se devolvió al cancelar. */
 $puedeAnularPago = $insArena->puedeAnularPagos() && $reserva['reserva_estado'] !== 'X';
 $pagosAnulados   = $insArena->pagosAnulados($id);
+/* Corregir sólo la fecha de un abono (un cobro de ayer registrado hoy). */
+$puedeFechaPago  = puede_editar('reservaList') && $reserva['reserva_estado'] !== 'X';
 $h = static fn ($t) => htmlspecialchars((string)$t, ENT_QUOTES, 'UTF-8');
 
 require_once __DIR__ . "/inc/layout-top.php";
@@ -216,6 +218,20 @@ require_once __DIR__ . "/inc/layout-top.php";
                                        class="btn btn-sm btn-outline-primary" title="Ver, descargar o enviar el recibo">
                                         <i class="fas fa-receipt me-1"></i><?php echo $insArena->reciboNumero((int)$p['pago_id']); ?>
                                     </a>
+                                    <?php if ($puedeFechaPago): ?>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary ar-pago__fecha"
+                                                data-bs-toggle="modal" data-bs-target="#modalFechaPago"
+                                                data-id="<?php echo (int)$p['pago_id']; ?>"
+                                                data-recibo="<?php echo $insArena->reciboNumero((int)$p['pago_id']); ?>"
+                                                data-fecha="<?php echo $h($p['pago_fecha']); ?>"
+                                                data-maxima="<?php echo $insArena->fechaMaximaPago($p); ?>"
+                                                data-registro="<?php echo date('d/m/Y H:i', strtotime((string)$p['pago_fecharegistro'])); ?>"
+                                                data-valor="<?php echo number_format((float)$p['pago_valor'], 2, '.', ''); ?>"
+                                                data-forma="<?php echo $h($p['forma_nombre']); ?>"
+                                                title="Corregir la fecha del cobro" aria-label="Corregir la fecha del abono <?php echo $insArena->reciboNumero((int)$p['pago_id']); ?>">
+                                            <i class="fas fa-calendar-day" aria-hidden="true"></i><span class="ar-pago__anular-txt">Fecha</span>
+                                        </button>
+                                    <?php endif; ?>
                                     <?php if ($puedeAnularPago): ?>
                                         <button type="button" class="btn btn-sm btn-outline-danger ar-pago__anular"
                                                 data-bs-toggle="modal" data-bs-target="#modalAnularPago"
@@ -466,6 +482,80 @@ require_once __DIR__ . "/inc/layout-top.php";
 </script>
 <?php endif; ?>
 
+<?php if ($puedeFechaPago && $pagos): ?>
+<?php /* Corregir sólo la fecha del cobro de un abono. */ ?>
+<div class="modal fade" id="modalFechaPago" tabindex="-1" aria-labelledby="modalFechaPagoTitulo">
+    <div class="modal-dialog modal-dialog-centered modal-fullscreen-sm-down">
+        <div class="modal-content">
+            <form class="FormularioAjax" method="POST" action="<?php echo APP_URL; ?>ajax/arenaAjax.php" id="formFechaPago" novalidate>
+                <input type="hidden" name="modulo_arena" value="cambiarFechaPago">
+                <input type="hidden" name="pago_id" id="afp_id" value="">
+
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalFechaPagoTitulo"><i class="fas fa-calendar-day me-2" aria-hidden="true"></i>Fecha del abono <span id="afp_recibo"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+
+                <div class="modal-body">
+                    <dl class="ar-anp__resumen mb-3">
+                        <div><dt>Valor</dt><dd id="afp_valor"></dd></div>
+                        <div><dt>Forma</dt><dd id="afp_forma"></dd></div>
+                        <div><dt>Registrado</dt><dd id="afp_registro"></dd></div>
+                    </dl>
+                    <label for="afp_fecha" class="form-label fw-semibold">Fecha del cobro <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control form-control-lg" id="afp_fecha" name="pago_fecha" required
+                           min="<?php echo date('Y-m-d', strtotime('-' . arenaController::COBRO_DIAS_ATRAS . ' days')); ?>" aria-describedby="afp_ayuda">
+                    <div class="invalid-feedback" id="afp_error">Elija una fecha válida.</div>
+                    <div class="d-flex flex-wrap gap-2 mt-2" role="group" aria-label="Atajos">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-afp-dias="1">Ayer</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-afp-reserva>Día de la reserva (<?php echo date('d/m/Y', strtotime($reserva['reserva_fecha'])); ?>)</button>
+                    </div>
+                    <small class="text-muted d-block mt-2" id="afp_ayuda">El día en que el cliente pagó. Cuenta en el reporte de pagos y en la caja de ese día. Sólo cambia la fecha: el valor y la forma de pago quedan igual.</small>
+                </div>
+
+                <div class="modal-footer ar-anp__pie">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-check me-1" aria-hidden="true"></i>Guardar fecha</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var $ = function (id) { return document.getElementById(id); };
+    var fecha = $('afp_fecha'), original = '', FECHA_RESERVA = '<?php echo $h($reserva['reserva_fecha']); ?>';
+    var dmy = function (d) { return d.split('-').reverse().join('/'); };
+    var menos = function (n) { var d = new Date('<?php echo date('Y-m-d'); ?>T12:00:00'); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
+    $('modalFechaPago').addEventListener('show.bs.modal', function (e) {
+        var b = e.relatedTarget; if (!b) { return; }
+        $('afp_id').value = b.dataset.id;
+        $('afp_recibo').textContent = b.dataset.recibo;
+        $('afp_valor').textContent = '$' + (+b.dataset.valor).toFixed(2);
+        $('afp_forma').textContent = b.dataset.forma;
+        $('afp_registro').textContent = b.dataset.registro;
+        fecha.max = b.dataset.maxima; fecha.value = original = b.dataset.fecha;
+        fecha.classList.remove('is-invalid');
+        /* Los atajos sólo si caen en el rango (hasta el día en que se registró). */
+        var fuera = function (d) { return d > fecha.max || d < fecha.min || d === original; };
+        document.querySelector('[data-afp-reserva]').hidden = fuera(FECHA_RESERVA);
+        document.querySelectorAll('[data-afp-dias]').forEach(function (x) { x.hidden = fuera(menos(+x.dataset.afpDias)); });
+    });
+    document.querySelectorAll('[data-afp-dias]').forEach(function (b) { b.addEventListener('click', function () { fecha.value = menos(+b.dataset.afpDias); fecha.classList.remove('is-invalid'); }); });
+    document.querySelector('[data-afp-reserva]').addEventListener('click', function () { fecha.value = FECHA_RESERVA; fecha.classList.remove('is-invalid'); });
+    fecha.addEventListener('input', function () { fecha.classList.remove('is-invalid'); });
+    /* Antes del envío de ajax.js: una fecha dentro del rango y distinta de la actual. */
+    $('formFechaPago').addEventListener('submit', function (e) {
+        var v = fecha.value, msg = '';
+        if (!v || v < fecha.min || v > fecha.max) { msg = 'Elija una fecha entre el ' + dmy(fecha.min) + ' y el ' + dmy(fecha.max) + ' (el día en que se registró).'; }
+        else if (v === original) { msg = 'El abono ya tiene esa fecha.'; }
+        if (msg) { e.preventDefault(); e.stopImmediatePropagation(); $('afp_error').textContent = msg; fecha.classList.add('is-invalid'); fecha.focus(); }
+    }, true);
+})();
+</script>
+<?php endif; ?>
+
 <?php if ($puedeAnularPago && $pagos): ?>
 <?php /* Anular un abono registrado por error (migración 098). */ ?>
 <div class="modal fade" id="modalAnularPago" tabindex="-1" aria-labelledby="modalAnularPagoTitulo">
@@ -558,7 +648,7 @@ require_once __DIR__ . "/inc/layout-top.php";
 
 <style>
 /* Anular un abono (098) */
-.ar-pago__anular { margin-left: .25rem; }
+.ar-pago__anular, .ar-pago__fecha { margin-left: .25rem; }
 .ar-pago__anular-txt { margin-left: .35rem; }
 @media (max-width: 575.98px) { .ar-pago__anular-txt { display: none; } }
 .ar-anulados { border-top: 1px solid var(--bs-border-color); padding: .75rem 1rem 0; }

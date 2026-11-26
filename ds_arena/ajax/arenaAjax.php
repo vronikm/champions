@@ -131,6 +131,7 @@ switch ($_POST['modulo_arena']) {
 
     case 'registrarPago':         echo $insArena->registrarPago();         break;
     case 'anularPagoReserva':     echo $insArena->anularPagoReserva();     break;   // 098
+    case 'cambiarFechaPago':      echo $insArena->cambiarFechaPago();      break;
     case 'ingresoMonedero':       echo $insArena->ingresoMonedero();       break;
     case 'egresoMonedero':        echo $insArena->egresoMonedero();        break;
     case 'anularMovimientoMonedero': echo $insArena->anularMovimientoMonedero(); break;   // 097

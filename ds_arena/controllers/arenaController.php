@@ -483,6 +483,19 @@ class arenaController
         );
     }
 
+    /**
+     * ¿Es «HH:MM» una hora de franja válida? De 00:00 a 23:59; si es el fin
+     * de la franja, también 24:00 (el fin del día): así la última hora queda
+     * completa, de 23:00 a 24:00. MySQL guarda '24:00:00' en un TIME y las
+     * franjas se comparan como texto o en minutos (1440), que lo admiten.
+     */
+    private static function horaDeFranja(string $h, bool $esFin = false): bool
+    {
+        if (!preg_match('/^(\d{2}):(\d{2})$/', $h, $m)) { return false; }
+        if ($esFin && $h === '24:00') { return true; }
+        return (int)$m[1] <= 23 && (int)$m[2] <= 59;
+    }
+
     public function guardarHorario(): string
     {
         if (!puede_crear('horarioList') && !puede_editar('horarioList')) {
@@ -513,8 +526,8 @@ class arenaController
             return $this->alerta('simple', 'Instalación no válida', 'Seleccione una instalación.', 'error');
         }
 
-        if (!preg_match('/^\d{2}:\d{2}$/', $desde) || !preg_match('/^\d{2}:\d{2}$/', $hasta)) {
-            return $this->alerta('simple', 'Horas no válidas', 'Indique hora de inicio y fin.', 'error');
+        if (!self::horaDeFranja($desde) || !self::horaDeFranja($hasta, true)) {
+            return $this->alerta('simple', 'Horas no válidas', 'Indique hora de inicio y fin (el fin puede ser 24:00, el fin del día).', 'error');
         }
         if ($hasta <= $desde) {
             return $this->alerta('simple', 'Rango no válido', 'La hora de fin debe ser posterior a la de inicio.', 'error');
@@ -627,7 +640,7 @@ class arenaController
         if (!$dias) {
             return $this->alerta('simple', 'Sin días', 'Marque al menos un día de la semana.', 'error');
         }
-        if (!preg_match('/^\d{2}:\d{2}$/', $desde) || !preg_match('/^\d{2}:\d{2}$/', $hasta) || $hasta <= $desde) {
+        if (!self::horaDeFranja($desde) || !self::horaDeFranja($hasta, true) || $hasta <= $desde) {
             return $this->alerta('simple', 'Horas no válidas', 'Indique desde qué hora y hasta qué hora; el fin debe ser posterior.', 'error');
         }
 
@@ -3903,6 +3916,59 @@ class arenaController
     | el anulado deja de contar en todos.
     | No en una reserva cancelada: lo abonado ya se devolvió al cancelar.
     */
+
+    /*
+    | CORREGIR LA FECHA DE UN ABONO (2026-11-25)
+    |
+    | Un cobro de ayer registrado hoy con la fecha de hoy: sólo cambia
+    | pago_fecha, que es el día en que cuenta en el reporte de pagos, la caja
+    | e Insights. El valor, la forma y lo demás no se tocan (para eso se anula
+    | y se registra de nuevo).
+    |
+    | Hasta el día en que se registró, no después: el reporte cuenta cada cobro
+    | en el menor entre su fecha y el día de su registro, así que una fecha
+    | posterior no lo movería. Desde COBRO_DIAS_ATRAS, como al registrarlo.
+    */
+
+    /** El último día que admite la fecha de un abono: el de su registro (o hoy). */
+    public function fechaMaximaPago(array $pago): string
+    {
+        $registro = !empty($pago['pago_fecharegistro']) ? date('Y-m-d', strtotime((string)$pago['pago_fecharegistro'])) : date('Y-m-d');
+        return min($registro, date('Y-m-d'));
+    }
+
+    public function cambiarFechaPago(): string
+    {
+        if (!puede_editar('reservaList')) {
+            return $this->alerta('simple', 'Acceso denegado', 'Su rol no puede corregir abonos.', 'error');
+        }
+        $id = (int)($_POST['pago_id'] ?? 0);
+        $p = $this->filas("SELECT * FROM dsa_pago WHERE pago_id = :i", [':i' => $id])[0] ?? null;
+        if ($p === null || $p['pago_estado'] !== 'A') {
+            return $this->alerta('simple', 'Abono no encontrado', 'El abono no existe o está anulado.', 'error');
+        }
+        $reserva = $this->reserva((int)$p['pago_reservaid']);
+        if ($reserva === null || $reserva['reserva_estado'] === 'X') {
+            return $this->alerta('simple', 'Reserva cancelada', 'No se corrigen abonos de una reserva cancelada.', 'error');
+        }
+
+        $maxima = $this->fechaMaximaPago($p);
+        $fecha  = $this->fechaCobroPedida(trim((string)($_POST['pago_fecha'] ?? '')));
+        if ($fecha === null || $fecha > $maxima) {
+            return $this->alerta('simple', 'Fecha no válida',
+                'Elija el día en que el cliente pagó: hasta el ' . date('d/m/Y', strtotime($maxima)) . ', el día en que se registró el abono.', 'error');
+        }
+        if ($fecha === (string)$p['pago_fecha']) {
+            return $this->alerta('simple', 'Sin cambios', 'El abono ya tiene esa fecha.', 'info');
+        }
+
+        $this->escribir("UPDATE dsa_pago SET pago_fecha = :f WHERE pago_id = :i AND pago_estado = 'A'", [':f' => $fecha, ':i' => $id]);
+
+        return $this->alerta('recargar', 'Fecha corregida',
+            'El abono ' . $this->reciboNumero($id) . ' de $' . number_format((float)$p['pago_valor'], 2) . ' pasó del '
+            . date('d/m/Y', strtotime((string)$p['pago_fecha'])) . ' al ' . date('d/m/Y', strtotime($fecha))
+            . '. Ahora cuenta en el reporte de pagos y en la caja de ese día.');
+    }
 
     /** ¿Está aplicada la 098 (columna pago_anulamotivo)? Una vez por petición. */
     public function pagoConAnulacion(): bool

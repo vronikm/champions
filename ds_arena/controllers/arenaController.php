@@ -3227,6 +3227,19 @@ class arenaController
         return $hay;
     }
 
+    /** ¿Está aplicada la 101 (egresos con ámbito: bar o instalaciones)? Una vez por petición. */
+    public function egresosConAmbito(): bool
+    {
+        static $hay = null;
+        if ($hay === null) {
+            try {
+                $hay = (int)$this->escalar("SELECT COUNT(*) FROM information_schema.COLUMNS
+                        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dsa_egreso' AND COLUMN_NAME = 'egreso_ambito'") === 1;
+            } catch (\Throwable $e) { $hay = false; }
+        }
+        return $hay;
+    }
+
     /** ¿Se puede anular este movimiento (fila de movimientos())? */
     public function movimientoAnulable(array $mv): bool
     {

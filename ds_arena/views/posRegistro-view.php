@@ -5,7 +5,10 @@
 | Lo que ya se vendió y no pasó por «Vender»: se ingresa con su fecha (hoy o
 | días anteriores), producto por producto, con el precio de ese día. Un
 | producto que no está en el catálogo se escribe por su nombre y se crea.
-| No entra en ninguna caja; sale en Reportes › Ventas del día elegido.
+| Las de HOY entran en la caja abierta de quien registra (sin caja abierta
+| no se registran); las de días anteriores no tocan ninguna caja: quedan
+| como constancia. Salen en Reportes › Ventas del día elegido y en Egresos
+| (ventas frente a egresos).
 */
 
 use arena\controllers\posController;
@@ -31,6 +34,7 @@ $productos  = array_values(array_filter($pos->productos(true), static fn ($p) =>
 $formas     = array_values(array_filter($pos->formasCobro(), static fn ($f) => $f['forma_esmonedero'] !== 'S'));
 usort($formas, static fn ($a, $b) => ($b['forma_codigo'] === 'EFE') <=> ($a['forma_codigo'] === 'EFE'));
 $sedes      = $pos->sedesCaja();
+$miCaja     = $pos->cajaAbierta();
 
 require_once __DIR__ . "/inc/layout-top.php";
 require_once __DIR__ . "/inc/pos-comun.php";
@@ -91,6 +95,9 @@ require_once __DIR__ . "/inc/pos-comun.php";
     .rv-pago .btn { min-height: var(--pos-toque); --bs-btn-color: var(--bs-body-color); --bs-btn-border-color: var(--bs-border-color); font-weight: 600; font-size: .875rem; }
     .rv-pago .btn-check:checked + .btn { background: #0e7490; border-color: #0e7490; color: #fff; }
     .rv-aviso { padding: .5rem .7rem; border-radius: .6rem; font-size: .875rem; background: var(--bs-warning-bg-subtle); color: var(--bs-warning-text-emphasis); border: 1px solid var(--bs-warning-border-subtle); }
+    .rv-aviso--caja { background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); border-color: var(--bs-success-border-subtle); }
+    .rv-aviso--falta { background: var(--bs-danger-bg-subtle); color: var(--bs-danger-text-emphasis); border-color: var(--bs-danger-border-subtle); }
+    .rv-aviso a { color: inherit; font-weight: 600; }
 </style>
 
 <div class="pos">
@@ -101,8 +108,14 @@ require_once __DIR__ . "/inc/pos-comun.php";
     <div class="pos-tarjeta mb-3 p-3 d-flex flex-wrap gap-3 align-items-center">
         <p class="mb-0 small text-body-secondary flex-grow-1" style="min-width: 15rem;">
             <i class="fas fa-circle-info me-1" aria-hidden="true"></i>Ingrese lo que <strong>ya se vendió</strong> sin pasar por «Vender»: con la fecha de esa venta y el precio de ese día.
-            No entra en ninguna caja y sale en <a href="<?php echo APP_URL; ?>posVentas/">Reportes › Ventas</a> del día elegido.
+            Las de <strong>hoy</strong> entran en su caja abierta; las de días anteriores quedan como constancia, sin tocar ninguna caja.
+            Salen en <a href="<?php echo APP_URL; ?>posVentas/">Reportes › Ventas</a> del día elegido.
         </p>
+        <?php if ($miCaja): ?>
+            <span class="badge rounded-pill text-bg-success-subtle border border-success-subtle text-success-emphasis px-3 py-2"><i class="fas fa-lock-open me-1" aria-hidden="true"></i>Su caja #<?php echo (int)$miCaja['caja_id']; ?> está abierta</span>
+        <?php else: ?>
+            <a class="badge rounded-pill text-bg-warning-subtle border border-warning-subtle text-warning-emphasis px-3 py-2 text-decoration-none" href="<?php echo APP_URL; ?>posCaja/"><i class="fas fa-lock me-1" aria-hidden="true"></i>Caja cerrada: ábrala para registrar las de hoy</a>
+        <?php endif; ?>
         <?php if ($puedeCrear): ?>
             <button type="button" class="btn btn-primary pos-btn px-4" id="rvNueva"><i class="fas fa-file-pen" aria-hidden="true"></i>Registrar ventas</button>
         <?php endif; ?>
@@ -163,11 +176,11 @@ require_once __DIR__ . "/inc/pos-comun.php";
                         <div class="col-6 col-md-3"><label class="form-label fw-semibold" for="rvFecha">Fecha</label>
                             <input type="date" class="form-control" id="rvFecha" value="<?php echo $hoy; ?>" min="<?php echo $minimo; ?>" max="<?php echo $hoy; ?>" required></div>
                         <?php if (count($sedes) > 1): ?>
-                            <div class="col-6 col-md-4"><label class="form-label fw-semibold" for="rvSede">Sede</label>
+                            <div class="col-6 col-md-4" id="rvSedeGrupo"><label class="form-label fw-semibold" for="rvSede">Sede</label>
                                 <select class="form-select" id="rvSede"><?php foreach ($sedes as $s): ?><option value="<?php echo (int)$s['sede_id']; ?>"><?php echo $posH($s['sede_nombre']); ?></option><?php endforeach; ?></select></div>
                         <?php endif; ?>
                     </div>
-                    <p class="rv-aviso mb-3" id="rvAvisoFecha" hidden><i class="fas fa-clock-rotate-left me-1" aria-hidden="true"></i><span></span></p>
+                    <p class="rv-aviso mb-3" id="rvAvisoFecha" role="status"><i class="fas fa-clock-rotate-left me-1" aria-hidden="true"></i><span></span></p>
 
                     <h3 class="h6 fw-bold">Productos vendidos</h3>
                     <div class="rv-agregar mb-2">
@@ -204,7 +217,6 @@ require_once __DIR__ . "/inc/pos-comun.php";
                         <label class="form-check-label" for="rvStock">Descontar del inventario los productos con stock</label>
                         <div class="small text-body-secondary">Desmárquelo si estas ventas son anteriores al conteo del stock.</div>
                     </div>
-                    <p class="small text-body-secondary mt-2 mb-0"><i class="fas fa-cash-register me-1" aria-hidden="true"></i>No entra en ninguna caja: son ventas ya hechas.</p>
                 </div>
                 <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Volver</button>
                     <button type="submit" class="btn btn-primary pos-btn" id="rvGuardar"><i class="fas fa-check" aria-hidden="true"></i>Registrar</button></div>
@@ -220,6 +232,8 @@ document.addEventListener('DOMContentLoaded', function () {
     var esc = function (s) { var d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; };
     var norm = function (s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim(); };
     var HOY = '<?php echo $hoy; ?>';
+    var CAJA = <?php echo $miCaja ? json_encode(['id' => (int)$miCaja['caja_id'], 'sede' => (string)($miCaja['sede_nombre'] ?? '')], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) : 'null'; ?>;
+    var URL_CAJA = '<?php echo APP_URL; ?>posCaja/';
     var PRODUCTOS = <?php echo json_encode(array_map(static fn ($p) => ['id' => (int)$p['producto_id'], 'nombre' => $p['producto_nombre'],
         'codigo' => $p['producto_codigo'], 'precio' => (float)$p['producto_precioventa'], 'tipo' => $p['producto_tipo']], $productos), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG); ?>;
     PRODUCTOS.forEach(function (p) { p.clave = norm(p.nombre + ' ' + p.codigo); });
@@ -233,10 +247,18 @@ document.addEventListener('DOMContentLoaded', function () {
     $('rvModal').addEventListener('shown.bs.modal', function () { if (window.matchMedia('(min-width: 576px)').matches) { prod.focus(); } });
 
     /* ---------- fecha ---------- */
+    /* Hoy: entra en la caja abierta (sin caja no se puede). Otro día: constancia, sin caja. */
     function avisoFecha() {
-        var f = $('rvFecha').value, a = $('rvAvisoFecha');
-        a.hidden = !(f && f < HOY);
-        if (!a.hidden) { a.querySelector('span').textContent = 'Ventas del ' + f.split('-').reverse().join('/') + ': salen en Reportes › Ventas de ese día.'; }
+        var f = $('rvFecha').value, a = $('rvAvisoFecha'), span = a.querySelector('span'), icono = a.querySelector('i');
+        var deHoy = f === HOY, sinCaja = deHoy && !CAJA;
+        a.hidden = !f;
+        a.className = 'rv-aviso mb-3' + (deHoy ? (CAJA ? ' rv-aviso--caja' : ' rv-aviso--falta') : '');
+        icono.className = 'fas me-1 ' + (deHoy ? (CAJA ? 'fa-cash-register' : 'fa-lock') : 'fa-clock-rotate-left');
+        if (deHoy && CAJA) { span.textContent = 'Ventas de hoy: entran en su caja #' + CAJA.id + (CAJA.sede ? ' (' + CAJA.sede + ')' : '') + ' y su efectivo cuenta en el arqueo.'; }
+        else if (sinCaja) { span.innerHTML = 'Las ventas de hoy entran en su caja y no tiene una abierta. <a href="' + URL_CAJA + '">Abrir caja</a> o elija la fecha de otro día.'; }
+        else if (f) { span.textContent = 'Ventas del ' + f.split('-').reverse().join('/') + ': no entran en ninguna caja, quedan como constancia. Salen en Reportes › Ventas de ese día.'; }
+        if ($('rvSedeGrupo')) { $('rvSedeGrupo').hidden = deHoy && !!CAJA; }
+        $('rvGuardar').disabled = sinCaja;
     }
     $('rvFecha').addEventListener('change', avisoFecha);
     $('rvFecha').addEventListener('input', avisoFecha);
@@ -358,10 +380,12 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!lineas.length) { aviso('Agregue al menos un producto'); prod.focus(); return; }
         var f = $('rvFecha').value;
         if (!f || f > HOY || f < $('rvFecha').min) { $('rvFecha').focus(); aviso('Elija una fecha válida: hoy o un día anterior'); return; }
+        if (f === HOY && !CAJA) { avisoFecha(); aviso('Las ventas de hoy entran en su caja: ábrala primero'); return; }
         var forma = document.querySelector('input[name="rvForma"]:checked'), nuevos = lineas.filter(function (l) { return !l.producto_id; }).length;
         Swal.fire({ icon: 'question', title: 'Registrar ' + posDinero(total()),
                     html: lineas.length + ' producto(s) con fecha <strong>' + f.split('-').reverse().join('/') + '</strong>, en ' + esc(forma.nextElementSibling.textContent.trim().toLowerCase()) + '.'
-                        + (nuevos ? '<br>Se crearán ' + nuevos + ' producto(s) nuevo(s) en Productos.' : '') + '<br><small>No entra en ninguna caja.</small>',
+                        + (nuevos ? '<br>Se crearán ' + nuevos + ' producto(s) nuevo(s) en Productos.' : '')
+                        + '<br><small>' + (f === HOY ? 'Entra en su caja #' + CAJA.id + '.' : 'No entra en ninguna caja: queda como constancia.') + '</small>',
                     showCancelButton: true, confirmButtonText: 'Registrar', cancelButtonText: 'Revisar', confirmButtonColor: '#0e7490', reverseButtons: true })
             .then(function (r) {
                 if (!r.isConfirmed) { return; }
@@ -369,7 +393,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 posEnviar({ modulo_arena: 'posRegistrarVentas', fecha: f, sede: $('rvSede') ? $('rvSede').value : '', forma_id: forma.value,
                             referencia: $('rvRef').value, descontar_stock: $('rvStock').checked ? 'S' : 'N',
                             lineas: JSON.stringify(lineas.map(function (l) { return { producto_id: l.producto_id, nombre: l.nombre, cantidad: l.cantidad, precio: l.precio }; })) })
-                    .then(function (j) { b.disabled = false; if (j.ok) { modal.hide(); } posAviso(j); });
+                    .then(function (j) { b.disabled = false; avisoFecha(); if (j.ok) { modal.hide(); } posAviso(j); });
             });
     });
 });

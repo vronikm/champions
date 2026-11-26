@@ -205,6 +205,21 @@ en desarrollo y llevar el resultado a producción con un volcado (ver más abajo
     venta, R registrada) y `venta_registro`. Menú «Registrar ventas» antes
     de «Vender», con los permisos que cada rol tiene sobre «Vender». Sin la
     tabla no hace nada. Repetible.
+41. `100_arena_egresos.sql` (de `ds_core/database/`, común; sólo Champions
+    usa Arena): «Egresos» del bar. Tabla `dsa_egreso` (InnoDB) con fecha,
+    categoría, concepto, valor y su anulación (la pantalla no pregunta de
+    dónde salió el dinero: no toca ninguna caja). Menú
+    «Egresos» después de «Productos» («Compras» pasa al orden 6), con los
+    permisos que cada rol tiene sobre «Caja». Sin el punto de venta no hace
+    nada. Repetible.
+42. `101_arena_egresos_instalaciones.sql` (de `ds_core/database/`, común;
+    sólo Champions usa Arena; requiere la 100): «Egresos Instalaciones»
+    (luz, agua, mantenimiento de la cancha…) y Reportes › «Ganancias».
+    `dsa_egreso.egreso_ambito` (B bar, I instalaciones) y
+    `egreso_instalacionid`. Menú «Egresos Instalaciones» después de
+    «Monedero» («Punto de Venta y Caja» pasa al orden 9 y «Reportes» al 10)
+    con los permisos de «Monedero», y Reportes › «Ganancias» con los de
+    «Pagos Reservas». Sin `dsa_egreso` no hace nada. Repetible.
 
 ```bash
 mysql -u USUARIO -p --default-character-set=utf8mb4 BASE < ARCHIVO.sql

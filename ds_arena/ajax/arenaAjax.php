@@ -95,6 +95,7 @@ $operacionesPos = [
     'posVender' => 'vender', 'posRegistrarVentas' => 'registrarVentas', 'posAnularVenta' => 'anularVenta', 'posBuscarClientes' => 'buscarClientesPos',
     'posGuardarProducto' => 'guardarProducto', 'posAjustarStock' => 'ajustarStock',
     'posGuardarCompra' => 'guardarCompra', 'posPagarCompra' => 'pagarCompra', 'posAnularCompra' => 'anularCompra',
+    'posGuardarEgreso' => 'guardarEgreso', 'posAnularEgreso' => 'anularEgreso',
 ];
 if (isset($operacionesPos[$_POST['modulo_arena']])) {
     header('Content-Type: application/json; charset=utf-8');

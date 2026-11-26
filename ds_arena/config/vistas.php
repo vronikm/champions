@@ -17,7 +17,9 @@ return [
     'reservaList', 'reservaForm', 'reservaDetalle',
     'reciboPago', 'reciboPdf',
     'monederoList', 'monederoDetalle',
+    'egresoInstalaciones',                /* Egresos Instalaciones (migración 101) */
     'reportePagos',                       /* Reportes › Pagos (migración 088) */
+    'reporteGanancias',                   /* Reportes › Ganancias (migración 101) */
     /* Punto de Venta y Caja (migración 095). posTicket: la nota de venta. */
-    'posRegistro', 'posVenta', 'posVentas', 'posCaja', 'posProductos', 'posCompras', 'posTicket',
+    'posRegistro', 'posVenta', 'posVentas', 'posCaja', 'posProductos', 'posEgresos', 'posCompras', 'posTicket',
 ];

@@ -13,9 +13,10 @@ use PDO;
  *
  * QUÉ ENTRA EN LA CAJA
  *
- * Lo del punto de venta mientras está abierta: las ventas (y lo devuelto al
- * anularlas), los ingresos y egresos registrados en ella y los pagos de
- * compras con su efectivo. El arqueo compara el efectivo que debería haber
+ * Lo del punto de venta mientras está abierta: las ventas (las de Vender y
+ * las registradas con fecha de hoy) y lo devuelto al anularlas, los
+ * ingresos y egresos registrados en ella, los egresos del bar pagados con su
+ * efectivo (Egresos, 100) y los pagos de compras con su efectivo. El arqueo compara el efectivo que debería haber
  * con el contado. Los cobros de reservas y los depósitos al monedero NO
  * entran (2026-11-25): se cuadran en Reportes › Pagos.
  *
@@ -1055,8 +1056,11 @@ class posController extends arenaController
       Lo vendido antes de usar el punto de venta, o un día en que no se usó.
       Diferencias con «Vender»:
         · la fecha la elige quien registra (hoy o hasta un año atrás);
-        · no entra en ninguna caja (venta_cajaid NULL): el dinero de esos días
-          ya se contó o se perdió, y no debe descuadrar el arqueo de hoy;
+        · la de HOY entra en la caja abierta de quien registra (2026-11-26):
+          su efectivo está en el cajón y debe cuadrar en el arqueo; sin caja
+          abierta no se registra. La de OTRO DÍA no entra en ninguna caja
+          (venta_cajaid NULL): queda como constancia de lo vendido, porque
+          el dinero de ese día ya se contó y no debe descuadrar el de hoy;
         · el precio de cada línea es el que se escribe (el de ese día), no el
           del catálogo;
         · un producto que no existe se escribe por su nombre y se crea en
@@ -1116,9 +1120,20 @@ class posController extends arenaController
             || $fecha > $hoy || $fecha < date('Y-m-d', strtotime($hoy . ' -' . self::REGISTRO_DIAS_ATRAS . ' days'))) {
             return $this->error('Elija la fecha de la venta: hoy o un día anterior (hasta un año atrás).', 'Fecha no válida');
         }
+        /* Las de hoy entran en la caja abierta de quien registra (2026-11-26):
+           su efectivo es parte del arqueo. Las de días anteriores, en ninguna. */
+        $caja = null;
+        if ($fecha === $hoy) {
+            $caja = $this->cajaAbierta();
+            if (!$caja) {
+                return $this->error('Las ventas de hoy entran en su caja: ábrala en Punto de Venta y Caja › Caja y vuelva a registrarlas.'
+                                  . ' Si son de otro día, cambie la fecha.', 'Abra su caja');
+            }
+        }
         $sedes = $this->sedesCaja();
         $sede  = (int)($_POST['sede'] ?? 0);
         if (!in_array($sede, array_map('intval', array_column($sedes, 'sede_id')), true)) { $sede = (int)($sedes[0]['sede_id'] ?? 0); }
+        if ($caja && (int)$caja['caja_sedeid'] > 0) { $sede = (int)$caja['caja_sedeid']; }
 
         $forma = $this->forma((int)($_POST['forma_id'] ?? 0));
         if (!$forma || $forma['forma_esmonedero'] === 'S') { return $this->error('Elija la forma de pago.'); }
@@ -1193,12 +1208,19 @@ class posController extends arenaController
                 $lineas[$i]['p'] = $creados[$clave];
             }
 
-            /* 2. La venta: sin caja, con la fecha elegida y la hora del registro. */
+            /* 2. La venta: con la fecha elegida y la hora del registro; en la
+                  caja abierta si es de hoy, sin caja si es de otro día. */
+            if ($caja) {
+                $st = $con->prepare("SELECT caja_estado FROM dsa_caja WHERE caja_id = :c FOR UPDATE");
+                $st->execute([':c' => $caja['caja_id']]);
+                if ($st->fetchColumn() !== 'A') { throw new \RuntimeException('Su caja se cerró mientras registraba. Ábrala de nuevo y vuelva a registrar.'); }
+            }
             $con->prepare(
                 "INSERT INTO dsa_venta (venta_cajaid, venta_sedeid, venta_subtotal, venta_descuento, venta_total, venta_usuarioid,
                                         venta_origen, venta_registro, venta_fecharegistro)
-                 VALUES (NULL, :s, :t, 0, :t2, :u, 'R', NOW(), :f)"
-            )->execute([':s' => $sede ?: null, ':t' => $total, ':t2' => $total, ':u' => $this->uid(), ':f' => $fecha . ' ' . date('H:i:s')]);
+                 VALUES (:c, :s, :t, 0, :t2, :u, 'R', NOW(), :f)"
+            )->execute([':c' => $caja['caja_id'] ?? null, ':s' => $sede ?: null, ':t' => $total, ':t2' => $total, ':u' => $this->uid(),
+                        ':f' => $fecha . ' ' . date('H:i:s')]);
             $ventaId = (int)$con->lastInsertId();
             $numero = 'NV-' . str_pad((string)$ventaId, 6, '0', STR_PAD_LEFT);
             $con->prepare("UPDATE dsa_venta SET venta_numero = :n WHERE venta_id = :v")->execute([':n' => $numero, ':v' => $ventaId]);
@@ -1233,7 +1255,8 @@ class posController extends arenaController
         }
 
         $texto = $numero . ': ' . count($lineas) . ' producto(s) por $' . number_format($total, 2) . ' en ' . mb_strtolower($forma['forma_nombre'])
-               . ', con fecha ' . date('d/m/Y', strtotime($fecha)) . '.';
+               . ', con fecha ' . date('d/m/Y', strtotime($fecha)) . '.'
+               . ($caja ? ' Entró en su caja.' : ' No entra en ninguna caja: queda como constancia.');
         if ($nuevos) { $texto .= ' Se crearon en Productos: ' . implode(', ', $nuevos) . '.'; }
         return $this->json(['ok' => true, 'tipo' => 'recargar', 'icono' => 'success', 'titulo' => 'Ventas registradas', 'texto' => $texto,
                             'venta' => $ventaId, 'numero' => $numero]);
@@ -1429,6 +1452,414 @@ class posController extends arenaController
             return $this->error($e instanceof \RuntimeException ? $e->getMessage() . ' Ya se vendió: no se puede anular la compra.' : 'No fue posible anular la compra.');
         }
         return $this->json(['ok' => true, 'tipo' => 'recargar', 'icono' => 'success', 'titulo' => 'Compra anulada', 'texto' => 'El stock que entró volvió a salir.']);
+    }
+
+    /*======================================================================
+      Egresos del bar (migración 100, 2026-11-26)
+
+      Los gastos del bar con su fecha, categoría, detalle y valor. Desde el
+      2026-11-26 no se pregunta de dónde salió el dinero (egreso_origen N) y
+      no tocan ninguna caja: el efectivo que sale de una caja se anota con
+      «Egreso» en la vista Caja y aparece aquí como «egreso anotado en la
+      caja». Los orígenes C (caja, con su movimiento EGR), P (dinero propio)
+      y O (otro medio) quedan sólo para leer lo registrado antes.
+
+      El resumen del período compara lo vendido (Vender y Registrar ventas)
+      y los otros ingresos de caja con todo lo que salió: estos egresos, los
+      egresos anotados directamente en una caja y los pagos de compras. No
+      cuenta las devoluciones por ventas anuladas (la venta anulada ya no
+      suma) ni los pagos de compras como egreso de caja (ya están en compras).
+
+      EGRESOS DE INSTALACIONES (migración 101, egreso_ambito = 'I')
+
+      Luz, agua, mantenimiento de la cancha, arreglo del césped… Misma tabla
+      y mismo formulario, con estas diferencias:
+        · nunca tocan la caja del punto de venta ni el cuadre de efectivo
+          de Reportes › Pagos;
+        · pueden llevar la cancha a la que corresponden (o ninguna: general);
+        · su resumen compara lo que entró por reservas (Reportes › Pagos:
+          cobros y depósitos al monedero, menos devoluciones) con estos
+          egresos: la ganancia de las instalaciones.
+      ====================================================================*/
+
+    public const EGRESO_ORIGENES = ['C' => 'Efectivo de la caja', 'P' => 'Dinero propio', 'O' => 'Otro medio'];
+
+    /** Ámbito de un egreso → la vista cuyos permisos lo gobiernan. */
+    public const EGRESO_AMBITOS = ['B' => 'posEgresos', 'I' => 'egresoInstalaciones'];
+
+    /** Categorías sugeridas; se suman las que ya se usaron. */
+    public const EGRESO_CATEGORIAS = ['Insumos del bar', 'Hielo y agua', 'Gas', 'Limpieza', 'Transporte',
+                                      'Ayudantes y sueldos', 'Mantenimiento', 'Servicios básicos', 'Otros'];
+    public const EGRESO_CATEGORIAS_INSTALACIONES = ['Luz', 'Agua', 'Mantenimiento de la cancha', 'Arreglo del césped',
+                                                    'Iluminación', 'Limpieza', 'Guardianía', 'Sueldos', 'Internet y teléfono',
+                                                    'Arriendo', 'Impuestos y permisos', 'Otros'];
+
+    /** El nombre del origen del dinero según el ámbito. */
+    public static function origenEgreso(string $codigo, string $ambito = 'B'): string
+    {
+        if ($codigo === 'N') { return ''; }              /* no se pregunta (2026-11-26) */
+        return self::EGRESO_ORIGENES[$codigo] ?? $codigo;
+    }
+
+    /** ¿Está aplicada la 100 (tabla dsa_egreso)? Una vez por petición. */
+    public function egresosListos(): bool
+    {
+        static $hay = null;
+        if ($hay === null) {
+            try {
+                $hay = (int)$this->escalar("SELECT COUNT(*) FROM information_schema.TABLES
+                        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dsa_egreso'") === 1;
+            } catch (\Throwable $e) { $hay = false; }
+        }
+        return $hay;
+    }
+
+    /** Filtro SQL del ámbito (sin la 101, todo es del bar). */
+    private function filtroAmbito(string $ambito, string $alias = ''): string
+    {
+        if (!$this->egresosConAmbito()) { return $ambito === 'B' ? '1 = 1' : '1 = 0'; }
+        return ($alias ? $alias . '.' : '') . "egreso_ambito = '" . ($ambito === 'I' ? 'I' : 'B') . "'";
+    }
+
+    public function categoriasEgreso(string $ambito = 'B'): array
+    {
+        $usadas = $this->egresosListos()
+            ? array_column($this->filas("SELECT egreso_categoria c, COUNT(*) n FROM dsa_egreso WHERE egreso_estado = 'A' AND " . $this->filtroAmbito($ambito) . "
+                                          GROUP BY egreso_categoria ORDER BY n DESC LIMIT 30"), 'c')
+            : [];
+        $todas = [];
+        foreach (array_merge($usadas, $ambito === 'I' ? self::EGRESO_CATEGORIAS_INSTALACIONES : self::EGRESO_CATEGORIAS) as $c) {
+            $todas[mb_strtolower($c)] ??= $c;
+        }
+        return array_values($todas);
+    }
+
+    public function egreso(int $id): ?array
+    {
+        if (!$this->egresosListos()) { return null; }
+        return $this->filas("SELECT e.*, c.caja_estado FROM dsa_egreso e LEFT JOIN dsa_caja c ON c.caja_id = e.egreso_cajaid
+                              WHERE e.egreso_id = :e", [':e' => $id])[0] ?? null;
+    }
+
+    /** [desde 00:00, día siguiente a hasta 00:00] para comparar fechas con hora. */
+    private static function rango(string $desde, string $hasta): array
+    {
+        return [$desde . ' 00:00:00', date('Y-m-d', strtotime($hasta . ' +1 day')) . ' 00:00:00'];
+    }
+
+    /**
+     * Todo lo que salió en el período, del más reciente al más antiguo:
+     * los egresos (anulables) y, en el bar, los egresos anotados en una
+     * caja y los pagos de compras (éstos dos, de consulta).
+     */
+    public function salidasPeriodo(string $desde, string $hasta, string $ambito = 'B'): array
+    {
+        [$d, $h] = self::rango($desde, $hasta);
+        $formas = array_column($this->formasIngreso(), 'forma_nombre', 'forma_codigo');
+        $conAmbito = $this->egresosConAmbito();
+        $out = [];
+        if ($this->egresosListos()) {
+            foreach ($this->filas(
+                "SELECT e.*, u.usuario_usuario, ux.usuario_usuario AS anulo, c.caja_estado,
+                        " . ($conAmbito ? "i.instalacion_nombre" : "NULL AS instalacion_nombre") . "
+                   FROM dsa_egreso e
+                   LEFT JOIN seguridad_usuario u  ON u.usuario_id  = e.egreso_usuarioid
+                   LEFT JOIN seguridad_usuario ux ON ux.usuario_id = e.egreso_anulausuario
+                   LEFT JOIN dsa_caja c ON c.caja_id = e.egreso_cajaid
+                   " . ($conAmbito ? "LEFT JOIN dsa_instalacion i ON i.instalacion_id = e.egreso_instalacionid" : "") . "
+                  WHERE e.egreso_fecha BETWEEN :d AND :h AND " . $this->filtroAmbito($ambito, 'e') . "
+                  ORDER BY e.egreso_fecha DESC, e.egreso_id DESC LIMIT 1000", [':d' => $desde, ':h' => $hasta]) as $e) {
+                $origen = self::origenEgreso($e['egreso_origen'], $ambito);
+                if ($e['egreso_origen'] === 'P' && $e['egreso_pagadopor']) { $origen .= ' de ' . $e['egreso_pagadopor']; }
+                if ($e['egreso_origen'] === 'O') { $origen = $formas[$e['egreso_forma']] ?? $origen; }
+                if ($e['egreso_origen'] === 'C' && $ambito === 'B' && !$e['egreso_cajaid']) { $origen .= ' (sin caja)'; }
+                $out[] = ['tipo' => 'egreso', 'id' => (int)$e['egreso_id'], 'fecha' => $e['egreso_fecha'],
+                          'instalacion' => (string)($e['instalacion_nombre'] ?? ''),
+                          'registro' => $e['egreso_fecharegistro'], 'categoria' => $e['egreso_categoria'],
+                          'concepto' => $e['egreso_concepto'], 'valor' => (float)$e['egreso_valor'], 'origen' => $origen,
+                          'codigoOrigen' => $e['egreso_origen'], 'pagadoPor' => (string)$e['egreso_pagadopor'],
+                          'referencia' => (string)$e['egreso_referencia'],
+                          'usuario' => (string)$e['usuario_usuario'], 'anulado' => $e['egreso_estado'] === 'X',
+                          'anulacion' => $e['egreso_estado'] === 'X' ? trim(($e['egreso_anulamotivo'] ?? '') . ' · ' . ($e['anulo'] ?? ''), ' ·') : '',
+                          'enCaja' => (bool)$e['egreso_cajaid'], 'cajaCerrada' => $e['egreso_cajaid'] && $e['caja_estado'] !== 'A', 'url' => ''];
+            }
+        }
+        if ($ambito !== 'B') {
+            return $out;
+        }
+        foreach ($this->filas(
+            "SELECT m.movimiento_id, m.movimiento_cajaid, m.movimiento_concepto, m.movimiento_detalle, m.movimiento_forma,
+                    m.movimiento_valor, m.movimiento_fecharegistro, u.usuario_usuario
+               FROM dsa_caja_movimiento m LEFT JOIN seguridad_usuario u ON u.usuario_id = m.movimiento_usuarioid
+              WHERE m.movimiento_tipo = 'E' AND m.movimiento_origen = 'MAN' AND m.movimiento_estado = 'A'
+                AND m.movimiento_fecharegistro >= :d AND m.movimiento_fecharegistro < :h", [':d' => $d, ':h' => $h]) as $m) {
+            $out[] = ['tipo' => 'caja', 'id' => (int)$m['movimiento_id'], 'fecha' => substr($m['movimiento_fecharegistro'], 0, 10),
+                      'registro' => $m['movimiento_fecharegistro'], 'categoria' => 'Egreso anotado en la caja',
+                      'concepto' => $m['movimiento_concepto'] . ($m['movimiento_detalle'] ? ' · ' . $m['movimiento_detalle'] : ''),
+                      'valor' => (float)$m['movimiento_valor'], 'origen' => 'Caja #' . (int)$m['movimiento_cajaid'] . ' · ' . ($formas[$m['movimiento_forma']] ?? $m['movimiento_forma']),
+                      'codigoOrigen' => 'C', 'pagadoPor' => '', 'referencia' => '', 'usuario' => (string)$m['usuario_usuario'], 'anulado' => false, 'anulacion' => '',
+                      'enCaja' => true, 'cajaCerrada' => true, 'url' => APP_URL . 'posCaja/?id=' . (int)$m['movimiento_cajaid']];
+        }
+        foreach ($this->filas(
+            "SELECT cp.pago_id, cp.pago_compraid, cp.pago_valor, cp.pago_fecha, cp.pago_cajaid, cp.pago_referencia, cp.pago_fecharegistro,
+                    c.compra_proveedor, f.forma_nombre, u.usuario_usuario
+               FROM dsa_compra_pago cp
+               JOIN dsa_compra c ON c.compra_id = cp.pago_compraid
+               JOIN dsa_forma_ingreso f ON f.forma_id = cp.pago_formaid
+               LEFT JOIN seguridad_usuario u ON u.usuario_id = cp.pago_usuarioid
+              WHERE cp.pago_estado = 'A' AND c.compra_estado = 'A' AND cp.pago_fecha BETWEEN :d AND :h", [':d' => $desde, ':h' => $hasta]) as $p) {
+            $out[] = ['tipo' => 'compra', 'id' => (int)$p['pago_id'], 'fecha' => $p['pago_fecha'], 'registro' => $p['pago_fecharegistro'],
+                      'categoria' => 'Compras de productos',
+                      'concepto' => 'Pago de la compra C-' . str_pad((string)$p['pago_compraid'], 5, '0', STR_PAD_LEFT) . ' · ' . $p['compra_proveedor'],
+                      'valor' => (float)$p['pago_valor'], 'origen' => $p['pago_cajaid'] ? 'Efectivo de la caja #' . (int)$p['pago_cajaid'] : $p['forma_nombre'],
+                      'codigoOrigen' => $p['pago_cajaid'] ? 'C' : 'O', 'pagadoPor' => '', 'referencia' => (string)$p['pago_referencia'],
+                      'usuario' => (string)$p['usuario_usuario'], 'anulado' => false, 'anulacion' => '', 'enCaja' => (bool)$p['pago_cajaid'], 'cajaCerrada' => true,
+                      'url' => APP_URL . 'posCompras/?id=' . (int)$p['pago_compraid']];
+        }
+        usort($out, static fn ($a, $b) => [$b['fecha'], $b['registro']] <=> [$a['fecha'], $a['registro']]);
+        return $out;
+    }
+
+    /**
+     * Ventas e ingresos frente a egresos en el período, con el detalle por
+     * día, por categoría y lo pagado con dinero propio por persona.
+     */
+    public function resumenBar(string $desde, string $hasta, ?array $salidas = null): array
+    {
+        [$d, $h] = self::rango($desde, $hasta);
+        $r = ['ventasPos' => 0.0, 'nPos' => 0, 'ventasReg' => 0.0, 'nReg' => 0, 'otrosIngresos' => 0.0,
+              'egresos' => 0.0, 'egresosCaja' => 0.0, 'compras' => 0.0, 'porOrigen' => ['C' => 0.0, 'P' => 0.0, 'O' => 0.0],
+              'porCategoria' => [], 'porPersona' => [], 'porDia' => [], 'costoVendido' => 0.0];
+        $dia = static function (array &$r, string $f, string $k, float $v) {
+            $r['porDia'][$f] ??= ['ventas' => 0.0, 'ingresos' => 0.0, 'egresos' => 0.0];
+            $r['porDia'][$f][$k] += $v;
+        };
+
+        $origen = $this->ventasConRegistro() ? 'v.venta_origen' : "'P'";
+        foreach ($this->filas(
+            "SELECT DATE(v.venta_fecharegistro) f, $origen o, COUNT(*) n, SUM(v.venta_total) t
+               FROM dsa_venta v WHERE v.venta_estado = 'A' AND v.venta_fecharegistro >= :d AND v.venta_fecharegistro < :h
+              GROUP BY f, o", [':d' => $d, ':h' => $h]) as $v) {
+            $t = (float)$v['t'];
+            if ($v['o'] === 'R') { $r['ventasReg'] += $t; $r['nReg'] += (int)$v['n']; }
+            else { $r['ventasPos'] += $t; $r['nPos'] += (int)$v['n']; }
+            $dia($r, $v['f'], 'ventas', $t);
+        }
+        $r['costoVendido'] = (float)$this->escalar(
+            "SELECT COALESCE(SUM(dd.detalle_costo * dd.detalle_cantidad), 0) FROM dsa_venta_detalle dd JOIN dsa_venta v ON v.venta_id = dd.detalle_ventaid
+              WHERE v.venta_estado = 'A' AND v.venta_fecharegistro >= :d AND v.venta_fecharegistro < :h", [':d' => $d, ':h' => $h]);
+        foreach ($this->filas(
+            "SELECT DATE(movimiento_fecharegistro) f, SUM(movimiento_valor) t FROM dsa_caja_movimiento
+              WHERE movimiento_tipo = 'I' AND movimiento_origen = 'MAN' AND movimiento_estado = 'A'
+                AND movimiento_fecharegistro >= :d AND movimiento_fecharegistro < :h GROUP BY f", [':d' => $d, ':h' => $h]) as $m) {
+            $r['otrosIngresos'] += (float)$m['t'];
+            $dia($r, $m['f'], 'ingresos', (float)$m['t']);
+        }
+
+        foreach ($salidas ?? $this->salidasPeriodo($desde, $hasta) as $s) {
+            if ($s['anulado']) { continue; }
+            $v = $s['valor'];
+            if ($s['tipo'] === 'egreso') {
+                $r['egresos'] += $v;
+                $r['porOrigen'][$s['codigoOrigen']] = ($r['porOrigen'][$s['codigoOrigen']] ?? 0) + $v;
+                if ($s['codigoOrigen'] === 'P') {
+                    $quien = $s['pagadoPor'] ?: 'Sin nombre';
+                    $r['porPersona'][$quien] = ($r['porPersona'][$quien] ?? 0) + $v;
+                }
+            } elseif ($s['tipo'] === 'caja') { $r['egresosCaja'] += $v; }
+            else { $r['compras'] += $v; }
+            $r['porCategoria'][$s['categoria']] = ($r['porCategoria'][$s['categoria']] ?? 0) + $v;
+            $dia($r, $s['fecha'], 'egresos', $v);
+        }
+
+        arsort($r['porCategoria']); arsort($r['porPersona']); krsort($r['porDia']);
+        foreach ($r as $k => $v) { if (is_float($v)) { $r[$k] = round($v, 2); } }
+        $r['vendido']       = round($r['ventasPos'] + $r['ventasReg'], 2);
+        $r['ingresos']      = round($r['vendido'] + $r['otrosIngresos'], 2);
+        $r['totalEgresos']  = round($r['egresos'] + $r['egresosCaja'] + $r['compras'], 2);
+        $r['resultado']     = round($r['ingresos'] - $r['totalEgresos'], 2);
+        return $r;
+    }
+
+    /**
+     * Lo que entró por reservas frente a los egresos de las instalaciones.
+     *
+     * Lo que entró es lo de Reportes › Pagos (el mismo cálculo, así que las
+     * dos pantallas dicen lo mismo): los cobros que trajeron dinero (los
+     * pagados con monedero no: ese dinero entró al depositarlo) y los
+     * depósitos al monedero, menos las devoluciones de reservas en efectivo
+     * o transferencia y las devoluciones del monedero.
+     */
+    public function resumenInstalaciones(string $desde, string $hasta, ?array $salidas = null): array
+    {
+        $rp = $this->reportePagos($this->filtroReportePagos(['desde' => $desde, 'hasta' => $hasta]));
+        $p  = $rp['resumen'];
+        $r = ['cobros' => round($p['recaudado'] - $p['depositos'], 2), 'nCobros' => (int)$p['nPagos'],
+              'depositos' => round($p['depositos'], 2), 'devReservas' => round($p['devEfectivo'] + $p['devBancos'], 2),
+              'devMonedero' => round($p['devoluciones'], 2), 'monederoAplicado' => round($p['monederoAplicado'], 2),
+              'egresos' => 0.0, 'porOrigen' => ['C' => 0.0, 'P' => 0.0, 'O' => 0.0],
+              'porCategoria' => [], 'porPersona' => [], 'porInstalacion' => [], 'porDia' => []];
+        $dia = static function (array &$r, string $f, string $k, float $v) {
+            $r['porDia'][$f] ??= ['ingresos' => 0.0, 'egresos' => 0.0];
+            $r['porDia'][$f][$k] += $v;
+        };
+        foreach ($rp['movimientos'] as $m) {
+            /* Una devolución del monedero no dice cómo salió (entra = 0): se resta su valor. */
+            $v = $m['tipo'] === 'devolucion' ? -(float)$m['valor'] : (float)$m['entra'];
+            if ($v != 0.0) { $dia($r, $m['dia'] ?? date('Y-m-d', $m['ts']), 'ingresos', $v); }
+        }
+        foreach ($salidas ?? $this->salidasPeriodo($desde, $hasta, 'I') as $s) {
+            if ($s['anulado']) { continue; }
+            $v = $s['valor'];
+            $r['egresos'] += $v;
+            $r['porOrigen'][$s['codigoOrigen']] = ($r['porOrigen'][$s['codigoOrigen']] ?? 0) + $v;
+            if ($s['codigoOrigen'] === 'P') { $q = $s['pagadoPor'] ?: 'Sin nombre'; $r['porPersona'][$q] = ($r['porPersona'][$q] ?? 0) + $v; }
+            $r['porCategoria'][$s['categoria']] = ($r['porCategoria'][$s['categoria']] ?? 0) + $v;
+            $inst = $s['instalacion'] !== '' ? $s['instalacion'] : 'General (todas)';
+            $r['porInstalacion'][$inst] = ($r['porInstalacion'][$inst] ?? 0) + $v;
+            $dia($r, $s['fecha'], 'egresos', $v);
+        }
+        arsort($r['porCategoria']); arsort($r['porPersona']); arsort($r['porInstalacion']); krsort($r['porDia']);
+        foreach ($r['porDia'] as &$x) { $x = array_map(static fn ($v) => round($v, 2), $x); }
+        unset($x);
+        $r['egresos']  = round($r['egresos'], 2);
+        $r['ingresos'] = round($r['cobros'] + $r['depositos'] - $r['devReservas'] - $r['devMonedero'], 2);
+        $r['ganancia'] = round($r['ingresos'] - $r['egresos'], 2);
+        return $r;
+    }
+
+    /**
+     * Reportes › Ganancias: instalaciones (reservas − sus egresos) y bar
+     * (ventas − sus egresos), con el total y el detalle por día o por mes.
+     */
+    public function resumenGanancias(string $desde, string $hasta): array
+    {
+        $inst = $this->resumenInstalaciones($desde, $hasta);
+        $bar  = $this->resumenBar($desde, $hasta);
+        $porMes = (strtotime($hasta) - strtotime($desde)) / 86400 > 62;
+        $filas = [];
+        $sumar = static function (array &$filas, string $clave, string $k, float $v) {
+            $filas[$clave] ??= ['instIngresos' => 0.0, 'instEgresos' => 0.0, 'barIngresos' => 0.0, 'barEgresos' => 0.0];
+            $filas[$clave][$k] += $v;
+        };
+        foreach ($inst['porDia'] as $f => $d) {
+            $c = $porMes ? substr($f, 0, 7) : $f;
+            $sumar($filas, $c, 'instIngresos', $d['ingresos']); $sumar($filas, $c, 'instEgresos', $d['egresos']);
+        }
+        foreach ($bar['porDia'] as $f => $d) {
+            $c = $porMes ? substr($f, 0, 7) : $f;
+            $sumar($filas, $c, 'barIngresos', $d['ventas'] + $d['ingresos']); $sumar($filas, $c, 'barEgresos', $d['egresos']);
+        }
+        krsort($filas);
+        foreach ($filas as &$x) {
+            $x = array_map(static fn ($v) => round($v, 2), $x);
+            $x['instGanancia'] = round($x['instIngresos'] - $x['instEgresos'], 2);
+            $x['barGanancia']  = round($x['barIngresos'] - $x['barEgresos'], 2);
+            $x['total']        = round($x['instGanancia'] + $x['barGanancia'], 2);
+        }
+        unset($x);
+        return ['inst' => $inst, 'bar' => $bar, 'porMes' => $porMes, 'filas' => $filas,
+                'ingresos' => round($inst['ingresos'] + $bar['ingresos'], 2),
+                'egresos'  => round($inst['egresos'] + $bar['totalEgresos'], 2),
+                'total'    => round($inst['ganancia'] + $bar['resultado'], 2)];
+    }
+
+    /** AJAX posGuardarEgreso (del bar o, con ambito=I, de las instalaciones). */
+    public function guardarEgreso(): string
+    {
+        $ambito = ($_POST['ambito'] ?? 'B') === 'I' ? 'I' : 'B';
+        if (!puede_crear(self::EGRESO_AMBITOS[$ambito])) { return $this->error('Su rol no puede registrar egresos.', 'Acceso denegado'); }
+        if (!$this->egresosListos()) { return $this->error('Aplique la migración 100 para registrar egresos.', 'Falta una actualización'); }
+        if ($ambito === 'I' && !$this->egresosConAmbito()) {
+            return $this->error('Aplique la migración 101 para registrar egresos de instalaciones.', 'Falta una actualización');
+        }
+
+        $hoy   = date('Y-m-d');
+        $fecha = (string)($_POST['fecha'] ?? '');
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha) || !checkdate((int)substr($fecha, 5, 2), (int)substr($fecha, 8, 2), (int)substr($fecha, 0, 4))
+            || $fecha > $hoy || $fecha < date('Y-m-d', strtotime($hoy . ' -' . self::REGISTRO_DIAS_ATRAS . ' days'))) {
+            return $this->error('Elija la fecha del gasto: hoy o un día anterior (hasta un año atrás).', 'Fecha no válida');
+        }
+        $categoria = self::texto($_POST['categoria'] ?? '', 60);
+        $concepto  = self::texto($_POST['concepto'] ?? '', 120);
+        $valor     = self::numero($_POST['valor'] ?? 0);
+        $ref       = self::texto($_POST['referencia'] ?? '', 60);
+        if (mb_strlen($categoria) < 2) { return $this->error('Elija o escriba la categoría del gasto.'); }
+        if (preg_match_all('/[\p{L}\p{N}]/u', $concepto) < 3) { return $this->error('Escriba en qué se gastó.'); }
+        if ($valor <= 0 || $valor > 100000) { return $this->error('El valor debe ser mayor que cero.'); }
+        /* Sólo el detalle y el valor: no se pregunta de dónde salió el dinero ni sale de ninguna caja (2026-11-26). */
+        $origen = 'N'; $forma = null; $pagadoPor = null; $caja = null;
+
+        $sedes = $this->sedesCaja();
+        $sede  = (int)($_POST['sede'] ?? 0);
+        if (!in_array($sede, array_map('intval', array_column($sedes, 'sede_id')), true)) { $sede = (int)($sedes[0]['sede_id'] ?? 0); }
+
+        /* La cancha (instalaciones): opcional; su sede manda. */
+        $instalacion = null;
+        if ($ambito === 'I' && (int)($_POST['instalacion_id'] ?? 0) > 0) {
+            $inst = $this->filas("SELECT instalacion_id, instalacion_sedeid FROM dsa_instalacion WHERE instalacion_id = :i AND instalacion_estado <> 'E'",
+                                 [':i' => (int)$_POST['instalacion_id']])[0] ?? null;
+            if (!$inst) { return $this->error('La instalación elegida ya no existe.'); }
+            $instalacion = (int)$inst['instalacion_id'];
+            if ((int)$inst['instalacion_sedeid'] > 0) { $sede = (int)$inst['instalacion_sedeid']; }
+        }
+
+        $con = $this->con();
+        if ($con === null) { return $this->error('Sin conexión con la base de datos.'); }
+        try {
+            $con->beginTransaction();
+            $movId = null;
+            $cols = ['egreso_fecha' => $fecha, 'egreso_categoria' => $categoria, 'egreso_concepto' => $concepto, 'egreso_valor' => $valor,
+                     'egreso_origen' => $origen, 'egreso_forma' => $forma, 'egreso_pagadopor' => $pagadoPor, 'egreso_referencia' => $ref ?: null,
+                     'egreso_cajaid' => $caja['caja_id'] ?? null, 'egreso_movimientoid' => $movId, 'egreso_sedeid' => $sede ?: null,
+                     'egreso_usuarioid' => $this->uid() ?: null];
+            if ($this->egresosConAmbito()) { $cols['egreso_ambito'] = $ambito; $cols['egreso_instalacionid'] = $instalacion; }
+            $con->prepare("INSERT INTO dsa_egreso (" . implode(', ', array_keys($cols)) . ") VALUES (:" . implode(', :', array_keys($cols)) . ")")
+                ->execute(array_combine(array_map(static fn ($k) => ':' . $k, array_keys($cols)), array_values($cols)));
+            $con->commit();
+        } catch (\Throwable $e) {
+            if ($con->inTransaction()) { $con->rollBack(); }
+            return $this->error($e instanceof \RuntimeException ? $e->getMessage() : 'No fue posible registrar el egreso.');
+        }
+        $donde = '';
+        return $this->json(['ok' => true, 'tipo' => 'recargar', 'icono' => 'success', 'titulo' => 'Egreso registrado',
+                            'texto' => trim($concepto . ': $' . number_format($valor, 2) . ' del ' . date('d/m/Y', strtotime($fecha)) . '. ' . $donde)]);
+    }
+
+    /** AJAX posAnularEgreso: con justificación; si salió de una caja, ésta debe seguir abierta. */
+    public function anularEgreso(): string
+    {
+        $e = $this->egreso((int)($_POST['egreso_id'] ?? 0));
+        if (!$e) { return $this->error('El egreso no existe.'); }
+        if (!puede_eliminar(self::EGRESO_AMBITOS[($e['egreso_ambito'] ?? 'B') === 'I' ? 'I' : 'B'])) {
+            return $this->error('Su rol no puede anular egresos.', 'Acceso denegado');
+        }
+        if ($e['egreso_estado'] !== 'A') { return $this->error('El egreso ya estaba anulado.'); }
+        $motivo = self::motivo($_POST['motivo'] ?? '');
+        if ($motivo === '') { return $this->error('Escriba por qué se anula el egreso.'); }
+        if ($e['egreso_cajaid'] && $e['caja_estado'] !== 'A') {
+            return $this->error('Salió de una caja que ya se cerró: es parte de su arqueo y no se puede anular.'
+                              . ' Si el dinero volvió, regístrelo como ingreso en su caja.');
+        }
+        $con = $this->con();
+        try {
+            $con->beginTransaction();
+            $st = $con->prepare("SELECT egreso_estado FROM dsa_egreso WHERE egreso_id = :e FOR UPDATE");
+            $st->execute([':e' => $e['egreso_id']]);
+            if ($st->fetchColumn() !== 'A') { throw new \RuntimeException('El egreso ya estaba anulado.'); }
+            if ($e['egreso_movimientoid']) {
+                $con->prepare("UPDATE dsa_caja_movimiento SET movimiento_estado = 'X' WHERE movimiento_id = :m")->execute([':m' => $e['egreso_movimientoid']]);
+            }
+            $con->prepare("UPDATE dsa_egreso SET egreso_estado = 'X', egreso_anulamotivo = :m, egreso_anulausuario = :u, egreso_anulafecha = NOW()
+                            WHERE egreso_id = :e")->execute([':m' => $motivo, ':u' => $this->uid() ?: null, ':e' => $e['egreso_id']]);
+            $con->commit();
+        } catch (\Throwable $ex) {
+            if ($con->inTransaction()) { $con->rollBack(); }
+            return $this->error($ex instanceof \RuntimeException ? $ex->getMessage() : 'No fue posible anular el egreso.');
+        }
+        return $this->json(['ok' => true, 'tipo' => 'recargar', 'icono' => 'success', 'titulo' => 'Egreso anulado',
+                            'texto' => $e['egreso_concepto'] . ': $' . number_format((float)$e['egreso_valor'], 2)
+                                     . ($e['egreso_movimientoid'] ? '. El dinero vuelve a contar en su caja.' : '.')]);
     }
 
     /*======================================================================

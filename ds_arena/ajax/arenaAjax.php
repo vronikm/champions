@@ -130,8 +130,10 @@ switch ($_POST['modulo_arena']) {
     case 'cancelarReservaFija':   echo $insArena->cancelarReservaFija();   break;
 
     case 'registrarPago':         echo $insArena->registrarPago();         break;
+    case 'anularPagoReserva':     echo $insArena->anularPagoReserva();     break;   // 098
     case 'ingresoMonedero':       echo $insArena->ingresoMonedero();       break;
     case 'egresoMonedero':        echo $insArena->egresoMonedero();        break;
+    case 'anularMovimientoMonedero': echo $insArena->anularMovimientoMonedero(); break;   // 097
 
     default:
         arena_rechazar(400, [

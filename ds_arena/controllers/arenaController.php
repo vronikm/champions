@@ -3061,6 +3061,7 @@ class arenaController
 
     public function movimientos(int $clienteid): array
     {
+        $anul = $this->monederoConAnulacion();
         return $this->filas(
             /* registro_ts: el instante del registro como número. Un TIMESTAMP
                se lee en la zona horaria de la sesión de MySQL, que en un
@@ -3068,13 +3069,119 @@ class arenaController
                El número no depende de esa zona y PHP lo pinta en la de
                Ecuador (config/app.php). */
             "SELECT mv.*, r.reserva_codigo, UNIX_TIMESTAMP(mv.movimiento_fecharegistro) AS registro_ts
+                    " . ($anul ? ", ua.usuario_usuario AS anulo_usuario, UNIX_TIMESTAMP(mv.movimiento_anulafecha) AS anulo_ts" : "") . "
                FROM dsa_monedero_movimiento mv
                JOIN dsa_monedero m ON m.monedero_id = mv.movimiento_monederoid
                LEFT JOIN dsa_reserva r ON r.reserva_id = mv.movimiento_reservaid
+               " . ($anul ? "LEFT JOIN seguridad_usuario ua ON ua.usuario_id = mv.movimiento_anulausuario" : "") . "
               WHERE m.monedero_clienteid = :c
               ORDER BY mv.movimiento_id DESC",
             [':c' => $clienteid]
         );
+    }
+
+    /*
+    | ANULAR UN MOVIMIENTO DEL MONEDERO (migración 097, 2026-11-25)
+    |
+    | Para un ingreso o un egreso registrado por error. No se borra nada: el
+    | movimiento queda anulado (estado X, con la justificación, quién y
+    | cuándo) y un contra-asiento (origen ANU, del tipo contrario) devuelve
+    | el saldo. Así el libro mayor sigue cuadrando y se ve qué se corrigió.
+    |
+    | Sólo los manuales: ingreso TRA/EFE/AJU y egreso DEV, sin reserva ni
+    | pago. Los de un cobro (RES), un vuelto (VUE), una devolución de reserva
+    | (DVR) o una venta (VTA/AVT) se anulan en su origen.
+    |
+    | Anular un ingreso exige que el saldo lo cubra (si ya se gastó, no hay
+    | qué devolver). Los reportes (reportePagos) dejan de contar el anulado.
+    */
+    public const MONEDERO_ANULABLES = ['I' => ['TRA', 'EFE', 'AJU'], 'E' => ['DEV']];
+
+    /** ¿Está aplicada la 097 (columna movimiento_estado)? Una vez por petición. */
+    public function monederoConAnulacion(): bool
+    {
+        static $hay = null;
+        if ($hay === null) {
+            try {
+                $hay = (int)$this->escalar("SELECT COUNT(*) FROM information_schema.COLUMNS
+                        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dsa_monedero_movimiento' AND COLUMN_NAME = 'movimiento_estado'") === 1;
+            } catch (\Throwable $e) { $hay = false; }
+        }
+        return $hay;
+    }
+
+    /** ¿Se puede anular este movimiento (fila de movimientos())? */
+    public function movimientoAnulable(array $mv): bool
+    {
+        return $this->monederoConAnulacion()
+            && ($mv['movimiento_estado'] ?? 'A') === 'A'
+            && in_array($mv['movimiento_origen'], self::MONEDERO_ANULABLES[$mv['movimiento_tipo']] ?? [], true)
+            && empty($mv['movimiento_reservaid']) && empty($mv['movimiento_pagoid']);
+    }
+
+    public function anularMovimientoMonedero(): string
+    {
+        if (!puede_eliminar('monederoList') && !puede_editar('monederoList')) {
+            return $this->alerta('simple', 'Acceso denegado', 'Su rol no puede anular movimientos del monedero.', 'error');
+        }
+        if (!$this->monederoConAnulacion()) {
+            return $this->alerta('simple', 'Falta una actualización', 'Aplique la migración 097 para poder anular movimientos.', 'error');
+        }
+        $id     = (int)($_POST['movimiento_id'] ?? 0);
+        $motivo = trim(preg_replace('/\s+/u', ' ', (string)($_POST['motivo'] ?? '')));
+        if (mb_strlen($motivo) < 10) {
+            return $this->alerta('simple', 'Falta la justificación',
+                'Explique qué ocurrió (al menos 10 caracteres): queda registrado con la anulación.', 'error');
+        }
+        $motivo = mb_substr($motivo, 0, 250);
+
+        $mv = $this->filas("SELECT mv.*, m.monedero_clienteid FROM dsa_monedero_movimiento mv
+                              JOIN dsa_monedero m ON m.monedero_id = mv.movimiento_monederoid
+                             WHERE mv.movimiento_id = :i", [':i' => $id])[0] ?? null;
+        if ($mv === null) {
+            return $this->alerta('simple', 'Movimiento no encontrado', 'El movimiento no existe.', 'error');
+        }
+        if ($mv['movimiento_estado'] !== 'A') {
+            return $this->alerta('simple', 'Ya anulado', 'Este movimiento ya fue anulado.', 'error');
+        }
+        if (!$this->movimientoAnulable($mv)) {
+            return $this->alerta('simple', 'No se puede anular aquí',
+                'Este movimiento viene de un cobro, un vuelto, una devolución o una venta: anúlelo en su origen.', 'error');
+        }
+
+        $con = $this->con();
+        if ($con === null) {
+            return $this->alerta('simple', 'Error', 'Sin conexión a la base de datos.', 'error');
+        }
+        $valor   = (float)$mv['movimiento_valor'];
+        $esIng   = $mv['movimiento_tipo'] === 'I';
+        $usuario = (int)($_SESSION['usuarioid'] ?? 0) ?: null;
+        try {
+            $con->beginTransaction();
+            /* El contra-asiento: del tipo contrario, por el mismo valor. Si es
+               un ingreso y el saldo ya no lo cubre, moverMonedero lanza. */
+            $this->moverMonedero($con, (int)$mv['movimiento_monederoid'], $esIng ? 'E' : 'I', 'ANU', $valor,
+                ['detalle' => 'Anula el movimiento #' . $id . ': ' . $motivo]);
+            $contra = (int)$con->lastInsertId();
+            $con->prepare("UPDATE dsa_monedero_movimiento SET movimiento_anulaid = :o WHERE movimiento_id = :c")
+                ->execute([':o' => $id, ':c' => $contra]);
+            $con->prepare("UPDATE dsa_monedero_movimiento
+                              SET movimiento_estado = 'X', movimiento_anulamotivo = :m,
+                                  movimiento_anulausuario = :u, movimiento_anulafecha = :f
+                            WHERE movimiento_id = :i AND movimiento_estado = 'A'")
+                ->execute([':m' => $motivo, ':u' => $usuario, ':f' => date('Y-m-d H:i:s'), ':i' => $id]);
+            $con->commit();
+        } catch (\Throwable $e) {
+            if ($con->inTransaction()) $con->rollBack();
+            $texto = $e instanceof \RuntimeException
+                ? 'El saldo ya no cubre este ingreso (' . $e->getMessage() . ') Parte del dinero ya se usó: registre un egreso o un ajuste por la diferencia.'
+                : 'No fue posible anular el movimiento.';
+            return $this->alerta('simple', 'No se pudo anular', $texto, 'error');
+        }
+
+        return $this->alerta('recargar', 'Movimiento anulado',
+            ($esIng ? 'El ingreso' : 'El egreso') . ' de $' . number_format($valor, 2) . ' quedó anulado y el saldo se corrigió. '
+            . 'Ya no cuenta en el reporte de pagos ni en la caja.');
     }
 
     public function saldoMonedero(int $clienteid): float
@@ -3579,6 +3686,31 @@ class arenaController
     */
     public const CIERRE_NOCHE = '05:00';
 
+    /*
+    | COBRO DE UN DÍA ANTERIOR (2026-11-25)
+    |
+    | El abono lleva la fecha que se indique en el modal (pago_fecha): un
+    | cobro que el cliente pagó otro día y no se registró a tiempo queda en
+    | ese día. Hoy o antes, nunca después, y como mucho COBRO_DIAS_ATRAS
+    | atrás. Sin fecha, la de siempre (fechaDelCobro).
+    |
+    | Con eso pago_fecha puede ser anterior a su registro por más de un día:
+    | reportePagos lo toma por pago_fecha (la jornada sigue siendo la menor
+    | entre pago_fecha y el día en que se registró).
+    */
+    public const COBRO_DIAS_ATRAS = 366;
+
+    /** La fecha del cobro pedida en el formulario, si es válida; si no, null. */
+    private function fechaCobroPedida(string $valor): ?string
+    {
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $valor)) { return null; }
+        [$a, $m, $d] = array_map('intval', explode('-', $valor));
+        if (!checkdate($m, $d, $a)) { return null; }
+        $hoy = date('Y-m-d');
+        if ($valor > $hoy || $valor < date('Y-m-d', strtotime($hoy . ' -' . self::COBRO_DIAS_ATRAS . ' days'))) { return null; }
+        return $valor;
+    }
+
     /** La fecha con la que se registra un cobro de una reserva del día $fechaReserva. */
     public function fechaDelCobro(string $fechaReserva, ?int $ahora = null): string
     {
@@ -3650,17 +3782,29 @@ class arenaController
         }
 
         $fechaCobro = $this->fechaDelCobro((string)$reserva['reserva_fecha']);
+        /* La fecha del modal manda (cobro de un día anterior, 2026-11-25). */
+        $fechaPedida = trim((string)($_POST['pago_fecha'] ?? ''));
+        if ($fechaPedida !== '') {
+            $fechaValida = $this->fechaCobroPedida($fechaPedida);
+            if ($fechaValida === null) {
+                return $this->alerta('simple', 'Fecha del cobro no válida',
+                    'Elija el día en que el cliente pagó: hoy o un día anterior (hasta un año atrás).', 'error');
+            }
+            $fechaCobro = $fechaValida;
+        }
 
         try {
             $con->beginTransaction();
 
             /* 1. Pagar con monedero descuenta el saldo antes que nada: si
                   no alcanza, la excepción deshace todo lo demás. */
+            $movRes = 0;
             if ($forma['forma_esmonedero'] === 'S') {
                 $mon = $this->asegurarMonedero((int)$reserva['reserva_clienteid']);
                 $this->moverMonedero($con, $mon, 'E', 'RES', $valor,
                     ['reserva' => $reservaid,
                      'detalle' => 'Aplicado a la reserva ' . $reserva['reserva_codigo']]);
+                $movRes = (int)$con->lastInsertId();
             }
 
             /* 2. El abono */
@@ -3680,6 +3824,13 @@ class arenaController
             ]);
 
             $pagoId = (int)$con->lastInsertId();
+
+            /* El movimiento del monedero sabe de qué abono es: al anular el
+               abono (098) se encuentra sin adivinar. */
+            if ($movRes > 0) {
+                $con->prepare("UPDATE dsa_monedero_movimiento SET movimiento_pagoid = :p WHERE movimiento_id = :m")
+                    ->execute([':p' => $pagoId, ':m' => $movRes]);
+            }
 
             /* 3. Acumulado de la reserva.
                   Sólo se toca lo abonado: el saldo es columna GENERADA
@@ -3718,7 +3869,8 @@ class arenaController
             ? 'La reserva queda totalmente pagada.'
             : 'Saldo pendiente: $' . number_format($nuevoSaldo, 2) . '.';
         if ($fechaCobro !== date('Y-m-d')) {
-            $texto .= ' Queda con fecha ' . date('d/m/Y', strtotime($fechaCobro)) . ', el día de la reserva.';
+            $texto .= ' Queda con fecha ' . date('d/m/Y', strtotime($fechaCobro))
+                    . ($fechaCobro === (string)$reserva['reserva_fecha'] ? ', el día de la reserva.' : '.');
         }
 
         if ($vuelto > 0) {
@@ -3732,6 +3884,193 @@ class arenaController
         return $this->alerta('redireccionar', 'Abono registrado',
             $texto . ' A continuación verá el recibo para enviarlo o descargarlo.', 'success',
             APP_URL . 'reciboPago/?id=' . $pagoId);
+    }
+
+    /*
+    | ANULAR UN ABONO DE UNA RESERVA (migración 098, 2026-11-25)
+    |
+    | Para un abono registrado por error: con la forma de pago equivocada
+    | (una «transferencia» que en realidad se descontó del monedero), un
+    | importe mal digitado, uno duplicado. No se borra nada: el abono queda
+    | en estado X con la justificación, quién y cuándo, y después se
+    | registra el correcto. En la misma transacción:
+    |   · lo abonado de la reserva baja (vuelve a quedar saldo pendiente);
+    |   · si se pagó con monedero, el dinero vuelve al monedero (ingreso ANU)
+    |     y el movimiento del cobro queda anulado;
+    |   · si dejó un vuelto en el monedero, ese vuelto sale (egreso ANU); si
+    |     el cliente ya lo gastó, no se puede anular.
+    | Reporte de pagos, caja, Insights y recibos cuentan sólo los abonos A:
+    | el anulado deja de contar en todos.
+    | No en una reserva cancelada: lo abonado ya se devolvió al cancelar.
+    */
+
+    /** ¿Está aplicada la 098 (columna pago_anulamotivo)? Una vez por petición. */
+    public function pagoConAnulacion(): bool
+    {
+        static $hay = null;
+        if ($hay === null) {
+            try {
+                $hay = (int)$this->escalar("SELECT COUNT(*) FROM information_schema.COLUMNS
+                        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dsa_pago' AND COLUMN_NAME = 'pago_anulamotivo'") === 1;
+            } catch (\Throwable $e) { $hay = false; }
+        }
+        return $hay;
+    }
+
+    /** ¿El rol puede anular abonos? */
+    public function puedeAnularPagos(): bool
+    {
+        return $this->pagoConAnulacion() && (puede_editar('reservaList') || puede_eliminar('reservaList'));
+    }
+
+    /** Los abonos anulados de una reserva, con la justificación y quién. */
+    public function pagosAnulados(int $reservaid): array
+    {
+        if (!$this->pagoConAnulacion()) { return []; }
+        return $this->filas(
+            "SELECT p.*, f.forma_nombre, f.forma_codigo,
+                    COALESCE(u.usuario_usuario, '—') AS anulo_usuario,
+                    UNIX_TIMESTAMP(p.pago_anulafecha) AS anulo_ts
+               FROM dsa_pago p
+               JOIN dsa_forma_ingreso f ON f.forma_id = p.pago_formaid
+               LEFT JOIN seguridad_usuario u ON u.usuario_id = p.pago_anulausuario
+              WHERE p.pago_reservaid = :r AND p.pago_estado = 'X'
+              ORDER BY p.pago_id",
+            [':r' => $reservaid]
+        );
+    }
+
+    public function anularPagoReserva(): string
+    {
+        if (!puede_editar('reservaList') && !puede_eliminar('reservaList')) {
+            return $this->alerta('simple', 'Acceso denegado', 'Su rol no puede anular abonos.', 'error');
+        }
+        if (!$this->pagoConAnulacion()) {
+            return $this->alerta('simple', 'Falta una actualización', 'Aplique la migración 098 para poder anular abonos.', 'error');
+        }
+        $id     = (int)($_POST['pago_id'] ?? 0);
+        $motivo = trim(preg_replace('/\s+/u', ' ', (string)($_POST['motivo'] ?? '')));
+        if (mb_strlen($motivo) < 10) {
+            return $this->alerta('simple', 'Falta la justificación',
+                'Explique qué ocurrió (al menos 10 caracteres): queda registrado con la anulación.', 'error');
+        }
+        $motivo = mb_substr($motivo, 0, 250);
+
+        $p = $this->filas("SELECT p.*, f.forma_esmonedero, f.forma_nombre FROM dsa_pago p
+                             JOIN dsa_forma_ingreso f ON f.forma_id = p.pago_formaid
+                            WHERE p.pago_id = :i", [':i' => $id])[0] ?? null;
+        if ($p === null) {
+            return $this->alerta('simple', 'Abono no encontrado', 'El abono no existe.', 'error');
+        }
+        if ($p['pago_estado'] !== 'A') {
+            return $this->alerta('simple', 'Ya anulado', 'Este abono ya fue anulado.', 'error');
+        }
+        $reserva = $this->reserva((int)$p['pago_reservaid']);
+        if ($reserva === null) {
+            return $this->alerta('simple', 'Reserva no encontrada', 'La reserva del abono no existe.', 'error');
+        }
+        if ($reserva['reserva_estado'] === 'X') {
+            return $this->alerta('simple', 'Reserva cancelada',
+                'Lo abonado ya se devolvió al cancelarla. Si se canceló por error, reactívela primero.', 'error');
+        }
+
+        $con = $this->con();
+        if ($con === null) {
+            return $this->alerta('simple', 'Error', 'Sin conexión a la base de datos.', 'error');
+        }
+        $valor   = (float)$p['pago_valor'];
+        $vuelto  = $p['pago_vueltoamonedero'] === 'S' ? (float)$p['pago_vuelto'] : 0.0;
+        $esMon   = $p['forma_esmonedero'] === 'S';
+        $recibo  = $this->reciboNumero($id);
+        $rid     = (int)$reserva['reserva_id'];
+        $usuario = (int)($_SESSION['usuarioid'] ?? 0) ?: null;
+        $ahora   = date('Y-m-d H:i:s');
+        $marcar  = $this->monederoConAnulacion();
+        $detalle = 'Anula el abono ' . $recibo . ' de la reserva ' . $reserva['reserva_codigo'] . ': ' . $motivo;
+
+        /* Marca anulado el movimiento del monedero que originó el abono (097). */
+        $anularMov = function (int $movId, int $contra) use ($con, $motivo, $usuario, $ahora, $marcar): void {
+            if (!$marcar || $movId <= 0) { return; }
+            $con->prepare("UPDATE dsa_monedero_movimiento SET movimiento_anulaid = :o WHERE movimiento_id = :c")
+                ->execute([':o' => $movId, ':c' => $contra]);
+            $con->prepare("UPDATE dsa_monedero_movimiento
+                              SET movimiento_estado = 'X', movimiento_anulamotivo = :m,
+                                  movimiento_anulausuario = :u, movimiento_anulafecha = :f
+                            WHERE movimiento_id = :i")
+                ->execute([':m' => $motivo, ':u' => $usuario, ':f' => $ahora, ':i' => $movId]);
+        };
+
+        try {
+            $con->beginTransaction();
+            $mon = ($esMon || $vuelto > 0) ? $this->asegurarMonedero((int)$reserva['reserva_clienteid']) : 0;
+
+            /* 1. Pagado con monedero: el dinero vuelve al monedero. El
+                  movimiento del cobro: por movimiento_pagoid (desde la 098) o,
+                  en los abonos anteriores, el egreso RES de esa reserva y
+                  ese valor más cercano al registro del abono. */
+            if ($esMon) {
+                $movRes = (int)$this->escalar(
+                    "SELECT movimiento_id FROM dsa_monedero_movimiento
+                      WHERE movimiento_monederoid = :m AND movimiento_tipo = 'E' AND movimiento_origen = 'RES'
+                        AND movimiento_reservaid = :r AND movimiento_valor = :v
+                        AND (movimiento_pagoid = :p OR movimiento_pagoid IS NULL)
+                        " . ($marcar ? "AND movimiento_estado = 'A'" : "") . "
+                      ORDER BY movimiento_pagoid = :p2 DESC,
+                               ABS(TIMESTAMPDIFF(SECOND, movimiento_fecharegistro, :fr)) LIMIT 1",
+                    [':m' => $mon, ':r' => $rid, ':v' => $valor, ':p' => $id, ':p2' => $id, ':fr' => $p['pago_fecharegistro']]);
+                $this->moverMonedero($con, $mon, 'I', 'ANU', $valor,
+                    ['reserva' => $rid, 'pago' => $id, 'detalle' => $detalle]);
+                $anularMov($movRes, (int)$con->lastInsertId());
+            }
+
+            /* 2. El vuelto que quedó en el monedero sale. Si ya se gastó,
+                  moverMonedero lanza y no se anula nada. */
+            if ($vuelto > 0) {
+                $movVue = (int)$this->escalar(
+                    "SELECT movimiento_id FROM dsa_monedero_movimiento
+                      WHERE movimiento_monederoid = :m AND movimiento_origen = 'VUE' AND movimiento_pagoid = :p LIMIT 1",
+                    [':m' => $mon, ':p' => $id]);
+                try {
+                    $this->moverMonedero($con, $mon, 'E', 'ANU', $vuelto,
+                        ['reserva' => $rid, 'pago' => $id, 'detalle' => 'Vuelto del abono anulado ' . $recibo]);
+                } catch (\RuntimeException $e) {
+                    throw new \RuntimeException('El vuelto de $' . number_format($vuelto, 2)
+                        . ' que quedó en el monedero ya se usó (' . $e->getMessage() . ')');
+                }
+                $anularMov($movVue, (int)$con->lastInsertId());
+            }
+
+            /* 3. Lo abonado de la reserva, sólo si sigue cubriendo el abono. */
+            $st = $con->prepare("UPDATE dsa_reserva SET reserva_abonado = reserva_abonado - :v
+                                  WHERE reserva_id = :r AND reserva_abonado >= :v2");
+            $st->execute([':v' => $valor, ':r' => $rid, ':v2' => $valor]);
+            if ($st->rowCount() !== 1) {
+                throw new \RuntimeException('Lo abonado en la reserva ya no cubre este abono (hubo una devolución o cambió mientras tanto).');
+            }
+
+            /* 4. El abono */
+            $st = $con->prepare("UPDATE dsa_pago
+                                    SET pago_estado = 'X', pago_anulamotivo = :m,
+                                        pago_anulausuario = :u, pago_anulafecha = :f
+                                  WHERE pago_id = :i AND pago_estado = 'A'");
+            $st->execute([':m' => $motivo, ':u' => $usuario, ':f' => $ahora, ':i' => $id]);
+            if ($st->rowCount() !== 1) {
+                throw new \RuntimeException('Otro usuario lo anuló mientras tanto.');
+            }
+            $con->commit();
+        } catch (\Throwable $e) {
+            if ($con->inTransaction()) $con->rollBack();
+            return $this->alerta('simple', 'No se pudo anular',
+                $e instanceof \RuntimeException ? $e->getMessage() : 'No fue posible anular el abono.', 'error');
+        }
+
+        $saldo = round((float)$reserva['reserva_saldo'] + $valor, 2);
+        $texto = 'El abono ' . $recibo . ' de $' . number_format($valor, 2) . ' quedó anulado y ya no cuenta en el reporte de pagos ni en la caja. '
+               . 'Saldo pendiente de la reserva: $' . number_format($saldo, 2) . '.';
+        if ($esMon)      { $texto .= ' $' . number_format($valor, 2) . ' volvieron al monedero del cliente.'; }
+        if ($vuelto > 0) { $texto .= ' Se descontó del monedero el vuelto de $' . number_format($vuelto, 2) . '.'; }
+        $texto .= ' Si corresponde, registre ahora el abono correcto.';
+        return $this->alerta('recargar', 'Abono anulado', $texto);
     }
 
     /*======================================================================
@@ -4015,6 +4354,8 @@ class arenaController
       Ecuador, calculadas en PHP. FROM_UNIXTIME y el TIMESTAMP se leen en la
       misma zona de la sesión, así que la comparación es exacta sea cual sea
       esa zona. pago_fecha, ±1 día, sólo acota para usar su índice.
+      Excepción (2026-11-25): un cobro registrado con una fecha anterior
+      (el modal deja elegirla) entra por su pago_fecha, en ese día.
       ====================================================================*/
 
     /** Días como máximo en una consulta: un año. */
@@ -4116,14 +4457,17 @@ class arenaController
                    LEFT JOIN general_sede      s ON s.sede_id    = r.reserva_sedeid
                    LEFT JOIN seguridad_usuario u ON u.usuario_id = p.pago_usuarioid
                   WHERE p.pago_estado = 'A'
-                    AND p.pago_fecha BETWEEN :d0 AND :h0
-                    AND p.pago_fecharegistro BETWEEN FROM_UNIXTIME(:a) AND FROM_UNIXTIME(:b)";
+                    AND ((p.pago_fecha BETWEEN :d0 AND :h0
+                          AND p.pago_fecharegistro BETWEEN FROM_UNIXTIME(:a) AND FROM_UNIXTIME(:b))
+                         /* Cobro de un día anterior registrado después (COBRO_DIAS_ATRAS):
+                            cuenta en el día de su pago_fecha. */
+                         OR p.pago_fecha BETWEEN :desdeP AND :hastaP)";
         /* Los cobros de la madrugada siguiente pueden ser de la jornada del
            último día (fechaDelCobro): se piden hasta CIERRE_NOCHE y se
            queda cada uno en su jornada, la menor entre su pago_fecha y el
            día en que se registró. Los que la madrugada del primer día
            cobró de la víspera, fuera. */
-        $pP = $base;
+        $pP = $base + [':desdeP' => $f['desde'], ':hastaP' => $f['hasta']];
         [$hc, $mc] = array_map('intval', explode(':', self::CIERRE_NOCHE));
         $pP[':b'] = $b + 1 + $hc * 3600 + $mc * 60;
         if ($f['cajero'] > 0) { $sqlP .= " AND p.pago_usuarioid = :u"; $pP[':u'] = $f['cajero']; }
@@ -4148,6 +4492,7 @@ class arenaController
                        LEFT JOIN seguridad_usuario u ON u.usuario_id = mv.movimiento_usuarioid
                       WHERE ((mv.movimiento_tipo = 'I' AND mv.movimiento_origen IN ('EFE','TRA'))
                           OR (mv.movimiento_tipo = 'E' AND mv.movimiento_origen = 'DEV'))
+                        " . ($this->monederoConAnulacion() ? "AND mv.movimiento_estado = 'A'   /* los anulados no cuentan (097) */" : "") . "
                         AND mv.movimiento_fecha BETWEEN :d0 AND :h0
                         AND mv.movimiento_fecharegistro BETWEEN FROM_UNIXTIME(:a) AND FROM_UNIXTIME(:b)";
             $pM = $base;

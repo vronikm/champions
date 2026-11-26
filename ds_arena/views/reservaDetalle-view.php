@@ -37,6 +37,12 @@ $colores  = array_map(static fn ($e) => $e['tono'],   $catalogo);
 
 $puedeCobrar = puede_crear('reservaList') && $saldo > 0.001 && $reserva['reserva_estado'] !== 'X';
 
+/* Anular un abono registrado por error (migración 098). En una cancelada
+   no: lo abonado ya se devolvió al cancelar. */
+$puedeAnularPago = $insArena->puedeAnularPagos() && $reserva['reserva_estado'] !== 'X';
+$pagosAnulados   = $insArena->pagosAnulados($id);
+$h = static fn ($t) => htmlspecialchars((string)$t, ENT_QUOTES, 'UTF-8');
+
 require_once __DIR__ . "/inc/layout-top.php";
 ?>
 
@@ -210,6 +216,21 @@ require_once __DIR__ . "/inc/layout-top.php";
                                        class="btn btn-sm btn-outline-primary" title="Ver, descargar o enviar el recibo">
                                         <i class="fas fa-receipt me-1"></i><?php echo $insArena->reciboNumero((int)$p['pago_id']); ?>
                                     </a>
+                                    <?php if ($puedeAnularPago): ?>
+                                        <button type="button" class="btn btn-sm btn-outline-danger ar-pago__anular"
+                                                data-bs-toggle="modal" data-bs-target="#modalAnularPago"
+                                                data-id="<?php echo (int)$p['pago_id']; ?>"
+                                                data-recibo="<?php echo $insArena->reciboNumero((int)$p['pago_id']); ?>"
+                                                data-fecha="<?php echo date('d/m/Y', strtotime($p['pago_fecha'])); ?>"
+                                                data-forma="<?php echo $h($p['forma_nombre']); ?>"
+                                                data-ref="<?php echo $h($p['pago_referencia']); ?>"
+                                                data-valor="<?php echo number_format((float)$p['pago_valor'], 2, '.', ''); ?>"
+                                                data-monedero="<?php echo $p['forma_codigo'] === 'MON' ? 'S' : 'N'; ?>"
+                                                data-vuelto="<?php echo $p['pago_vueltoamonedero'] === 'S' ? number_format((float)$p['pago_vuelto'], 2, '.', '') : '0'; ?>"
+                                                title="Anular este abono (registrado por error)" aria-label="Anular el abono <?php echo $insArena->reciboNumero((int)$p['pago_id']); ?>">
+                                            <i class="fas fa-ban" aria-hidden="true"></i><span class="ar-pago__anular-txt">Anular</span>
+                                        </button>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -242,6 +263,35 @@ require_once __DIR__ . "/inc/layout-top.php";
                                         <td class="text-end text-nowrap"><strong class="text-warning-emphasis">−$<?php echo number_format((float)$d['devolucion_valor'], 2); ?></strong></td>
                                         <td><small><span class="badge text-bg-light border me-1"><?php echo $d['devolucion_origen'] === 'C' ? 'Al cancelar' : 'Al editar'; ?></span><?php
                                             echo htmlspecialchars($d['devolucion_motivo'], ENT_QUOTES, 'UTF-8'); ?></small></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
+                <?php if ($pagosAnulados): ?>
+                    <?php /* Abonos anulados (migración 098): no cuentan en lo abonado,
+                             ni en el reporte de pagos ni en la caja. */ ?>
+                    <div class="ar-anulados" id="abonosAnulados">
+                        <h4 class="ar-anulados__titulo"><i class="fas fa-ban me-2" aria-hidden="true"></i><?php
+                            echo count($pagosAnulados) === 1 ? '1 abono anulado' : count($pagosAnulados) . ' abonos anulados'; ?></h4>
+                        <div class="table-responsive">
+                            <table class="table table-sm mb-0">
+                                <thead>
+                                    <tr><th>Abono y justificación</th><th class="text-end">Valor</th></tr>
+                                </thead>
+                                <tbody>
+                                <?php foreach ($pagosAnulados as $a): ?>
+                                    <tr>
+                                        <td><strong><?php echo $insArena->reciboNumero((int)$a['pago_id']); ?></strong>
+                                            <small class="text-muted"> · <?php echo date('d/m/Y', strtotime($a['pago_fecha'])) . ' · ' . $h($a['forma_nombre'])
+                                                . ($a['pago_referencia'] ? ' · Ref. ' . $h($a['pago_referencia']) : ''); ?></small>
+                                            <div class="ar-anulados__motivo"><i class="fas fa-comment-dots me-1" aria-hidden="true"></i><?php echo $h($a['pago_anulamotivo']); ?></div>
+                                            <small class="d-block text-muted">Anuló <?php echo $h($a['anulo_usuario']); ?><?php
+                                                echo $a['anulo_ts'] ? ' el ' . date('d/m/Y H:i', (int)$a['anulo_ts']) : ''; ?></small></td>
+                                        <td class="text-end text-nowrap"><s class="text-body-secondary">$<?php echo number_format((float)$a['pago_valor'], 2); ?></s></td>
                                     </tr>
                                 <?php endforeach; ?>
                                 </tbody>
@@ -288,6 +338,22 @@ require_once __DIR__ . "/inc/layout-top.php";
                                 <strong><?php echo date('d/m/Y', strtotime($fechaCobro)); ?></strong>, el día de la reserva, y cuenta en la caja de ese día.</span>
                         </div>
                     <?php endif; ?>
+
+                    <?php /* Fecha del cobro (2026-11-25): un abono que el cliente pagó otro
+                             día y no se registró a tiempo se registra con esa fecha. Hoy o
+                             antes, nunca después (el servidor lo vuelve a comprobar). */ ?>
+                    <div class="mb-3">
+                        <label for="pago_fecha">Fecha del cobro <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="pago_fecha" name="pago_fecha" required
+                               value="<?php echo $fechaCobro; ?>" max="<?php echo date('Y-m-d'); ?>"
+                               min="<?php echo date('Y-m-d', strtotime('-' . arenaController::COBRO_DIAS_ATRAS . ' days')); ?>"
+                               aria-describedby="pago_fecha_ayuda">
+                        <small class="text-muted" id="pago_fecha_ayuda">El día en que el cliente pagó. Si fue antes y no se registró, elija ese día.</small>
+                        <div class="ar-cobro-pasado small mt-2" id="avisoCobroPasado" hidden>
+                            <i class="fas fa-clock-rotate-left me-1" aria-hidden="true"></i>
+                            <span>Cobro de un día anterior: sale en los reportes y en la caja de ese día, no en la de hoy.</span>
+                        </div>
+                    </div>
 
                     <div class="mb-3">
                         <label for="pago_formaid">Forma de ingreso <span class="text-danger">*</span></label>
@@ -386,16 +452,142 @@ require_once __DIR__ . "/inc/layout-top.php";
         c.addEventListener('change', actualizar);
     });
 
+    /* Fecha del cobro: aviso si es de un día anterior a hoy. */
+    var fechaPago = document.getElementById('pago_fecha');
+    var avisoPasado = document.getElementById('avisoCobroPasado');
+    var HOY = '<?php echo date('Y-m-d'); ?>';
+    function avisarFecha() { avisoPasado.hidden = !(fechaPago.value && fechaPago.value < HOY); }
+    fechaPago.addEventListener('input', avisarFecha);
+    fechaPago.addEventListener('change', avisarFecha);
+    avisarFecha();
+
     actualizar();
 })();
 </script>
 <?php endif; ?>
+
+<?php if ($puedeAnularPago && $pagos): ?>
+<?php /* Anular un abono registrado por error (migración 098). */ ?>
+<div class="modal fade" id="modalAnularPago" tabindex="-1" aria-labelledby="modalAnularPagoTitulo">
+    <div class="modal-dialog modal-dialog-centered modal-fullscreen-sm-down">
+        <div class="modal-content">
+            <form class="FormularioAjax" method="POST" action="<?php echo APP_URL; ?>ajax/arenaAjax.php" id="formAnularPago" novalidate
+                  data-confirmar="El abono quedará anulado y la reserva volverá a tener ese saldo pendiente. No se puede deshacer.">
+                <input type="hidden" name="modulo_arena" value="anularPagoReserva">
+                <input type="hidden" name="pago_id" id="anp_id" value="">
+
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalAnularPagoTitulo"><i class="fas fa-ban me-2 text-danger" aria-hidden="true"></i>Anular el abono <span id="anp_recibo"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+
+                <div class="modal-body">
+                    <dl class="ar-anp__resumen">
+                        <div><dt>Fecha</dt><dd id="anp_fecha"></dd></div>
+                        <div><dt>Forma</dt><dd id="anp_forma"></dd></div>
+                        <div><dt>Valor</dt><dd id="anp_valor"></dd></div>
+                    </dl>
+
+                    <ul class="ar-anp__efecto" id="anp_efecto"></ul>
+
+                    <label for="anp_motivo" class="form-label mt-3">Justificación: ¿qué ocurrió? <span class="text-danger">*</span></label>
+                    <textarea class="form-control" id="anp_motivo" name="motivo" rows="3" maxlength="250" minlength="10" required
+                              placeholder="Por ejemplo: se registró como transferencia, pero se descontó del monedero del cliente."></textarea>
+                    <div class="invalid-feedback">Escriba al menos 10 caracteres: qué ocurrió y por qué se anula.</div>
+                    <div class="d-flex justify-content-between gap-2">
+                        <small class="text-muted">Queda registrada con la anulación, con su nombre y la hora.</small>
+                        <small class="text-muted text-nowrap" id="anp_contador">0/250</small>
+                    </div>
+                </div>
+
+                <div class="modal-footer ar-anp__pie">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-danger" id="anp_enviar"><i class="fas fa-ban me-1" aria-hidden="true"></i>Anular abono</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var modal = document.getElementById('modalAnularPago');
+    var $ = function (id) { return document.getElementById(id); };
+    var ABONADO = <?php echo json_encode(round($abonado, 2)); ?>, TOTAL = <?php echo json_encode(round($total, 2)); ?>;
+    var MONEDERO = <?php echo json_encode(round($saldoMonedero, 2)); ?>;
+    var motivo = $('anp_motivo'), contador = $('anp_contador'), enviar = $('anp_enviar');
+    var dinero = function (v) { return '$' + (+v).toFixed(2); };
+    var item = function (icono, html, clase) { return '<li class="' + (clase || '') + '"><i class="fas ' + icono + ' me-2" aria-hidden="true"></i><span>' + html + '</span></li>'; };
+
+    modal.addEventListener('show.bs.modal', function (e) {
+        var b = e.relatedTarget; if (!b) { return; }
+        var v = +b.dataset.valor, vuelto = +b.dataset.vuelto, esMon = b.dataset.monedero === 'S';
+        $('anp_id').value = b.dataset.id;
+        $('anp_recibo').textContent = b.dataset.recibo;
+        $('anp_fecha').textContent = b.dataset.fecha;
+        $('anp_forma').textContent = b.dataset.forma + (b.dataset.ref ? ' · Ref. ' + b.dataset.ref : '');
+        $('anp_valor').textContent = dinero(v);
+
+        var abonado = Math.max(0, ABONADO - v), mon = MONEDERO + (esMon ? v : 0) - vuelto;
+        var html = item('fa-arrow-trend-down', 'Lo abonado pasa de <strong>' + dinero(ABONADO) + '</strong> a <strong>' + dinero(abonado)
+                 + '</strong>: quedan <strong>' + dinero(TOTAL - abonado) + '</strong> pendientes.')
+                 + item('fa-chart-column', 'Deja de contar en el reporte de pagos y en la caja del ' + b.dataset.fecha + '.');
+        if (esMon)      { html += item('fa-wallet', '<strong>' + dinero(v) + '</strong> vuelven al monedero del cliente.'); }
+        if (vuelto > 0) { html += item('fa-coins', 'Sale del monedero el vuelto de <strong>' + dinero(vuelto) + '</strong> que se dejó con este abono.'); }
+        if (esMon || vuelto > 0) { html += item('fa-scale-balanced', 'Saldo del monedero: ' + dinero(MONEDERO) + ' → <strong>' + dinero(mon) + '</strong>.'); }
+        if (mon < -0.001) {
+            html += item('fa-triangle-exclamation', 'El cliente ya usó ese vuelto: el monedero no lo cubre y no se puede anular.', 'ar-anp__error');
+        }
+        $('anp_efecto').innerHTML = html;
+        enviar.disabled = mon < -0.001;
+        motivo.value = ''; contador.textContent = '0/250';
+        motivo.classList.remove('is-invalid');
+    });
+    modal.addEventListener('shown.bs.modal', function () { if (window.matchMedia('(min-width: 576px)').matches) { motivo.focus(); } });
+    motivo.addEventListener('input', function () { contador.textContent = motivo.value.length + '/250'; motivo.classList.remove('is-invalid'); });
+    /* Antes de la confirmación de ajax.js: la justificación, de al menos 10 caracteres. */
+    $('formAnularPago').addEventListener('submit', function (e) {
+        if (motivo.value.trim().length < 10) {
+            e.preventDefault(); e.stopImmediatePropagation();
+            motivo.classList.add('is-invalid'); motivo.focus();
+        }
+    }, true);
+})();
+</script>
+<?php endif; ?>
+
+<style>
+/* Anular un abono (098) */
+.ar-pago__anular { margin-left: .25rem; }
+.ar-pago__anular-txt { margin-left: .35rem; }
+@media (max-width: 575.98px) { .ar-pago__anular-txt { display: none; } }
+.ar-anulados { border-top: 1px solid var(--bs-border-color); padding: .75rem 1rem 0; }
+.ar-anulados__titulo { font-size: .95rem; font-weight: 600; margin: 0 0 .5rem; color: var(--bs-danger-text-emphasis); }
+.ar-anulados .table { --bs-table-bg: transparent; }
+.ar-anulados__motivo { font-size: .875rem; margin-top: .2rem; overflow-wrap: anywhere; }
+.ar-anp__resumen { display: grid; grid-template-columns: 5rem 1fr; gap: .3rem .75rem; margin: 0; }
+.ar-anp__resumen > div { display: contents; }
+.ar-anp__resumen dt { color: var(--bs-secondary-color); font-weight: 600; }
+.ar-anp__resumen dd { margin: 0; overflow-wrap: anywhere; }
+.ar-anp__efecto { list-style: none; margin: .75rem 0 0; padding: .5rem .75rem; border-radius: var(--ds-radius-sm, 10px); font-size: .9rem;
+                  background: var(--bs-info-bg-subtle); color: var(--bs-info-text-emphasis); border: 1px solid var(--bs-info-border-subtle); }
+.ar-anp__efecto li { display: flex; align-items: baseline; }
+.ar-anp__efecto li + li { margin-top: .3rem; }
+.ar-anp__efecto .ar-anp__error { color: var(--bs-danger-text-emphasis); font-weight: 600; }
+@media (max-width: 575.98px) {
+    .ar-anp__pie { flex-direction: column-reverse; align-items: stretch; }
+    .ar-anp__pie .btn { width: 100%; margin: 0; min-height: 2.75rem; }
+}
+</style>
 
 <style>
 /* Devoluciones, bajo los abonos (migración 092). */
 .ar-devs { border-top: 1px solid var(--bs-border-color); padding: .75rem 1rem 0; }
 .ar-devs__titulo { font-size: .95rem; font-weight: 600; margin: 0 0 .5rem; color: var(--bs-warning-text-emphasis); }
 .ar-devs .table { --bs-table-bg: transparent; }
+/* Cobro de un día anterior */
+.ar-cobro-pasado { padding: .45rem .7rem; border-radius: var(--ds-radius-sm, 10px);
+                   background: var(--bs-warning-bg-subtle); color: var(--bs-warning-text-emphasis); border: 1px solid var(--bs-warning-border-subtle); }
 </style>
 
 <?php require_once __DIR__ . "/inc/layout-bottom.php"; ?>

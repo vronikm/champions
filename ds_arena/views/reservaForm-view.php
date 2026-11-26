@@ -163,10 +163,17 @@ require_once __DIR__ . "/inc/layout-top.php";
                     ?>
                     <label for="reserva_fecha" class="form-label fw-medium">Fecha <span class="text-danger" aria-hidden="true">*</span></label>
                     <div class="ar-fecha">
+                        <?php /* Sin «min» (2026-11-25): se pueden registrar reservas de días
+                                 anteriores, las que el cliente no registró a tiempo. Sus
+                                 horarios salen en ámbar («Ya pasó») y se guardan como
+                                 alquiler ya jugado. */ ?>
                         <input type="date" class="form-control" id="reserva_fecha" name="reserva_fecha" required
-                               <?php if ($esAlta): ?>min="<?php echo date('Y-m-d'); ?>"<?php endif; ?>
                                value="<?php echo $h($reserva['reserva_fecha'] ?? date('Y-m-d')); ?>">
-                        <div class="ar-dias" id="tiraDias" role="group" aria-label="Próximos días"></div>
+                        <div class="ar-dias" id="tiraDias" role="group" aria-label="Días"></div>
+                    </div>
+                    <div class="ar-fecha__pasada mt-2" id="avisoFechaPasada" hidden>
+                        <i class="fas fa-clock-rotate-left me-1" aria-hidden="true"></i>
+                        <span>Día anterior a hoy: se registra como alquiler ya jugado.</span>
                     </div>
 
                     <?php if ($esAlta): ?>
@@ -340,21 +347,30 @@ require_once __DIR__ . "/inc/layout-top.php";
         return hay;
     }
 
-    /*----------  Tira de días: atajo a las próximas dos semanas  ----------*/
+    /*----------  Tira de días: ayer y las próximas dos semanas  ----------*/
+    /* «Ayer» va primero, en ámbar (2026-11-25): registrar lo que no se
+       registró a tiempo. Un día más antiguo se elige en el calendario y,
+       elegido, aparece también al inicio de la tira. */
     function pintarTira() {
         var abiertos = diasConAtencion(inst.value);
         var html = '';
-        for (var n = 0; n < 14; n++) {
-            var f = sumarDias(HOY, n), dia = diaIso(f), p = partes(f);
+        var inicio = -1;
+        var elegido = fecha.value && fecha.value < sumarDias(HOY, -1) ? fecha.value : '';
+        var lista = [];
+        if (elegido) { lista.push(elegido); }
+        for (var n = inicio; n < 14; n++) { lista.push(sumarDias(HOY, n)); }
+        lista.forEach(function (f) {
+            var dia = diaIso(f), p = partes(f);
             var cerrado = inst.value && !abiertos[dia];
-            var etiqueta = n === 0 ? 'Hoy' : (n === 1 ? 'Mañana' : dias[dia].slice(0, 3));
-            html += '<button type="button" class="ar-dia' + (f === fecha.value ? ' activo' : '') + '"' +
+            var pasado = f < HOY;
+            var etiqueta = f === HOY ? 'Hoy' : (f === sumarDias(HOY, 1) ? 'Mañana' : (f === sumarDias(HOY, -1) ? 'Ayer' : dias[dia].slice(0, 3)));
+            html += '<button type="button" class="ar-dia' + (pasado ? ' ar-dia--pasado' : '') + (f === fecha.value ? ' activo' : '') + '"' +
                     ' data-fecha="' + f + '"' + (cerrado ? ' disabled' : '') +
                     ' aria-pressed="' + (f === fecha.value) + '"' +
                     ' title="' + esc(fechaLarga(f)) + (cerrado ? ' · sin atención' : '') + '">' +
                     '<span class="ar-dia__nombre">' + esc(etiqueta) + '</span>' +
                     '<span class="ar-dia__num">' + p[2] + '</span></button>';
-        }
+        });
         tira.innerHTML = html;
     }
 
@@ -624,8 +640,29 @@ require_once __DIR__ . "/inc/layout-top.php";
             : '';
     }
 
+    /* Día anterior a hoy (2026-11-25): aviso, y «Todas las semanas» no
+       aplica (una reserva fija empieza hoy o más adelante; el servidor lo
+       rechaza igual en guardarReservaFija). */
+    var avisoPasada = document.getElementById('avisoFechaPasada');
+    var ayudaRepetir = document.getElementById('repetirAyuda');
+    var ayudaRepetirTexto = ayudaRepetir ? ayudaRepetir.innerHTML : '';
+    function ajustarPasado() {
+        var pasada = !!fecha.value && fecha.value < HOY;
+        if (avisoPasada) { avisoPasada.hidden = !pasada; }
+        if (repetirSi) {
+            repetirSi.disabled = pasada;
+            if (pasada && repetirSi.checked) { document.getElementById('repetirNo').checked = true; }
+            if (ayudaRepetir) {
+                ayudaRepetir.innerHTML = pasada
+                    ? '<i class="fas fa-circle-info me-1"></i>Una reserva fija empieza hoy o más adelante: un día anterior se registra sólo ese día.'
+                    : ayudaRepetirTexto;
+            }
+        }
+    }
+
     function cambio() {
         sel = null; ancla = null;
+        ajustarPasado();
         resumenInstalacion();
         pintarTira();
         cargar();
@@ -645,11 +682,16 @@ require_once __DIR__ . "/inc/layout-top.php";
                 ? 'Se apartará ' + (datos[inst.value] ? inst.options[inst.selectedIndex].text.split('—')[0].trim() : 'la instalación') +
                   ' cada ' + dias[diaIso(fecha.value)].toLowerCase() + ' de ' + desde.value + ' a ' + hasta.value +
                   ', desde el ' + fechaLarga(fecha.value).toLowerCase() + ', hasta que se cancele.'
-                : '');
+                : (fecha.value < HOY && desde.value
+                    /* Un día anterior: que se vea la fecha antes de guardar. */
+                    ? 'Se registrará una reserva del ' + fechaLarga(fecha.value).toLowerCase() + ' (día anterior a hoy), de ' +
+                      desde.value + ' a ' + hasta.value + ', como alquiler ya jugado.'
+                    : ''));
             if (!form.getAttribute('data-confirmar')) { form.removeAttribute('data-confirmar'); }
         }, true);
     }
 
+    ajustarPasado();
     resumenInstalacion();
     pintarTira();
     cargar();
@@ -830,6 +872,13 @@ require_once __DIR__ . "/inc/layout-top.php";
     .ar-dia.activo  { background: var(--ds-acento, #0e7490); border-color: var(--ds-acento, #0e7490); color: #fff; }
     .ar-dia.activo .ar-dia__nombre { color: rgba(255, 255, 255, .85); }
     .ar-dia:disabled { opacity: .4; cursor: not-allowed; text-decoration: line-through; }
+    /* Días anteriores a hoy (registrar lo que no se registró a tiempo): ámbar, como «Ya pasó». */
+    .ar-dia--pasado:not(.activo) { border-style: dashed; border-color: var(--bs-warning); background: var(--bs-warning-bg-subtle); }
+    .ar-dia--pasado:not(.activo) .ar-dia__nombre { color: var(--bs-warning-text-emphasis); }
+    .ar-dia--pasado.activo { background: var(--bs-warning); border-color: var(--bs-warning); color: #212529; }
+    .ar-dia--pasado.activo .ar-dia__nombre { color: rgba(33, 37, 41, .8); }
+    .ar-fecha__pasada { font-size: .85rem; padding: .45rem .7rem; border-radius: var(--ds-radius-sm, 10px);
+                        background: var(--bs-warning-bg-subtle); color: var(--bs-warning-text-emphasis); border: 1px solid var(--bs-warning-border-subtle); }
 
     /* Bloques horarios */
     .ar-franja  { font-size: .78rem; font-weight: 600; color: var(--bs-secondary-color); margin: 8px 0 4px; }

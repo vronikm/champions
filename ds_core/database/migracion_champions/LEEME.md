@@ -188,6 +188,16 @@ en desarrollo y llevar el resultado a producción con un volcado (ver más abajo
     alumno original (`sujeto_alumno.alumno_origenid`) y tipo de documento
     `COD` «CÓDIGO INTERNO». En las escuelas sin esa sede no cambia nada
     visible. Repetible.
+38. `097_arena_monedero_anulacion.sql` (de `ds_core/database/`, común; sólo
+    Champions usa Arena): anular un ingreso o un egreso del monedero
+    registrado por error. Estado, justificación, quién y cuándo en
+    `dsa_monedero_movimiento`, y el vínculo del contra-asiento (origen
+    `ANU`) con el movimiento que anula. Sin la tabla no hace nada.
+    Repetible.
+39. `098_arena_pago_anulacion.sql` (de `ds_core/database/`, común; sólo
+    Champions usa Arena): anular un abono de una reserva registrado por
+    error. Justificación, quién y cuándo en `dsa_pago` (el estado ya
+    existía). Sin la tabla no hace nada. Repetible.
 
 ```bash
 mysql -u USUARIO -p --default-character-set=utf8mb4 BASE < ARCHIVO.sql

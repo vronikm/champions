@@ -4817,11 +4817,22 @@ class arenaController
         devolvió nada. Entra valor + vuelto.
       - Un abono con MONEDERO no trae dinero: se pagó con saldo que entró
         antes. Se informa aparte y no suma a lo recaudado.
-      - Un depósito al monedero (efectivo o transferencia) sí es dinero que
-        entra, aunque todavía no esté aplicado a ninguna reserva. Un ajuste
-        (AJU) no lo es.
+      - Un depósito al monedero (efectivo o transferencia) es dinero que
+        entra a la caja o al banco, aunque todavía no esté aplicado a
+        ninguna reserva. Un ajuste (AJU) no lo es.
       - Una devolución del monedero (DEV) es dinero que sale; no dice cómo
         se entregó, así que se informa y no se resta sola.
+
+      INGRESO NO ES LO MISMO QUE DINERO QUE ENTRA (2026-11-26)
+
+      El monedero es el AHORRO de los clientes: sus depósitos, sus retiros y
+      el vuelto que dejan en él no son ingreso. Están en la caja o en el
+      banco (por eso cuentan en el cuadre de efectivo), pero son de ellos.
+      Ingreso es lo que se paga por las reservas —también con monedero, que
+      es cuando el cliente decide usar su ahorro— menos las devoluciones de
+      reservas (en efectivo, transferencia o al monedero). Es lo que dicen
+      «Ingresos por reservas», «Ingresos por forma de pago» y «Por día»;
+      «monederoMov» resume lo del ahorro aparte.
 
       LA HORA ES LA DEL REGISTRO
 
@@ -5017,10 +5028,15 @@ class arenaController
             'nPagos' => count($pagos), 'nMovimientos' => 0,
             /* Devoluciones de reservas, por medio (092). */
             'devEfectivo' => 0.0, 'devBancos' => 0.0, 'devMonedero' => 0.0, 'nDevReservas' => count($devReservas),
+            /* Ingreso (2026-11-26): lo pagado por reservas, también con monedero, menos lo devuelto. */
+            'cobros' => 0.0, 'ingresos' => 0.0,
+            /* El ahorro de los clientes (monedero): no es ingreso. */
+            'depositosBancos' => 0.0,
         ];
+        $ahorro = [];         // nombre => [n, total, salida]: el monedero, aparte de los ingresos
         $formas = [];          // nombre => [n, total, entra]
         $horas  = $this->franjasDefinidas($f['sede']);   // 'HH:MM-HH:MM' => franja de Horarios (ver abajo)
-        $dias   = [];          // Y-m-d => [total, n]
+        $dias   = [];          // Y-m-d => [total, n]: ingresos por reservas de cada día
         $r['depositos'] = 0.0; // depósitos al monedero: no tienen horario
         $movs   = [];          // la lista única, en orden de hora
 
@@ -5040,11 +5056,14 @@ class arenaController
             $formas[$p['forma_nombre']]['n']++;
             $formas[$p['forma_nombre']]['total'] += $valor;
 
+            $sumar($dias, $p['dia'], $valor);    /* ingreso del día: el valor del abono, con cualquier forma */
             if ($esMon) {
                 $r['monederoAplicado'] += $valor;
             } else {
+                $r['cobros'] += $valor;
                 $r['recaudado'] += $entra;
                 $r['vueltoMonedero'] += $vuelto;
+                if ($vuelto > 0) { $ahorro['Vuelto dejado en el monedero'] = ['n' => ($ahorro['Vuelto dejado en el monedero']['n'] ?? 0) + 1, 'total' => ($ahorro['Vuelto dejado en el monedero']['total'] ?? 0) + $vuelto, 'salida' => false]; }
                 if ($p['forma_codigo'] === 'EFE') {
                     $r['efectivo'] += $entra;
                     $r['cobrosEfectivo'] += $valor;
@@ -5052,7 +5071,6 @@ class arenaController
                 } else {
                     $r['bancos'] += $entra;
                 }
-                $sumar($dias, $p['dia'], $entra);
             }
 
             /* Ingresos por horario: lo que pagó la reserva (también con
@@ -5102,14 +5120,14 @@ class arenaController
                 if ($m['movimiento_origen'] === 'EFE') {
                     $r['efectivo'] += $valor; $r['depositosEfectivo'] += $valor;
                 } else {
-                    $r['bancos'] += $valor;
+                    $r['bancos'] += $valor; $r['depositosBancos'] += $valor;
                 }
-                $sumar($dias, date('Y-m-d', $ts), $valor);
             }
+            /* Ahorro del cliente: no es ingreso ni va a «Por día». */
             $nombre = $nombresMon[$m['movimiento_origen']];
-            $formas[$nombre] = $formas[$nombre] ?? ['n' => 0, 'total' => 0.0, 'monedero' => false];
-            $formas[$nombre]['n']++;
-            $formas[$nombre]['total'] += $valor;
+            $ahorro[$nombre] = $ahorro[$nombre] ?? ['n' => 0, 'total' => 0.0, 'salida' => $m['movimiento_origen'] === 'DEV'];
+            $ahorro[$nombre]['n']++;
+            $ahorro[$nombre]['total'] += $valor;
 
             $movs[] = [
                 'ts' => $ts, 'tipo' => $m['movimiento_origen'] === 'DEV' ? 'devolucion' : 'deposito',
@@ -5125,11 +5143,15 @@ class arenaController
 
         $nombresDev = ['EFE' => 'Devolución de reserva · Efectivo', 'TRA' => 'Devolución de reserva · Transferencia',
                        'MON' => 'Devolución de reserva · Monedero'];
-        $notasDev   = ['EFE' => 'salida: ya restada del efectivo', 'TRA' => 'salida: ya restada de los bancos',
-                       'MON' => 'no sale dinero: queda como saldo a favor'];
+        $notasDev   = ['EFE' => 'salió de la caja', 'TRA' => 'salió del banco',
+                       'MON' => 'pasó al monedero del cliente'];
         foreach ($devReservas as $d) {
             $valor = (float)$d['devolucion_valor'];
             $medio = $d['devolucion_medio'];
+            /* Lo devuelto deja de ser ingreso, en el día en que se devolvió. */
+            $dDia = date('Y-m-d', (int)$d['ts']);
+            $dias[$dDia] = $dias[$dDia] ?? ['total' => 0.0, 'n' => 0];
+            $dias[$dDia]['total'] -= $valor;
             if ($medio === 'EFE')     { $r['devEfectivo'] += $valor; }
             elseif ($medio === 'TRA') { $r['devBancos']   += $valor; }
             else                      { $r['devMonedero'] += $valor; }
@@ -5161,6 +5183,8 @@ class arenaController
         /* Lo que debe haber: lo que entró menos lo que se devolvió por ese medio. */
         $r['efectivoNeto'] = round($r['efectivo'] - $r['devEfectivo'], 2);
         $r['bancosNeto']   = round($r['bancos'] - $r['devBancos'], 2);
+        $r['ingresos']     = round($r['cobros'] + $r['monederoAplicado'] - $r['devEfectivo'] - $r['devBancos'] - $r['devMonedero'], 2);
+        $r['monederoNeto'] = round($r['depositos'] + $r['vueltoMonedero'] - $r['devoluciones'], 2);   /* ahorro que entró, neto */
 
         /* Por jornada y, dentro de ella, por hora: un cobro de madrugada va al final de su jornada. */
         usort($movs, static fn ($x, $y) => [$x['dia'] ?? date('Y-m-d', $x['ts']), $x['ts'], $x['id']] <=> [$y['dia'] ?? date('Y-m-d', $y['ts']), $y['ts'], $y['id']]);
@@ -5175,7 +5199,7 @@ class arenaController
         ksort($dias);
         uasort($formas, static fn ($x, $y) => $y['total'] <=> $x['total']);
 
-        return ['resumen' => $r, 'formas' => $formas, 'horas' => $horas, 'dias' => $dias, 'movimientos' => $movs];
+        return ['resumen' => $r, 'formas' => $formas, 'ahorro' => $ahorro, 'horas' => $horas, 'dias' => $dias, 'movimientos' => $movs];
     }
 
     /** Una franja del reporte «Ingresos por horario», sin cobros aún. */

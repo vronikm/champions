@@ -17,6 +17,7 @@ return [
     'reservaList', 'reservaForm', 'reservaDetalle',
     'reciboPago', 'reciboPdf',
     'monederoList', 'monederoDetalle',
+    'promocionList',                      /* Promociones (migración 102) */
     'egresoInstalaciones',                /* Egresos Instalaciones (migración 101) */
     'reportePagos',                       /* Reportes › Pagos (migración 088) */
     'reporteGanancias',                   /* Reportes › Ganancias (migración 101) */

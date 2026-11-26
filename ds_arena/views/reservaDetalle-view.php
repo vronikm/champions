@@ -43,10 +43,30 @@ $puedeAnularPago = $insArena->puedeAnularPagos() && $reserva['reserva_estado'] !
 $pagosAnulados   = $insArena->pagosAnulados($id);
 /* Corregir sólo la fecha de un abono (un cobro de ayer registrado hoy). */
 $puedeFechaPago  = puede_editar('reservaList') && $reserva['reserva_estado'] !== 'X';
+
+/* Promoción (102): el descuento que tiene o la que se le puede aplicar por su fecha de juego. */
+$descuento   = (float)($reserva['reserva_descuento'] ?? 0);
+$subtotal    = round($total + $descuento, 2);
+$puedePromo  = puede_editar('reservaList') && $reserva['reserva_estado'] !== 'X' && $insArena->promocionesListas();
+$promoOferta = null;
+if ($puedePromo && $descuento <= 0) {
+    foreach ($insArena->promocionesPara((string)$reserva['reserva_fecha']) as $p) {
+        if (!$promoOferta || arenaController::descuentoPromocion($p, $subtotal) > arenaController::descuentoPromocion($promoOferta, $subtotal)) { $promoOferta = $p; }
+    }
+}
 $h = static fn ($t) => htmlspecialchars((string)$t, ENT_QUOTES, 'UTF-8');
 
 require_once __DIR__ . "/inc/layout-top.php";
 ?>
+
+<style>
+    .ar-det-promo { padding: .5rem .65rem; border-radius: .6rem; background: var(--bs-danger-bg-subtle); }
+    .ar-det-oferta { display: flex; align-items: center; gap: .65rem; padding: .55rem .65rem; border: 1px dashed var(--bs-danger-border-subtle); border-radius: .6rem; }
+    .ar-det-oferta__icono { width: 2rem; height: 2rem; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+                            background: var(--bs-danger-bg-subtle); color: var(--bs-danger-text-emphasis); }
+    .ar-det-oferta__texto { flex: 1 1 auto; min-width: 0; }
+    .ar-det-oferta .btn { flex: 0 0 auto; min-height: 2.25rem; }
+</style>
 
 <?php if ($reserva['reserva_estado'] === 'X'): ?>
     <?php /* Cancelada: no admite cobros. Si se canceló por error, se reactiva
@@ -135,6 +155,41 @@ require_once __DIR__ . "/inc/layout-top.php";
             </div>
 
             <div class="card-footer">
+                <?php if ($descuento > 0): ?>
+                    <?php /* Promoción aplicada (102). */ ?>
+                    <div class="ar-det-promo mb-2">
+                        <div class="d-flex justify-content-between small text-body-secondary"><span>Valor de la reserva</span><span>$<?php echo number_format($subtotal, 2); ?></span></div>
+                        <div class="d-flex justify-content-between small fw-semibold text-danger-emphasis">
+                            <span><i class="fas fa-tags me-1" aria-hidden="true"></i><?php echo $h($reserva['promocion_nombre'] ?? 'Descuento'); ?>
+                                <?php if (!empty($reserva['promocion_tipo'])): ?><span class="badge text-bg-danger ms-1"><?php echo $h(arenaController::etiquetaPromocion($reserva)); ?></span><?php endif; ?></span>
+                            <span>−$<?php echo number_format($descuento, 2); ?></span>
+                        </div>
+                        <?php if ($puedePromo): ?>
+                            <form class="FormularioAjax text-end" method="POST" action="<?php echo APP_URL; ?>ajax/arenaAjax.php"
+                                  data-confirmar="Se quitará el descuento: la reserva volverá a valer $<?php echo number_format($subtotal, 2); ?>.">
+                                <input type="hidden" name="modulo_arena" value="promocionReserva">
+                                <input type="hidden" name="reserva_id" value="<?php echo (int)$reserva['reserva_id']; ?>">
+                                <input type="hidden" name="accion" value="quitar">
+                                <button type="submit" class="btn btn-link btn-sm p-0 text-body-secondary">Quitar descuento</button>
+                            </form>
+                        <?php endif; ?>
+                    </div>
+                <?php elseif ($promoOferta): $dOferta = arenaController::descuentoPromocion($promoOferta, $subtotal); ?>
+                    <?php /* Hay una promoción para su fecha de juego y no la tiene (102). */ ?>
+                    <form class="FormularioAjax ar-det-oferta mb-2" method="POST" action="<?php echo APP_URL; ?>ajax/arenaAjax.php"
+                          data-confirmar="Se aplicará <?php echo $h($promoOferta['promocion_nombre']); ?> (<?php echo $h(arenaController::etiquetaPromocion($promoOferta)); ?>): la reserva pasará de $<?php echo number_format($subtotal, 2); ?> a $<?php echo number_format($subtotal - $dOferta, 2); ?>.">
+                        <input type="hidden" name="modulo_arena" value="promocionReserva">
+                        <input type="hidden" name="reserva_id" value="<?php echo (int)$reserva['reserva_id']; ?>">
+                        <input type="hidden" name="promocion_id" value="<?php echo (int)$promoOferta['promocion_id']; ?>">
+                        <span class="ar-det-oferta__icono" aria-hidden="true"><i class="fas fa-tags"></i></span>
+                        <span class="ar-det-oferta__texto">
+                            <strong><?php echo $h($promoOferta['promocion_nombre']); ?></strong>
+                            <span class="badge text-bg-danger"><?php echo $h(arenaController::etiquetaPromocion($promoOferta)); ?></span>
+                            <small class="d-block text-body-secondary">Aplica a esta fecha: descuenta $<?php echo number_format($dOferta, 2); ?>.</small>
+                        </span>
+                        <button type="submit" class="btn btn-danger btn-sm"><i class="fas fa-percent me-1" aria-hidden="true"></i>Aplicar</button>
+                    </form>
+                <?php endif; ?>
                 <div class="d-flex justify-content-between mb-1">
                     <span class="text-muted small">Abonado</span>
                     <strong class="text-success">$<?php echo number_format($abonado, 2); ?></strong>

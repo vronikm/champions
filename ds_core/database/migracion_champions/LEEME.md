@@ -220,6 +220,14 @@ en desarrollo y llevar el resultado a producción con un volcado (ver más abajo
     «Monedero» («Punto de Venta y Caja» pasa al orden 9 y «Reportes» al 10)
     con los permisos de «Monedero», y Reportes › «Ganancias» con los de
     «Pagos Reservas». Sin `dsa_egreso` no hace nada. Repetible.
+43. `102_arena_promociones.sql` (de `ds_core/database/`, común; sólo
+    Champions usa Arena): «Promociones» (Black Friday, Navidad…), descuentos
+    en el valor de las reservas por fecha de juego. Tabla `dsa_promocion`
+    (InnoDB; porcentaje o valor fijo, desde–hasta, estado),
+    `dsa_reserva.reserva_descuento` y `reserva_promocionid` (el total queda
+    con el descuento) y `dsa_reserva_fija.fija_promocionid`. Menú
+    «Promociones» después de «Reservas» (los del orden 7 en adelante bajan
+    uno), con los permisos de «Horarios». Sin Arena no hace nada. Repetible.
 
 ```bash
 mysql -u USUARIO -p --default-character-set=utf8mb4 BASE < ARCHIVO.sql

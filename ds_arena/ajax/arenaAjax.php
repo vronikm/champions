@@ -130,6 +130,10 @@ switch ($_POST['modulo_arena']) {
     case 'cambiarEstadoReserva':  echo $insArena->cambiarEstadoReserva();  break;
     case 'cancelarReservaFija':   echo $insArena->cancelarReservaFija();   break;
 
+    case 'guardarPromocion':      echo $insArena->guardarPromocion();      break;   // 102
+    case 'estadoPromocion':       echo $insArena->estadoPromocion();       break;   // 102
+    case 'promocionReserva':      echo $insArena->promocionReserva();      break;   // 102
+
     case 'registrarPago':         echo $insArena->registrarPago();         break;
     case 'anularPagoReserva':     echo $insArena->anularPagoReserva();     break;   // 098
     case 'cambiarFechaPago':      echo $insArena->cambiarFechaPago();      break;

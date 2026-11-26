@@ -231,6 +231,19 @@ require_once __DIR__ . "/inc/layout-top.php";
                     <div id="agendaBloques" role="group" aria-labelledby="agendaTitulo"></div>
                     <div class="ar-resumen" id="agendaResumen" aria-live="polite" hidden></div>
 
+                    <?php /* PROMOCIÓN (102): si hay una para la fecha de juego, se ofrece
+                             marcada (al editar, marcada sólo si la reserva ya la tenía) y
+                             se puede quitar. El servidor vuelve a calcular el descuento. */ ?>
+                    <input type="hidden" name="promocion_id" id="promocion_id" value="<?php echo (int)($reserva['reserva_promocionid'] ?? 0); ?>">
+                    <label class="ar-promo-res mt-3" id="promoReserva" hidden>
+                        <input type="checkbox" class="form-check-input" id="promoAplicar">
+                        <span class="ar-promo-res__icono" aria-hidden="true"><i class="fas fa-tags"></i></span>
+                        <span class="ar-promo-res__texto">
+                            <strong>Aplicar <span id="promoNombre"></span></strong> <span class="ar-promo-res__etq" id="promoEtiqueta"></span>
+                            <small class="d-block" id="promoDetalle"></small>
+                        </span>
+                    </label>
+
                     <label for="reserva_observacion" class="form-label fw-medium mt-3">Observación</label>
                     <textarea class="form-control" id="reserva_observacion" name="reserva_observacion"
                               rows="2" maxlength="250" placeholder="Opcional"><?php echo $h($reserva['reserva_observacion'] ?? ''); ?></textarea>
@@ -402,6 +415,9 @@ require_once __DIR__ . "/inc/layout-top.php";
     var repetirSi = document.getElementById('repetirSi');   /* sólo en el alta */
 
     var bloques   = [];      /* lo que devolvió el servidor para el día */
+    var promos    = [];      /* promociones para la fecha de juego (102) */
+    var promoActual = <?php echo (int)($reserva['reserva_promocionid'] ?? 0); ?>;   /* la que ya tenía la reserva */
+    var promoTocada = {};    /* lo que el usuario marcó o desmarcó, por promoción */
     var ancla     = null;    /* índice del primer bloque tocado */
     var sel       = null;    /* { i, j }: rango elegido, inclusivo */
     var peticion  = 0;       /* descarta respuestas que llegan tarde */
@@ -474,7 +490,7 @@ require_once __DIR__ . "/inc/layout-top.php";
     }
 
     function cargar() {
-        bloques = []; rejilla.innerHTML = '';
+        bloques = []; promos = []; rejilla.innerHTML = '';
         if (!inst.value || !fecha.value) {
             mensaje('<i class="fas fa-hand-pointer me-1"></i> Elija una instalación y una fecha para ver los horarios.');
             return;
@@ -513,6 +529,8 @@ require_once __DIR__ . "/inc/layout-top.php";
                     return;
                 }
                 bloques = r.bloques;
+                promos = r.promociones || [];
+                if (r.promocionActual) { promoActual = r.promocionActual; }
                 pintarBloques(r);
                 preseleccionar();
             })
@@ -642,6 +660,9 @@ require_once __DIR__ . "/inc/layout-top.php";
             partes.push({ h: horas, v: datos[inst.value] ? +datos[inst.value].valorhora : 0 });
         }
         var importe = partes.reduce(function (s, p) { return s + p.h * p.v; }, 0);
+        var subtotal = Math.round(importe * 100) / 100;
+        var promo = promocion(subtotal);
+        if (promo.aplica) { importe = Math.round((subtotal - promo.descuento) * 100) / 100; }
         var fuera  = !sel;
         var yaPaso = false;
         if (sel) { for (var q = sel.i; q <= sel.j; q++) { if (bloques[q].estado === 'pasado') { yaPaso = true; } } }
@@ -670,13 +691,49 @@ require_once __DIR__ . "/inc/layout-top.php";
         total.textContent = '$' + importe.toFixed(2) + (semanal ? ' / semana' : '');
         detalle.textContent = partes.map(function (p) {
             return p.h.toFixed(2).replace(/\.?0+$/, '') + ' h × $' + p.v.toFixed(2);
-        }).join(' + ') + (partes.length === 1 ? ' por hora' : '');
+        }).join(' + ') + (partes.length === 1 ? ' por hora' : '')
+          + (promo.aplica ? ' − ' + promo.p.nombre + ' $' + promo.descuento.toFixed(2) : '');
         if (textoGuardar && RESERVA === 0) { textoGuardar.textContent = semanal ? 'Reservar cada ' + nombreDia : 'Reservar'; }
         if (guardar) { guardar.disabled = false; guardar.title = ''; }
         pintarDevolucion(importe, ABONADO);
         /* El paso «Abono o pago» se entera del importe (el de una semana, si es fija). */
         form.dispatchEvent(new CustomEvent('ar:importe', { detail: { importe: Math.round(importe * 100) / 100, semanal: !!semanal } }));
     }
+
+    /*----------  Promoción para la fecha de juego (102)  ----------*/
+    /* La que ya tenía la reserva o, si no, la que más descuenta. Marcada por
+       omisión en una reserva nueva; al editar, sólo si ya la tenía. */
+    var cajaPromo = document.getElementById('promoReserva'), chkPromo = document.getElementById('promoAplicar');
+    var campoPromo = document.getElementById('promocion_id');
+    function descuentoDe(p, subtotal) {
+        var d = p.tipo === 'P' ? subtotal * p.valor / 100 : p.valor;
+        return Math.round(Math.max(0, Math.min(subtotal, d)) * 100) / 100;
+    }
+    function promocion(subtotal) {
+        var r = { p: null, aplica: false, descuento: 0 };
+        if (!promos.length || subtotal <= 0 || !desde.value) { cajaPromo.hidden = true; campoPromo.value = 0; return r; }
+        var p = promos.filter(function (x) { return x.id === promoActual; })[0];
+        if (!p) { p = promos.slice().sort(function (a, b) { return descuentoDe(b, subtotal) - descuentoDe(a, subtotal); })[0]; }
+        var porOmision = RESERVA === 0 || p.id === promoActual;
+        var aplica = Object.prototype.hasOwnProperty.call(promoTocada, p.id) ? promoTocada[p.id] : porOmision;
+        var d = descuentoDe(p, subtotal);
+        r.p = p; r.aplica = aplica; r.descuento = aplica ? d : 0;
+        cajaPromo.hidden = false;
+        cajaPromo.classList.toggle('ar-promo-res--activa', aplica);
+        chkPromo.checked = aplica;
+        chkPromo.dataset.id = p.id;
+        campoPromo.value = aplica ? p.id : 0;
+        document.getElementById('promoNombre').textContent = p.nombre;
+        document.getElementById('promoEtiqueta').textContent = p.etiqueta;
+        var semanal = repetirSi && repetirSi.checked;
+        var hasta = p.hasta.split('-').reverse().join('/');
+        document.getElementById('promoDetalle').textContent = aplica
+            ? 'Descuenta $' + d.toFixed(2) + ': $' + subtotal.toFixed(2) + ' → $' + (subtotal - d).toFixed(2)
+              + (semanal ? ', en cada semana hasta el ' + hasta + '.' : '.')
+            : 'Para reservas hasta el ' + hasta + '. Márquela para descontar $' + d.toFixed(2) + '.';
+        return r;
+    }
+    chkPromo.addEventListener('change', function () { promoTocada[+chkPromo.dataset.id] = chkPromo.checked; actualizarResumen(); });
 
     /*----------  Devolver la diferencia al pasar a un horario más barato  ----------*/
     var cajaDev = document.getElementById('devolucionEdicion');   /* sólo al editar con abonos */
@@ -1220,6 +1277,19 @@ require_once __DIR__ . "/inc/layout-top.php";
     }
     .ar-cli__elegido .ar-cli__avatar { background: var(--bs-body-bg); }
     .ar-cli__elegido[hidden], .ar-cli__buscar[hidden] { display: none; }
+
+    /* Promoción (102) */
+    .ar-promo-res { display: flex; align-items: center; gap: .75rem; padding: .65rem .85rem; border: 1px dashed var(--bs-danger-border-subtle);
+                    border-radius: var(--bs-border-radius-lg); cursor: pointer; background: var(--bs-body-bg); }
+    .ar-promo-res[hidden] { display: none; }
+    .ar-promo-res .form-check-input { width: 1.4rem; height: 1.4rem; margin: 0; flex: 0 0 auto; cursor: pointer; }
+    .ar-promo-res__icono { width: 2.25rem; height: 2.25rem; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+                           background: var(--bs-danger-bg-subtle); color: var(--bs-danger-text-emphasis); flex: 0 0 auto; }
+    .ar-promo-res__texto { min-width: 0; }
+    .ar-promo-res__texto small { color: var(--bs-secondary-color); }
+    .ar-promo-res__etq { display: inline-block; padding: .05rem .45rem; border-radius: 1rem; font-weight: 700; font-size: .8rem;
+                         background: var(--bs-danger); color: #fff; }
+    .ar-promo-res--activa { border-style: solid; background: var(--bs-danger-bg-subtle); }
 
     /* Barra de abajo: importe y guardar, siempre a la vista */
     .ar-barra {

@@ -1593,6 +1593,239 @@ class arenaController
         ];
     }
 
+    /*======================================================================
+      Promociones (migración 102, 2026-11-26)
+
+      Descuentos de campaña (Black Friday, Navidad…) en el valor de las
+      reservas. Cada promoción es un porcentaje (P) o un valor fijo por
+      reserva (V) y aplica a las reservas cuya FECHA DE JUEGO cae entre su
+      desde y su hasta. No se aplica sola: el formulario de la reserva la
+      ofrece marcada y quien reserva puede quitarla; en el detalle de una
+      reserva ya hecha se aplica o se quita con un botón.
+
+      reserva_total sigue siendo lo que el cliente debe pagar (ya con el
+      descuento): saldos, cobros, devoluciones y reportes no cambian. El
+      descuento se congela en la reserva (reserva_descuento): editar o
+      desactivar la promoción después no toca las reservas que la tienen.
+      ====================================================================*/
+
+    public const PROMOCION_TIPOS = ['P' => 'Porcentaje', 'V' => 'Valor fijo por reserva'];
+
+    /** ¿Está aplicada la 102? Una vez por petición. */
+    public function promocionesListas(): bool
+    {
+        static $hay = null;
+        if ($hay === null) {
+            try {
+                $hay = (int)$this->escalar("SELECT COUNT(*) FROM information_schema.COLUMNS
+                        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dsa_reserva' AND COLUMN_NAME = 'reserva_descuento'") === 1;
+            } catch (\Throwable $e) { $hay = false; }
+        }
+        return $hay;
+    }
+
+    /** Todas (menos las eliminadas), con cuántas reservas vigentes la usan. */
+    public function promociones(): array
+    {
+        if (!$this->promocionesListas()) { return []; }
+        return $this->filas(
+            "SELECT p.*, u.usuario_usuario,
+                    (SELECT COUNT(*) FROM dsa_reserva r WHERE r.reserva_promocionid = p.promocion_id AND r.reserva_estado <> 'X') AS reservas,
+                    (SELECT COALESCE(SUM(r.reserva_descuento), 0) FROM dsa_reserva r WHERE r.reserva_promocionid = p.promocion_id AND r.reserva_estado <> 'X') AS descontado
+               FROM dsa_promocion p LEFT JOIN seguridad_usuario u ON u.usuario_id = p.promocion_usuarioid
+              WHERE p.promocion_estado <> 'E'
+              ORDER BY p.promocion_hasta < CURDATE(), p.promocion_desde DESC, p.promocion_id DESC");
+    }
+
+    public function promocion(int $id): ?array
+    {
+        if ($id <= 0 || !$this->promocionesListas()) { return null; }
+        return $this->filas("SELECT * FROM dsa_promocion WHERE promocion_id = :p", [':p' => $id])[0] ?? null;
+    }
+
+    /** Las promociones activas para una fecha de juego. */
+    public function promocionesPara(string $fecha): array
+    {
+        if (!$this->promocionesListas()) { return []; }
+        return $this->filas(
+            "SELECT promocion_id, promocion_nombre, promocion_tipo, promocion_valor, promocion_desde, promocion_hasta
+               FROM dsa_promocion
+              WHERE promocion_estado = 'A' AND :f BETWEEN promocion_desde AND promocion_hasta
+              ORDER BY promocion_id", [':f' => $fecha]);
+    }
+
+    /**
+     * Lo que vale una hora de reserva en cada instalación, por franja (su
+     * valor propio o, si no tiene, el de la instalación): el ejemplo del
+     * descuento en Promociones. [['instalacion' => …, 'valor' => …], …]
+     */
+    public function valoresHoraInstalaciones(): array
+    {
+        return array_map(static fn ($r) => ['instalacion' => $r['instalacion_nombre'], 'valor' => (float)$r['valor']], $this->filas(
+            "SELECT i.instalacion_nombre, COALESCE(h.horario_valorhora, i.instalacion_valorhora) AS valor
+               FROM dsa_instalacion i
+               JOIN dsa_horario h ON h.horario_instalacionid = i.instalacion_id AND h.horario_estado = 'A'
+              WHERE i.instalacion_estado = 'A'
+              GROUP BY i.instalacion_id, i.instalacion_nombre, valor
+             HAVING valor > 0
+              ORDER BY i.instalacion_nombre, valor DESC
+              LIMIT 8"));
+    }
+
+    /** Lo que descuenta una promoción sobre un subtotal (nunca más que el subtotal). */
+    public static function descuentoPromocion(array $p, float $subtotal): float
+    {
+        $d = $p['promocion_tipo'] === 'P'
+            ? $subtotal * (float)$p['promocion_valor'] / 100
+            : (float)$p['promocion_valor'];
+        return round(max(0.0, min($subtotal, $d)), 2);
+    }
+
+    /** «−20 %» o «−$5.00». */
+    public static function etiquetaPromocion(array $p): string
+    {
+        return $p['promocion_tipo'] === 'P'
+            ? '−' . rtrim(rtrim(number_format((float)$p['promocion_valor'], 2), '0'), '.') . ' %'
+            : '−$' . number_format((float)$p['promocion_valor'], 2);
+    }
+
+    /**
+     * La promoción que llega en $_POST['promocion_id'] para una fecha de
+     * juego: [promoción o null, error]. Una activa cuyas fechas cubran la
+     * fecha; o, al editar, la que la reserva ya tenía (aunque se haya
+     * desactivado después), si sus fechas aún la cubren.
+     */
+    private function promocionPedida(string $fecha, int $yaTenia = 0): array
+    {
+        $id = (int)($_POST['promocion_id'] ?? 0);
+        if ($id <= 0 || !$this->promocionesListas()) { return [null, '']; }
+        $p = $this->promocion($id);
+        $cubre = $p && $fecha >= $p['promocion_desde'] && $fecha <= $p['promocion_hasta'];
+        if ($p && $cubre && ($p['promocion_estado'] === 'A' || ($id === $yaTenia && $p['promocion_estado'] !== 'E'))) {
+            return [$p, ''];
+        }
+        return [null, $p
+            ? 'La promoción «' . $p['promocion_nombre'] . '» no aplica al ' . self::fechaCorta($fecha) . '. Quítela o elija otra fecha.'
+            : 'La promoción elegida ya no existe. Recargue la página.'];
+    }
+
+    /** AJAX guardarPromocion: crea o edita. */
+    public function guardarPromocion(): string
+    {
+        $id = (int)($_POST['promocion_id'] ?? 0);
+        if (!($id ? puede_editar('promocionList') : puede_crear('promocionList'))) {
+            return $this->alerta('simple', 'Acceso denegado', 'Su rol no puede ' . ($id ? 'editar' : 'crear') . ' promociones.', 'error');
+        }
+        if (!$this->promocionesListas()) {
+            return $this->alerta('simple', 'Falta una actualización', 'Aplique la migración 102 para usar promociones.', 'error');
+        }
+        $nombre = mb_substr(trim(preg_replace('/\s+/u', ' ', (string)($_POST['promocion_nombre'] ?? '')) ?? ''), 0, 80);
+        $tipo   = ($_POST['promocion_tipo'] ?? 'P') === 'V' ? 'V' : 'P';
+        $valor  = round((float)str_replace(',', '.', (string)($_POST['promocion_valor'] ?? '0')), 2);
+        $desde  = (string)($_POST['promocion_desde'] ?? '');
+        $hasta  = (string)($_POST['promocion_hasta'] ?? '');
+        $fechaOk = static fn ($f) => preg_match('/^\d{4}-\d{2}-\d{2}$/', $f) && checkdate((int)substr($f, 5, 2), (int)substr($f, 8, 2), (int)substr($f, 0, 4));
+
+        if (preg_match_all('/\p{L}/u', $nombre) < 3) {
+            return $this->alerta('simple', 'Falta el nombre', 'Escriba el nombre de la promoción, por ejemplo «Black Friday».', 'warning');
+        }
+        if ($valor <= 0 || ($tipo === 'P' && $valor > 100) || $valor > 10000) {
+            return $this->alerta('simple', 'Valor no válido', $tipo === 'P' ? 'El porcentaje va de 0.01 a 100.' : 'El descuento debe ser mayor que cero.', 'warning');
+        }
+        if (!$fechaOk($desde) || !$fechaOk($hasta) || $hasta < $desde) {
+            return $this->alerta('simple', 'Fechas no válidas', 'Indique desde y hasta qué fecha de juego aplica (hasta no puede ser antes que desde).', 'warning');
+        }
+        if ($id) {
+            $p = $this->promocion($id);
+            if (!$p || $p['promocion_estado'] === 'E') {
+                return $this->alerta('simple', 'No existe', 'La promoción no existe.', 'error');
+            }
+            $n = $this->escribir(
+                "UPDATE dsa_promocion SET promocion_nombre = :n, promocion_tipo = :t, promocion_valor = :v, promocion_desde = :d, promocion_hasta = :h
+                  WHERE promocion_id = :id",
+                [':n' => $nombre, ':t' => $tipo, ':v' => $valor, ':d' => $desde, ':h' => $hasta, ':id' => $id]);
+        } else {
+            $n = $this->escribir(
+                "INSERT INTO dsa_promocion (promocion_nombre, promocion_tipo, promocion_valor, promocion_desde, promocion_hasta, promocion_usuarioid)
+                 VALUES (:n, :t, :v, :d, :h, :u)",
+                [':n' => $nombre, ':t' => $tipo, ':v' => $valor, ':d' => $desde, ':h' => $hasta, ':u' => (int)($_SESSION['usuarioid'] ?? 0) ?: null]);
+        }
+        if ($n < 0) {
+            return $this->alerta('simple', 'Error', 'No fue posible guardar la promoción.', 'error');
+        }
+        $etq = self::etiquetaPromocion(['promocion_tipo' => $tipo, 'promocion_valor' => $valor]);
+        return $this->alerta('recargar', $id ? 'Promoción actualizada' : 'Promoción creada',
+            "{$nombre} ({$etq}) para las reservas del " . self::fechaCorta($desde) . ' al ' . self::fechaCorta($hasta) . '.'
+            . ($id ? ' Las reservas que ya la tenían conservan su descuento.' : ''));
+    }
+
+    /** AJAX estadoPromocion: A activar, I desactivar, E eliminar. */
+    public function estadoPromocion(): string
+    {
+        $estado = (string)($_POST['promocion_estado'] ?? '');
+        if (!in_array($estado, ['A', 'I', 'E'], true)) {
+            return $this->alerta('simple', 'Error', 'Acción no válida.', 'error');
+        }
+        if (!($estado === 'E' ? puede_eliminar('promocionList') : puede_editar('promocionList'))) {
+            return $this->alerta('simple', 'Acceso denegado', 'Su rol no puede cambiar promociones.', 'error');
+        }
+        $p = $this->promocion((int)($_POST['promocion_id'] ?? 0));
+        if (!$p || $p['promocion_estado'] === 'E') {
+            return $this->alerta('simple', 'No existe', 'La promoción no existe.', 'error');
+        }
+        $this->escribir("UPDATE dsa_promocion SET promocion_estado = :e WHERE promocion_id = :id", [':e' => $estado, ':id' => $p['promocion_id']]);
+        return $this->alerta('recargar', ['A' => 'Promoción activada', 'I' => 'Promoción desactivada', 'E' => 'Promoción eliminada'][$estado],
+            $p['promocion_nombre'] . ($estado === 'A' ? ': se ofrece al reservar en sus fechas.' : ': ya no se ofrece al reservar. Las reservas que la tienen conservan su descuento.'));
+    }
+
+    /**
+     * AJAX promocionReserva: aplicar (promocion_id) o quitar (accion=quitar)
+     * el descuento de una reserva ya hecha, desde su detalle.
+     */
+    public function promocionReserva(): string
+    {
+        if (!puede_editar('reservaList')) {
+            return $this->alerta('simple', 'Acceso denegado', 'Su rol no puede editar reservas.', 'error');
+        }
+        if (!$this->promocionesListas()) {
+            return $this->alerta('simple', 'Falta una actualización', 'Aplique la migración 102 para usar promociones.', 'error');
+        }
+        $r = $this->reserva((int)($_POST['reserva_id'] ?? 0));
+        if (!$r) {
+            return $this->alerta('simple', 'Error', 'La reserva no existe.', 'error');
+        }
+        if ($r['reserva_estado'] === 'X') {
+            return $this->alerta('simple', 'Reserva cancelada', 'Una reserva cancelada no admite descuentos.', 'warning');
+        }
+        $subtotal = round((float)$r['reserva_total'] + (float)$r['reserva_descuento'], 2);
+        $abonado  = round((float)$r['reserva_abonado'], 2);
+
+        if (($_POST['accion'] ?? '') === 'quitar') {
+            $p = null; $desc = 0.0;
+        } else {
+            [$p, $error] = $this->promocionPedida((string)$r['reserva_fecha']);
+            if (!$p) {
+                return $this->alerta('simple', 'Promoción no válida', $error ?: 'Elija la promoción.', 'warning');
+            }
+            $desc = self::descuentoPromocion($p, $subtotal);
+        }
+        $nuevo = round($subtotal - $desc, 2);
+        if ($abonado > $nuevo + 0.001) {
+            return $this->alerta('simple', 'Ya abonó más',
+                'El cliente ya abonó $' . number_format($abonado, 2) . ' y con el descuento la reserva valdría $' . number_format($nuevo, 2)
+                . '. Para devolverle la diferencia, anule el abono que corresponda y vuelva a registrarlo por el valor correcto.', 'warning');
+        }
+        $n = $this->escribir(
+            "UPDATE dsa_reserva SET reserva_total = :t, reserva_descuento = :d, reserva_promocionid = :p WHERE reserva_id = :id AND reserva_estado <> 'X'",
+            [':t' => $nuevo, ':d' => $desc, ':p' => $p['promocion_id'] ?? null, ':id' => $r['reserva_id']]);
+        if ($n !== 1) {
+            return $this->alerta('simple', 'Error', 'No fue posible actualizar la reserva.', 'error');
+        }
+        return $this->alerta('recargar', $p ? 'Descuento aplicado' : 'Descuento quitado',
+            $p ? $p['promocion_nombre'] . ' (' . self::etiquetaPromocion($p) . '): −$' . number_format($desc, 2) . '. La reserva queda en $' . number_format($nuevo, 2) . '.'
+               : 'La reserva vuelve a $' . number_format($nuevo, 2) . '.');
+    }
+
     /** «2 h × $25.00 = $50.00», o «1 h × $25.00 + 1 h × $35.00 = $60.00» si cambia el valor. */
     private function textoImporte(array $importe): string
     {
@@ -1894,7 +2127,24 @@ class arenaController
             return json_encode(['ok' => false, 'motivo' => 'Fecha no válida.'], JSON_UNESCAPED_UNICODE);
         }
 
-        return json_encode($this->disponibilidadDia($inst, $fecha, $excluir), JSON_UNESCAPED_UNICODE);
+        $r = $this->disponibilidadDia($inst, $fecha, $excluir);
+
+        /* Las promociones para esa fecha de juego (102): el formulario ofrece la
+           que más descuenta. Al editar, también la que la reserva ya tenía. */
+        $promos = $this->promocionesPara($fecha);
+        $actual = $excluir > 0 && $this->promocionesListas()
+            ? (int)$this->escalar("SELECT COALESCE(reserva_promocionid, 0) FROM dsa_reserva WHERE reserva_id = :r", [':r' => $excluir]) : 0;
+        if ($actual && !in_array($actual, array_map('intval', array_column($promos, 'promocion_id')), true)) {
+            $p = $this->promocion($actual);
+            if ($p && $p['promocion_estado'] !== 'E' && $fecha >= $p['promocion_desde'] && $fecha <= $p['promocion_hasta']) { $promos[] = $p; }
+        }
+        $r['promociones'] = array_map(static fn ($p) => [
+            'id' => (int)$p['promocion_id'], 'nombre' => $p['promocion_nombre'], 'tipo' => $p['promocion_tipo'],
+            'valor' => (float)$p['promocion_valor'], 'hasta' => $p['promocion_hasta'], 'etiqueta' => self::etiquetaPromocion($p),
+        ], $promos);
+        $r['promocionActual'] = $actual;
+
+        return json_encode($r, JSON_UNESCAPED_UNICODE);
     }
 
     /*======================================================================
@@ -2092,12 +2342,14 @@ class arenaController
                     i.instalacion_nombre, i.instalacion_codigo,
                     fj.fija_codigo, fj.fija_dia, fj.fija_estado,
                     fj.fija_horainicio, fj.fija_horafin,
-                    uc.usuario_usuario AS cancelada_por
+                    uc.usuario_usuario AS cancelada_por"
+                    . ($this->promocionesListas() ? ", pr.promocion_nombre, pr.promocion_tipo, pr.promocion_valor" : ", 0 AS reserva_descuento") . "
                FROM dsa_reserva r
                JOIN dsa_cliente c ON c.cliente_id = r.reserva_clienteid
                JOIN dsa_instalacion i ON i.instalacion_id = r.reserva_instalacionid
                LEFT JOIN dsa_reserva_fija fj ON fj.fija_id = r.reserva_fijaid
-               LEFT JOIN seguridad_usuario uc ON uc.usuario_id = r.reserva_usuariocancelacion
+               LEFT JOIN seguridad_usuario uc ON uc.usuario_id = r.reserva_usuariocancelacion"
+               . ($this->promocionesListas() ? " LEFT JOIN dsa_promocion pr ON pr.promocion_id = r.reserva_promocionid" : "") . "
               WHERE r.reserva_id = :id", [':id' => $id]);
 
         return $r[0] ?? null;
@@ -2181,11 +2433,23 @@ class arenaController
                 'La instalación no tiene tarifa por hora. Configúrela antes de reservar.', 'error');
         }
 
+        $actual = $id > 0 ? $this->reserva($id) : null;
+        if ($id > 0 && $actual === null) {
+            return $this->alerta('simple', 'Error', 'La reserva no existe.', 'error');
+        }
+
+        /* La promoción (102): el total queda con el descuento. */
+        [$promo, $errorPromo] = $this->promocionPedida($fecha, (int)($actual['reserva_promocionid'] ?? 0));
+        if ($errorPromo !== '') {
+            return $this->alerta('simple', 'Revise la promoción', $errorPromo, 'warning');
+        }
+        $descuento = $promo ? self::descuentoPromocion($promo, $total) : 0.0;
+        $total     = round($total - $descuento, 2);
+        $textoImporte = $this->textoImporte($importe)
+                      . ($promo ? ' − ' . $promo['promocion_nombre'] . ' $' . number_format($descuento, 2) . ' = $' . number_format($total, 2) : '');
+        $conPromo = $this->promocionesListas();
+
         if ($id > 0) {
-            $actual = $this->reserva($id);
-            if ($actual === null) {
-                return $this->alerta('simple', 'Error', 'La reserva no existe.', 'error');
-            }
 
             /* Reducir el total por debajo de lo ya abonado dejaría un saldo
                negativo: la diferencia se devuelve en el mismo paso, por el
@@ -2209,7 +2473,8 @@ class arenaController
                         reserva_sedeid = :s, reserva_fecha = :f,
                         reserva_horainicio = :ini, reserva_horafin = :fin,
                         reserva_horas = :h, reserva_valorhora = :v,
-                        reserva_total = :t,
+                        reserva_total = :t,"
+                . ($conPromo ? " reserva_descuento = :desc, reserva_promocionid = :promo," : "") . "
                         reserva_observacion = :o
                   WHERE reserva_id = :id";
                 /* reserva_saldo ya no se escribe: es columna generada
@@ -2220,6 +2485,7 @@ class arenaController
                    ':f' => $fecha, ':ini' => $inicio, ':fin' => $fin, ':h' => $horas,
                    ':v' => $valorhora, ':t' => $total,
                    ':o' => $observacion !== '' ? $observacion : null, ':id' => $id];
+            if ($conPromo) { $pU[':desc'] = $descuento; $pU[':promo'] = $promo['promocion_id'] ?? null; }
 
             if ($devolver > 0) {
                 /* Primero se devuelve (lo abonado baja hasta el total nuevo)
@@ -2268,21 +2534,24 @@ class arenaController
 
         $codigo = $this->siguienteCodigo();
 
+        $pI = [':cod' => $codigo, ':c' => $cliente, ':i' => $instalacion,
+               ':s' => (int)$inst['instalacion_sedeid'], ':f' => $fecha,
+               ':ini' => $inicio, ':fin' => $fin, ':h' => $horas, ':v' => $valorhora,
+               ':t' => $total,
+               ':o' => $observacion !== '' ? $observacion : null,
+               ':u' => (int)($_SESSION['usuarioid'] ?? 0) ?: null];
+        if ($conPromo) { $pI[':desc'] = $descuento; $pI[':promo'] = $promo['promocion_id'] ?? null; }
         $n = $this->escribir(
             "INSERT INTO dsa_reserva
                 (reserva_codigo, reserva_clienteid, reserva_instalacionid, reserva_sedeid,
                  reserva_fecha, reserva_horainicio, reserva_horafin, reserva_horas,
                  reserva_valorhora, reserva_total, reserva_abonado,
-                 reserva_estado, reserva_observacion, reserva_usuarioid)
-             VALUES (:cod, :c, :i, :s, :f, :ini, :fin, :h, :v, :t, 0, 'P', :o, :u)",
+                 reserva_estado, reserva_observacion, reserva_usuarioid"
+                 . ($conPromo ? ", reserva_descuento, reserva_promocionid" : "") . ")
+             VALUES (:cod, :c, :i, :s, :f, :ini, :fin, :h, :v, :t, 0, 'P', :o, :u" . ($conPromo ? ", :desc, :promo" : "") . ")",
             /* Sin reserva_saldo: columna generada desde la migración 061.
                Nace valiendo el total, porque abonado nace en 0. */
-            [':cod' => $codigo, ':c' => $cliente, ':i' => $instalacion,
-             ':s' => (int)$inst['instalacion_sedeid'], ':f' => $fecha,
-             ':ini' => $inicio, ':fin' => $fin, ':h' => $horas, ':v' => $valorhora,
-             ':t' => $total,
-             ':o' => $observacion !== '' ? $observacion : null,
-             ':u' => (int)($_SESSION['usuarioid'] ?? 0) ?: null]
+            $pI
         );
 
         if ($n <= 0) {
@@ -2290,10 +2559,10 @@ class arenaController
         }
         if ($cobrar) {
             $nuevaId = (int)$this->escalar("SELECT reserva_id FROM dsa_reserva WHERE reserva_codigo = :c", [':c' => $codigo]);
-            return $this->cobrarReservaNueva($nuevaId, "{$codigo} · " . $this->textoImporte($importe));
+            return $this->cobrarReservaNueva($nuevaId, "{$codigo} · " . $textoImporte);
         }
         return $this->alerta('redireccionar', 'Reserva creada',
-            "{$codigo} · " . $this->textoImporte($importe) . ". Registre el abono desde el detalle.",
+            "{$codigo} · " . $textoImporte . ". Registre el abono desde el detalle.",
             'success', APP_URL . 'reservaList/');
     }
 
@@ -2790,10 +3059,18 @@ class arenaController
                 'La instalación no tiene tarifa por hora. Configúrela antes de reservar.', 'error');
         }
 
+        /* La promoción de la serie (102): se ofrece según la primera semana y se
+           aplica a cada semana que caiga dentro de sus fechas (generarSemanasFija). */
+        [$promo, $errorPromo] = $this->promocionPedida($fecha);
+        if ($errorPromo !== '') {
+            return $this->alerta('simple', 'Revise la promoción', $errorPromo, 'warning');
+        }
+        $totalPrimera = round($importe['total'] - ($promo ? self::descuentoPromocion($promo, $importe['total']) : 0.0), 2);
+
         /* Cobrar al reservar: el de la primera semana, validado antes de crear nada. */
         $cobrar = $this->cobroAlCrearPedido();
         if ($cobrar) {
-            $error = $this->errorCobroAlCrear($importe['total'], $cliente);
+            $error = $this->errorCobroAlCrear($totalPrimera, $cliente);
             if ($error !== '') {
                 return $this->alerta('simple', 'Revise el abono', $error, 'warning');
             }
@@ -2820,6 +3097,10 @@ class arenaController
                 ':u' => (int)($_SESSION['usuarioid'] ?? 0) ?: null,
             ]);
             $fijaId = (int)$con->lastInsertId();
+            if ($promo) {
+                $con->prepare("UPDATE dsa_reserva_fija SET fija_promocionid = :p WHERE fija_id = :id")
+                    ->execute([':p' => $promo['promocion_id'], ':id' => $fijaId]);
+            }
             $hecho  = $this->generarSemanasFija($fijaId);
             $con->commit();
         } catch (\Throwable $e) {
@@ -2828,6 +3109,8 @@ class arenaController
         }
 
         $texto = "{$codigo} · {$franja}, desde el " . self::fechaCorta($fecha) . ', hasta que se cancele. ' .
+                 ($promo ? $promo['promocion_nombre'] . ' (' . self::etiquetaPromocion($promo) . ') en las semanas hasta el '
+                           . self::fechaCorta($promo['promocion_hasta']) . '. ' : '') .
                  ($hecho['creadas'] === 1 ? 'Quedó en la agenda 1 semana' : "Quedaron en la agenda {$hecho['creadas']} semanas") .
                  '; cada una se cobra desde su reserva, por anticipado o después de usar la instalación.';
         if ($hecho['omitidas']) {
@@ -2887,13 +3170,20 @@ class arenaController
                 $fin    = substr($f['fija_horafin'], 0, 5);
                 $ultima = null;
 
+                /* La promoción de la serie (102): sólo en las semanas dentro de sus
+                   fechas y mientras siga activa. */
+                $conPromo = $this->promocionesListas();
+                $promo = $conPromo && !empty($f['fija_promocionid']) ? $this->promocion((int)$f['fija_promocionid']) : null;
+                if ($promo && $promo['promocion_estado'] !== 'A') { $promo = null; }
+
                 $insertar = $con->prepare(
                     "INSERT INTO dsa_reserva
                         (reserva_codigo, reserva_clienteid, reserva_instalacionid, reserva_sedeid, reserva_fijaid,
                          reserva_fecha, reserva_horainicio, reserva_horafin, reserva_horas,
                          reserva_valorhora, reserva_total, reserva_abonado,
-                         reserva_estado, reserva_observacion, reserva_usuarioid)
-                     VALUES (:cod, :c, :i, :s, :fj, :f, :ini, :fin, :h, :v, :t, 0, 'P', :o, :u)");
+                         reserva_estado, reserva_observacion, reserva_usuarioid"
+                         . ($conPromo ? ", reserva_descuento, reserva_promocionid" : "") . ")
+                     VALUES (:cod, :c, :i, :s, :fj, :f, :ini, :fin, :h, :v, :t, 0, 'P', :o, :u" . ($conPromo ? ", :desc, :promo" : "") . ")");
 
                 while ($fecha <= $limite) {
                     $ya = (int)$this->escalar(
@@ -2912,14 +3202,18 @@ class arenaController
                         } elseif ($importe['total'] <= 0 || $importe['sinTarifa']) {
                             $resultado['omitidas'][$fecha] = 'Sin tarifa por hora.';
                         } else {
-                            $insertar->execute([
+                            $aplica = $promo && $fecha >= $promo['promocion_desde'] && $fecha <= $promo['promocion_hasta'];
+                            $desc   = $aplica ? self::descuentoPromocion($promo, $importe['total']) : 0.0;
+                            $pS = [
                                 ':cod' => $this->siguienteCodigo(), ':c' => (int)$f['fija_clienteid'],
                                 ':i' => (int)$f['fija_instalacionid'], ':s' => (int)$f['fija_sedeid'],
                                 ':fj' => $fijaId, ':f' => $fecha, ':ini' => $inicio, ':fin' => $fin,
-                                ':h' => $horas, ':v' => $valorhora, ':t' => $importe['total'],
+                                ':h' => $horas, ':v' => $valorhora, ':t' => round($importe['total'] - $desc, 2),
                                 ':o' => $f['fija_observacion'],
                                 ':u' => (int)($_SESSION['usuarioid'] ?? 0) ?: null,
-                            ]);
+                            ];
+                            if ($conPromo) { $pS[':desc'] = $desc; $pS[':promo'] = $aplica ? (int)$promo['promocion_id'] : null; }
+                            $insertar->execute($pS);
                             $resultado['creadas']++;
                         }
                     }

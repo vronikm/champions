@@ -13,11 +13,11 @@ use PDO;
  *
  * QUÉ ENTRA EN LA CAJA
  *
- * Todo el dinero de Arena que pasa por las manos de quien la abrió mientras
- * está abierta: las ventas del punto de venta, los cobros de reservas y los
- * depósitos al monedero (los toma de reportePagos, con sus mismas reglas),
- * los ingresos y egresos registrados en ella y lo devuelto. El arqueo
- * compara el efectivo que debería haber con el contado.
+ * Lo del punto de venta mientras está abierta: las ventas (y lo devuelto al
+ * anularlas), los ingresos y egresos registrados en ella y los pagos de
+ * compras con su efectivo. El arqueo compara el efectivo que debería haber
+ * con el contado. Los cobros de reservas y los depósitos al monedero NO
+ * entran (2026-11-25): se cuadran en Reportes › Pagos.
  *
  * LO QUE DICE EL SERVIDOR, NO LA PANTALLA
  *
@@ -229,11 +229,6 @@ class posController extends arenaController
     public function resumenCaja(array $c): array
     {
         $id    = (int)$c['caja_id'];
-        $u     = (int)$c['caja_usuarioid'];
-        $desde = (string)$c['caja_apertura'];
-        $hasta = (string)($c['caja_cierre'] ?: date('Y-m-d H:i:s'));
-        $tDesde = strtotime($desde);
-        $tHasta = strtotime($hasta);
 
         $r = [
             'inicial' => (float)$c['caja_saldoinicial'],
@@ -286,26 +281,13 @@ class posController extends arenaController
             }
         }
 
-        /* Cobros de reservas, depósitos al monedero y devoluciones que hizo
-           este usuario mientras la caja estaba abierta: las mismas reglas que
-           Reportes › Pagos. */
-        $rp = $this->reportePagos(['desde' => date('Y-m-d', $tDesde), 'hasta' => date('Y-m-d', $tHasta), 'cajero' => $u, 'sede' => 0]);
-        foreach ($rp['movimientos'] as $m) {
-            if ($m['ts'] < $tDesde || $m['ts'] > $tHasta) { continue; }
-            $ef = $m['codigoForma'] === 'EFE';
-            if ($m['tipo'] === 'pago') {
-                $r['cobrosReservas']++;
-                if ($m['esMonedero']) { $r['monederoAplicado'] += $m['valor']; continue; }
-                if ($ef) { $r['reservasEfectivo'] += $m['entra']; }
-                $sumarForma($r, $ef ? 'Efectivo' : $m['forma'], 'reservas', $m['entra'], $ef);
-            } elseif ($m['tipo'] === 'deposito') {
-                if ($ef) { $r['depositosEfectivo'] += $m['entra']; }
-                $sumarForma($r, $ef ? 'Efectivo' : 'Transferencia', 'reservas', $m['entra'], $ef);
-            } elseif ($m['tipo'] === 'devreserva' && $m['entra'] < 0) {
-                if ($ef) { $r['devolucionesEfectivo'] += -$m['entra']; }
-                $sumarForma($r, $ef ? 'Efectivo' : 'Transferencia', 'reservas', $m['entra'], $ef);
-            }
-        }
+        /* Los cobros de reservas, los depósitos al monedero y sus devoluciones
+           NO entran en la caja (2026-11-25): la caja es del punto de venta
+           (ventas, sus anulaciones, ingresos, egresos y pagos de compras).
+           Lo de las reservas se cuadra en Reportes › Pagos, que tiene su
+           propio cuadre de efectivo. reservasEfectivo, depositosEfectivo,
+           devolucionesEfectivo y cobrosReservas quedan en 0; sólo las cajas
+           cerradas antes de este cambio los tienen en su resumen guardado. */
 
         foreach ($r as $k => $v) { if (is_float($v)) { $r[$k] = round($v, 2); } }
         $r['esperado'] = round($r['inicial'] + $r['ventasEfectivo'] + $r['reservasEfectivo'] + $r['depositosEfectivo']
@@ -341,18 +323,7 @@ class posController extends arenaController
                        'forma' => $nombres[$m['movimiento_forma']] ?? $m['movimiento_forma'], 'valor' => (float)$m['movimiento_valor'],
                        'signo' => $m['movimiento_tipo'] === 'I' ? 1 : -1, 'anulada' => false];
         }
-        $tDesde = strtotime((string)$c['caja_apertura']);
-        $tHasta = strtotime((string)($c['caja_cierre'] ?: date('Y-m-d H:i:s')));
-        $rp = $this->reportePagos(['desde' => date('Y-m-d', $tDesde), 'hasta' => date('Y-m-d', $tHasta), 'cajero' => (int)$c['caja_usuarioid'], 'sede' => 0]);
-        foreach ($rp['movimientos'] as $m) {
-            if ($m['ts'] < $tDesde || $m['ts'] > $tHasta || $m['tipo'] === 'devolucion') { continue; }
-            $titulo = ['pago' => 'Cobro de reserva ' . $m['reserva'], 'deposito' => 'Depósito al monedero',
-                       'devreserva' => 'Devolución de reserva ' . $m['reserva']][$m['tipo']] ?? $m['tipo'];
-            $movs[] = ['ts' => $m['ts'], 'tipo' => $m['tipo'] === 'devreserva' ? 'egreso' : 'reserva', 'id' => $m['id'],
-                       'titulo' => $titulo, 'detalle' => $m['cliente'], 'forma' => $m['forma'],
-                       'valor' => abs($m['tipo'] === 'pago' && $m['esMonedero'] ? $m['valor'] : $m['entra']),
-                       'signo' => $m['entra'] < 0 ? -1 : 1, 'anulada' => false, 'monedero' => $m['esMonedero']];
-        }
+        /* Los cobros de reservas y del monedero no son de la caja (ver resumenCaja). */
         usort($movs, static fn ($a, $b) => [$b['ts'], $b['id']] <=> [$a['ts'], $a['id']]);
         return $movs;
     }
@@ -924,21 +895,22 @@ class posController extends arenaController
     public function venta(int $id): ?array
     {
         $v = $this->filas(
-            "SELECT v.*, c.caja_estado, c.caja_sedeid, c.caja_usuarioid, u.usuario_usuario AS vendedor,
+            "SELECT v.*, c.caja_estado, " . ($this->ventasConRegistro() ? "COALESCE(c.caja_sedeid, v.venta_sedeid)" : "c.caja_sedeid") . " AS caja_sedeid,
+                    c.caja_usuarioid, u.usuario_usuario AS vendedor,
                     ua.usuario_usuario AS autoriza_descuento, ux.usuario_usuario AS anulo, uxa.usuario_usuario AS autoriza_anulacion,
                     cl.cliente_nombre, cl.cliente_identificacion, cl.cliente_celular,
                     s.sede_nombre, s.sede_direccion, s.sede_telefono,
                     (SELECT GROUP_CONCAT(i.instalacion_nombre ORDER BY i.instalacion_id SEPARATOR ' · ')
                        FROM dsa_instalacion i
-                      WHERE i.instalacion_sedeid = c.caja_sedeid AND i.instalacion_estado = 'A') AS instalacion_nombre
+                      WHERE i.instalacion_sedeid = " . ($this->ventasConRegistro() ? "COALESCE(c.caja_sedeid, v.venta_sedeid)" : "c.caja_sedeid") . " AND i.instalacion_estado = 'A') AS instalacion_nombre
                FROM dsa_venta v
-               JOIN dsa_caja c ON c.caja_id = v.venta_cajaid
+               LEFT JOIN dsa_caja c ON c.caja_id = v.venta_cajaid   /* sin caja: registrada después (099) */
                LEFT JOIN seguridad_usuario u   ON u.usuario_id   = v.venta_usuarioid
                LEFT JOIN seguridad_usuario ua  ON ua.usuario_id  = v.venta_descuentoautoriza
                LEFT JOIN seguridad_usuario ux  ON ux.usuario_id  = v.venta_anulausuario
                LEFT JOIN seguridad_usuario uxa ON uxa.usuario_id = v.venta_anulaautoriza
                LEFT JOIN dsa_cliente cl ON cl.cliente_id = v.venta_clienteid
-               LEFT JOIN general_sede s ON s.sede_id = c.caja_sedeid
+               LEFT JOIN general_sede s ON s.sede_id = " . ($this->ventasConRegistro() ? "COALESCE(c.caja_sedeid, v.venta_sedeid)" : "c.caja_sedeid") . "
               WHERE v.venta_id = :v", [':v' => $id])[0] ?? null;
         if (!$v) { return null; }
         $v['lineas'] = $this->filas("SELECT d.*, p.producto_codigo FROM dsa_venta_detalle d LEFT JOIN dsa_producto p ON p.producto_id = d.detalle_productoid
@@ -952,6 +924,7 @@ class posController extends arenaController
     public function ventas(string $dia, string $buscar = '', int $usuario = 0): array
     {
         $sql = "SELECT v.venta_id, v.venta_numero, v.venta_total, v.venta_descuento, v.venta_estado, v.venta_fecharegistro,
+                       " . ($this->ventasConRegistro() ? "v.venta_origen," : "'P' AS venta_origen,") . "
                        u.usuario_usuario AS vendedor, cl.cliente_nombre,
                        (SELECT GROUP_CONCAT(f.forma_nombre SEPARATOR ', ') FROM dsa_venta_pago vp JOIN dsa_forma_ingreso f ON f.forma_id = vp.pago_formaid
                          WHERE vp.pago_ventaid = v.venta_id) AS formas,
@@ -1021,7 +994,8 @@ class posController extends arenaController
         [$autoriza, $err] = $this->autorizador();
         if ($err !== null) { return $this->error($err, 'Falta la autorización'); }
 
-        $cajaCerrada = $v['caja_estado'] !== 'A';
+        /* Una venta registrada después (099) no tiene caja: no se devuelve dinero de ninguna. */
+        $cajaCerrada = !empty($v['venta_cajaid']) && $v['caja_estado'] !== 'A';
         $miCaja = $cajaCerrada ? $this->cajaAbierta() : null;
         $devolver = array_filter($v['pagos'], static fn ($p) => $p['forma_esmonedero'] !== 'S' && (float)$p['pago_valor'] > 0);
         if ($cajaCerrada && $devolver && !$miCaja) {
@@ -1029,6 +1003,7 @@ class posController extends arenaController
         }
 
         $con = $this->con();
+        $volvio = 0;
         try {
             $con->beginTransaction();
             $st = $con->prepare("SELECT venta_estado FROM dsa_venta WHERE venta_id = :v FOR UPDATE");
@@ -1036,6 +1011,12 @@ class posController extends arenaController
             if ($st->fetchColumn() !== 'A') { throw new \RuntimeException('La venta ya estaba anulada.'); }
 
             foreach ($v['lineas'] as $l) {
+                /* El stock vuelve sólo si salió con esta venta (una registrada
+                   después pudo hacerse sin descontar del inventario, 099). */
+                $salio = (int)$this->escalar("SELECT COUNT(*) FROM dsa_kardex WHERE kardex_ventaid = :v AND kardex_productoid = :p AND kardex_origen = 'VEN'",
+                                              [':v' => $v['venta_id'], ':p' => $l['detalle_productoid']]);
+                if (!$salio) { continue; }
+                $volvio++;
                 $this->moverStock($con, (int)$l['detalle_productoid'], 'E', 'ANV', (float)$l['detalle_cantidad'], (float)$l['detalle_costo'],
                                   ['venta' => (int)$v['venta_id'], 'detalle' => 'Anulación ' . $v['venta_numero']]);
             }
@@ -1063,8 +1044,198 @@ class posController extends arenaController
             return $this->error($e instanceof \RuntimeException ? $e->getMessage() : 'No fue posible anular la venta.');
         }
         return $this->json(['ok' => true, 'tipo' => 'recargar', 'icono' => 'success', 'titulo' => 'Venta anulada',
-                            'texto' => $v['venta_numero'] . ': el stock volvió al inventario'
+                            'texto' => $v['venta_numero'] . ($volvio ? ': el stock volvió al inventario' : ': quedó anulada')
                                      . ($cajaCerrada && $devolver ? ' y la devolución quedó como egreso de su caja.' : '.')]);
+    }
+
+    /*======================================================================
+      Registrar ventas ya hechas (migración 099, 2026-11-25)
+
+      Lo vendido antes de usar el punto de venta, o un día en que no se usó.
+      Diferencias con «Vender»:
+        · la fecha la elige quien registra (hoy o hasta un año atrás);
+        · no entra en ninguna caja (venta_cajaid NULL): el dinero de esos días
+          ya se contó o se perdió, y no debe descuadrar el arqueo de hoy;
+        · el precio de cada línea es el que se escribe (el de ese día), no el
+          del catálogo;
+        · un producto que no existe se escribe por su nombre y se crea en
+          Productos como servicio (sin stock), para no inventar existencias;
+        · descontar del inventario es opcional: las ventas anteriores al
+          conteo del stock no deben volver a descontarse.
+      Aparece en Reportes › Ventas del día elegido, con su comprobante, y se
+      anula como cualquier venta.
+      ====================================================================*/
+
+    /** ¿Está aplicada la 099 (columna venta_origen)? Una vez por petición. */
+    public function ventasConRegistro(): bool
+    {
+        static $hay = null;
+        if ($hay === null) {
+            try {
+                $hay = (int)$this->escalar("SELECT COUNT(*) FROM information_schema.COLUMNS
+                        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dsa_venta' AND COLUMN_NAME = 'venta_origen'") === 1;
+            } catch (\Throwable $e) { $hay = false; }
+        }
+        return $hay;
+    }
+
+    /** Días hacia atrás que admite el registro de ventas. */
+    public const REGISTRO_DIAS_ATRAS = 366;
+
+    /** Las ventas registradas después, de la más reciente a la más antigua. */
+    public function ventasRegistradas(string $desde, string $hasta, int $limite = 300): array
+    {
+        if (!$this->ventasConRegistro()) { return []; }
+        return $this->filas(
+            "SELECT v.venta_id, v.venta_numero, v.venta_total, v.venta_estado, v.venta_fecharegistro, v.venta_registro,
+                    u.usuario_usuario AS vendedor,
+                    (SELECT GROUP_CONCAT(f.forma_nombre SEPARATOR ', ') FROM dsa_venta_pago vp JOIN dsa_forma_ingreso f ON f.forma_id = vp.pago_formaid
+                      WHERE vp.pago_ventaid = v.venta_id) AS formas,
+                    (SELECT GROUP_CONCAT(CONCAT(TRIM(TRAILING '.' FROM TRIM(TRAILING '0' FROM d.detalle_cantidad)), ' ', d.detalle_nombre) SEPARATOR ', ')
+                       FROM dsa_venta_detalle d WHERE d.detalle_ventaid = v.venta_id) AS resumen
+               FROM dsa_venta v
+               LEFT JOIN seguridad_usuario u ON u.usuario_id = v.venta_usuarioid
+              WHERE v.venta_origen = 'R' AND v.venta_fecharegistro >= :d AND v.venta_fecharegistro < :h
+              ORDER BY v.venta_fecharegistro DESC, v.venta_id DESC LIMIT " . max(1, min(1000, $limite)),
+            [':d' => $desde . ' 00:00:00', ':h' => date('Y-m-d', strtotime($hasta . ' +1 day')) . ' 00:00:00']);
+    }
+
+    /**
+     * AJAX posRegistrarVentas. Llegan la fecha, la sede, la forma de pago y
+     * las líneas: {producto_id (0 = nuevo), nombre, cantidad, precio}.
+     */
+    public function registrarVentas(): string
+    {
+        if (!puede_crear('posRegistro')) { return $this->error('Su rol no puede registrar ventas.', 'Acceso denegado'); }
+        if (!$this->ventasConRegistro()) { return $this->error('Aplique la migración 099 para poder registrar ventas.', 'Falta una actualización'); }
+
+        $hoy   = date('Y-m-d');
+        $fecha = (string)($_POST['fecha'] ?? '');
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha) || !checkdate((int)substr($fecha, 5, 2), (int)substr($fecha, 8, 2), (int)substr($fecha, 0, 4))
+            || $fecha > $hoy || $fecha < date('Y-m-d', strtotime($hoy . ' -' . self::REGISTRO_DIAS_ATRAS . ' days'))) {
+            return $this->error('Elija la fecha de la venta: hoy o un día anterior (hasta un año atrás).', 'Fecha no válida');
+        }
+        $sedes = $this->sedesCaja();
+        $sede  = (int)($_POST['sede'] ?? 0);
+        if (!in_array($sede, array_map('intval', array_column($sedes, 'sede_id')), true)) { $sede = (int)($sedes[0]['sede_id'] ?? 0); }
+
+        $forma = $this->forma((int)($_POST['forma_id'] ?? 0));
+        if (!$forma || $forma['forma_esmonedero'] === 'S') { return $this->error('Elija la forma de pago.'); }
+        $referencia = self::texto($_POST['referencia'] ?? '', 60);
+        $descontar  = ($_POST['descontar_stock'] ?? 'S') === 'S';
+
+        /* Las líneas, validadas. Un producto nuevo que ya existe con ese nombre se reutiliza. */
+        $entrada = json_decode((string)($_POST['lineas'] ?? '[]'), true);
+        $lineas = [];
+        foreach (is_array($entrada) ? $entrada : [] as $l) {
+            $pid    = (int)($l['producto_id'] ?? 0);
+            $nombre = self::texto($l['nombre'] ?? '', 100);
+            $cant   = round((float)str_replace(',', '.', (string)($l['cantidad'] ?? 0)), 2);
+            $precio = self::numero($l['precio'] ?? 0);
+            if ($pid > 0) {
+                $p = $this->producto($pid);
+                if (!$p || $p['producto_estado'] === 'E') { return $this->error('Un producto de la lista ya no existe. Quítelo y vuelva a agregarlo.'); }
+            } else {
+                if (mb_strlen($nombre) < 2) { return $this->error('Escriba el nombre del producto nuevo.'); }
+                $p = $this->filas("SELECT * FROM dsa_producto WHERE producto_nombre = :n AND producto_estado <> 'E' ORDER BY producto_estado, producto_id LIMIT 1",
+                                  [':n' => $nombre])[0] ?? null;
+            }
+            $etq = $p['producto_nombre'] ?? $nombre;
+            if ($cant <= 0 || $cant > 10000) { return $this->error('La cantidad de «' . $etq . '» debe ser mayor que cero.'); }
+            if ($precio <= 0 || $precio > 100000) { return $this->error('Escriba el precio de «' . $etq . '».'); }
+            $lineas[] = ['p' => $p, 'nombre' => $etq, 'cant' => $cant, 'precio' => $precio, 'sub' => round($cant * $precio, 2)];
+        }
+        if (!$lineas) { return $this->error('Agregue al menos un producto vendido.'); }
+        if (count($lineas) > 100) { return $this->error('Registre como máximo 100 productos a la vez.'); }
+
+        /* El stock, antes de escribir nada (moverStock lo vuelve a comprobar dentro de la transacción). */
+        if ($descontar) {
+            $pedido = [];
+            foreach ($lineas as $l) {
+                if ($l['p'] !== null && $l['p']['producto_tipo'] === 'P') {
+                    $pid = (int)$l['p']['producto_id'];
+                    $pedido[$pid] = ['p' => $l['p'], 'cant' => ($pedido[$pid]['cant'] ?? 0) + $l['cant']];
+                }
+            }
+            foreach ($pedido as $x) {
+                if ($x['cant'] > (float)$x['p']['producto_stock'] + 0.0001) {
+                    return $this->error('No hay stock suficiente de «' . $x['p']['producto_nombre'] . '»: quedan '
+                        . rtrim(rtrim(number_format((float)$x['p']['producto_stock'], 2), '0'), '.') . '.'
+                        . ' Si estas ventas son anteriores al conteo del stock, desmarque «Descontar del inventario».');
+                }
+            }
+        }
+        $total = round(array_sum(array_column($lineas, 'sub')), 2);
+
+        $con = $this->con();
+        if ($con === null) { return $this->error('Sin conexión con la base de datos.'); }
+        $nuevos = [];
+        try {
+            $con->beginTransaction();
+
+            /* 1. Los productos que no existen: como servicio (sin stock), con el precio escrito. */
+            $creados = [];
+            foreach ($lineas as $i => $l) {
+                if ($l['p'] !== null) { continue; }
+                $clave = mb_strtolower($l['nombre']);
+                if (!isset($creados[$clave])) {
+                    $codigo = $this->codigoProductoSugerido();
+                    $con->prepare(
+                        "INSERT INTO dsa_producto (producto_codigo, producto_nombre, producto_categoriaid, producto_tipo, producto_preciocompra,
+                                                   producto_precioventa, producto_stock, producto_stockminimo, producto_vence, producto_estado, producto_usuarioid)
+                         VALUES (:co, :n, NULL, 'S', 0, :pv, 0, 0, 'N', 'A', :u)"
+                    )->execute([':co' => $codigo, ':n' => $l['nombre'], ':pv' => $l['precio'], ':u' => $this->uid() ?: null]);
+                    $creados[$clave] = ['producto_id' => (int)$con->lastInsertId(), 'producto_nombre' => $l['nombre'],
+                                        'producto_tipo' => 'S', 'producto_preciocompra' => 0];
+                    $nuevos[] = $l['nombre'];
+                }
+                $lineas[$i]['p'] = $creados[$clave];
+            }
+
+            /* 2. La venta: sin caja, con la fecha elegida y la hora del registro. */
+            $con->prepare(
+                "INSERT INTO dsa_venta (venta_cajaid, venta_sedeid, venta_subtotal, venta_descuento, venta_total, venta_usuarioid,
+                                        venta_origen, venta_registro, venta_fecharegistro)
+                 VALUES (NULL, :s, :t, 0, :t2, :u, 'R', NOW(), :f)"
+            )->execute([':s' => $sede ?: null, ':t' => $total, ':t2' => $total, ':u' => $this->uid(), ':f' => $fecha . ' ' . date('H:i:s')]);
+            $ventaId = (int)$con->lastInsertId();
+            $numero = 'NV-' . str_pad((string)$ventaId, 6, '0', STR_PAD_LEFT);
+            $con->prepare("UPDATE dsa_venta SET venta_numero = :n WHERE venta_id = :v")->execute([':n' => $numero, ':v' => $ventaId]);
+
+            /* 3. Las líneas y, si se pidió, la salida del inventario. */
+            $insDet = $con->prepare(
+                "INSERT INTO dsa_venta_detalle (detalle_ventaid, detalle_productoid, detalle_nombre, detalle_cantidad, detalle_precio, detalle_costo, detalle_subtotal)
+                 VALUES (:v, :p, :n, :c, :pr, :co, :s)");
+            foreach ($lineas as $l) {
+                $costo = (float)$l['p']['producto_preciocompra'];
+                $insDet->execute([':v' => $ventaId, ':p' => $l['p']['producto_id'], ':n' => $l['p']['producto_nombre'], ':c' => $l['cant'],
+                                  ':pr' => $l['precio'], ':co' => $costo, ':s' => $l['sub']]);
+                if ($descontar && $l['p']['producto_tipo'] === 'P') {
+                    try {
+                        $this->moverStock($con, (int)$l['p']['producto_id'], 'S', 'VEN', $l['cant'], $costo,
+                                          ['venta' => $ventaId, 'detalle' => 'Registro ' . $numero . ' del ' . date('d/m/Y', strtotime($fecha))]);
+                    } catch (\RuntimeException $e) {
+                        throw new \RuntimeException($e->getMessage() . ' Si estas ventas son anteriores al conteo del stock, desmarque «Descontar del inventario».');
+                    }
+                }
+            }
+
+            /* 4. El pago. */
+            $con->prepare(
+                "INSERT INTO dsa_venta_pago (pago_ventaid, pago_formaid, pago_valor, pago_recibido, pago_cambio, pago_referencia)
+                 VALUES (:v, :f, :val, NULL, 0, :ref)"
+            )->execute([':v' => $ventaId, ':f' => $forma['forma_id'], ':val' => $total, ':ref' => $referencia ?: null]);
+            $con->commit();
+        } catch (\Throwable $e) {
+            if ($con->inTransaction()) { $con->rollBack(); }
+            return $this->error($e instanceof \RuntimeException ? $e->getMessage() : 'No fue posible registrar las ventas.');
+        }
+
+        $texto = $numero . ': ' . count($lineas) . ' producto(s) por $' . number_format($total, 2) . ' en ' . mb_strtolower($forma['forma_nombre'])
+               . ', con fecha ' . date('d/m/Y', strtotime($fecha)) . '.';
+        if ($nuevos) { $texto .= ' Se crearon en Productos: ' . implode(', ', $nuevos) . '.'; }
+        return $this->json(['ok' => true, 'tipo' => 'recargar', 'icono' => 'success', 'titulo' => 'Ventas registradas', 'texto' => $texto,
+                            'venta' => $ventaId, 'numero' => $numero]);
     }
 
     /*======================================================================

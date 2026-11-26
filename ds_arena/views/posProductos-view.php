@@ -43,12 +43,12 @@ require_once __DIR__ . "/inc/pos-comun.php";
     .pr-item.inactivo { opacity: .6; }
     .pr-img { width: 4.5rem; height: 4.5rem; border-radius: .6rem; object-fit: cover; background: var(--bs-tertiary-bg); grid-row: span 2; display: grid; place-items: center; font-weight: 700; font-size: 1.4rem; color: #fff; }
     .pr-nombre { font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
-    .pr-meta { display: flex; flex-wrap: wrap; gap: .15rem .7rem; font-size: .8rem; color: var(--bs-secondary-color); }
+    .pr-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .15rem .7rem; font-size: .8rem; color: var(--bs-secondary-color); }
     .pr-datos { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: .4rem; margin-top: .35rem; text-align: center; }
     .pr-datos div { background: var(--bs-tertiary-bg); border-radius: .5rem; padding: .3rem; font-size: .75rem; color: var(--bs-secondary-color); }
     .pr-datos strong { display: block; font-size: .95rem; color: var(--bs-body-color); font-variant-numeric: tabular-nums; }
     .pr-acciones { grid-column: 1 / -1; display: flex; gap: .4rem; margin-top: .4rem; }
-    .pr-acciones .btn { flex: 1 1 0; min-height: 2.5rem; --bs-btn-color: var(--bs-body-color); --bs-btn-border-color: var(--bs-border-color); }
+    .pr-acciones .btn { flex: 1 1 0; min-height: var(--pos-toque); --bs-btn-color: var(--bs-body-color); --bs-btn-border-color: var(--bs-border-color); }
     .pr-vista-img { width: 6rem; height: 6rem; border-radius: .75rem; object-fit: cover; background: var(--bs-tertiary-bg); }
     .pr-margen { font-size: .85rem; }
 </style>
@@ -121,16 +121,16 @@ require_once __DIR__ . "/inc/pos-comun.php";
     </div>
 
     <div class="pr-barra">
-        <input type="search" class="form-control" id="prBuscar" placeholder="Buscar por nombre o código" aria-label="Buscar producto">
-        <select class="form-select" id="prCat" aria-label="Categoría" style="max-width:14rem;">
+        <input type="search" class="form-control form-control-sm" id="prBuscar" placeholder="Buscar por nombre o código" aria-label="Buscar producto">
+        <select class="form-select form-select-sm" id="prCat" aria-label="Categoría" style="max-width:14rem;">
             <option value="">Todas las categorías</option>
             <?php foreach ($categorias as $c): ?><option value="<?php echo (int)$c['categoria_id']; ?>"><?php echo $posH($c['categoria_nombre']); ?></option><?php endforeach; ?>
         </select>
-        <select class="form-select" id="prFiltro" aria-label="Estado" style="max-width:12rem;">
+        <select class="form-select form-select-sm" id="prFiltro" aria-label="Estado" style="max-width:12rem;">
             <option value="">Todos</option><option value="bajo">Bajo el mínimo / agotados</option><option value="I">Inactivos</option>
         </select>
         <?php if ($puedeCrear): ?>
-            <button type="button" class="btn btn-primary pos-btn-grande" id="prNuevo"><i class="fas fa-plus" aria-hidden="true"></i>Nuevo producto</button>
+            <button type="button" class="btn btn-primary pos-btn" id="prNuevo"><i class="fas fa-plus" aria-hidden="true"></i>Nuevo producto</button>
         <?php endif; ?>
     </div>
 
@@ -223,7 +223,7 @@ require_once __DIR__ . "/inc/pos-comun.php";
                     </div>
                 </div>
                 <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Volver</button>
-                    <button type="submit" class="btn btn-primary pos-btn-grande" id="prGuardar"><i class="fas fa-check" aria-hidden="true"></i>Guardar</button></div>
+                    <button type="submit" class="btn btn-primary pos-btn" id="prGuardar"><i class="fas fa-check" aria-hidden="true"></i>Guardar</button></div>
             </form>
         </div>
     </div>
@@ -249,7 +249,7 @@ require_once __DIR__ . "/inc/pos-comun.php";
                     <input type="text" class="form-control" id="prAjMotivo" maxlength="200" required placeholder="Ej.: conteo físico, producto dañado">
                 </div>
                 <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Volver</button>
-                    <button type="submit" class="btn btn-primary pos-btn-grande">Guardar ajuste</button></div>
+                    <button type="submit" class="btn btn-primary pos-btn">Guardar ajuste</button></div>
             </form>
         </div>
     </div>

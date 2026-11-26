@@ -96,7 +96,7 @@ $waDatos = [
                     border-bottom: 1px solid #dee2e6; }
         .tk-barra__in { max-width: 46rem; margin: 0 auto; padding: .75rem 1rem; display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
         .tk-barra__grupo { display: flex; flex-wrap: wrap; gap: .5rem; margin-left: auto; }
-        .tk-barra .btn { min-height: 2.75rem; display: inline-flex; align-items: center; justify-content: center; gap: .45rem; font-weight: 500; }
+        .tk-barra .btn { min-height: var(--pos-toque); display: inline-flex; align-items: center; justify-content: center; gap: .45rem; font-weight: 500; }
         .tk-barra .btn-primary { background: var(--tk-acento); border-color: var(--tk-acento); }
         .tk-barra .btn-primary:hover, .tk-barra .btn-primary:focus-visible { background: #0b5f75; border-color: #0b5f75; }
 
@@ -124,7 +124,7 @@ $waDatos = [
         @media (max-width: 575.98px) {
             .tk-barra__in { padding: .6rem 1rem; }
             .tk-barra__grupo { margin-left: 0; width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
-            .tk-barra__grupo .tk-wa { grid-column: 1 / -1; order: -1; min-height: 3rem; font-size: 1.02rem; }
+            .tk-barra__grupo .tk-wa { grid-column: 1 / -1; order: -1; }
             .tk-volver { width: 100%; }
         }
 

@@ -19,5 +19,5 @@ return [
     'monederoList', 'monederoDetalle',
     'reportePagos',                       /* Reportes › Pagos (migración 088) */
     /* Punto de Venta y Caja (migración 095). posTicket: la nota de venta. */
-    'posVenta', 'posVentas', 'posCaja', 'posProductos', 'posCompras', 'posTicket',
+    'posRegistro', 'posVenta', 'posVentas', 'posCaja', 'posProductos', 'posCompras', 'posTicket',
 ];

@@ -198,6 +198,13 @@ en desarrollo y llevar el resultado a producción con un volcado (ver más abajo
     Champions usa Arena): anular un abono de una reserva registrado por
     error. Justificación, quién y cuándo en `dsa_pago` (el estado ya
     existía). Sin la tabla no hace nada. Repetible.
+40. `099_arena_registrar_ventas.sql` (de `ds_core/database/`, común; sólo
+    Champions usa Arena): «Registrar ventas» ya hechas, con fecha pasada.
+    `dsa_venta.venta_cajaid` admite NULL (la venta registrada no entra en
+    ninguna caja) y se añaden `venta_sedeid`, `venta_origen` (P punto de
+    venta, R registrada) y `venta_registro`. Menú «Registrar ventas» antes
+    de «Vender», con los permisos que cada rol tiene sobre «Vender». Sin la
+    tabla no hace nada. Repetible.
 
 ```bash
 mysql -u USUARIO -p --default-character-set=utf8mb4 BASE < ARCHIVO.sql

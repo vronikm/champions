@@ -92,7 +92,7 @@ if (!isset($_POST['modulo_arena'])) {
 /*----------  Punto de Venta y Caja (migración 095)  ----------*/
 $operacionesPos = [
     'posAbrirCaja' => 'abrirCaja', 'posCerrarCaja' => 'cerrarCaja', 'posMovimientoCaja' => 'movimientoCaja',
-    'posVender' => 'vender', 'posAnularVenta' => 'anularVenta', 'posBuscarClientes' => 'buscarClientesPos',
+    'posVender' => 'vender', 'posRegistrarVentas' => 'registrarVentas', 'posAnularVenta' => 'anularVenta', 'posBuscarClientes' => 'buscarClientesPos',
     'posGuardarProducto' => 'guardarProducto', 'posAjustarStock' => 'ajustarStock',
     'posGuardarCompra' => 'guardarCompra', 'posPagarCompra' => 'pagarCompra', 'posAnularCompra' => 'anularCompra',
 ];

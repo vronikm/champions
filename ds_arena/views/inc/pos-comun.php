@@ -13,10 +13,20 @@ $posDinero = static fn ($v): string => ((float)$v < 0 ? '−$' : '$') . number_f
 $posCant   = static fn ($v): string => rtrim(rtrim(number_format((float)$v, 2), '0'), '.');
 ?>
 <style>
+    /* Tamaños como el resto del sistema (Instalaciones): con ratón, botones
+       .btn-sm de 31 px y campos normales; en pantallas táctiles, 44 px (el
+       pulgar), como hace core.css con «pointer: coarse». --pos-toque es esa
+       altura mínima: «auto» con ratón, 44 px al tocar. */
+    :root { --pos-toque: auto; }
+    @media (pointer: coarse) { :root { --pos-toque: 44px; } }
     .pos { --pos-radio: .85rem; }
-    .pos .form-control, .pos .form-select { min-height: 2.75rem; }
+    .pos .form-control, .pos .form-select { min-height: var(--pos-toque); }
     @media (max-width: 575.98px) { .pos .form-control, .pos .form-select { font-size: 1rem; } }
-    .pos-btn-grande { min-height: 3rem; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: .4rem; }
+    /* La acción de una pantalla: un .btn-sm (31 px), 44 px al tocar. En el
+       pie de un modal, del tamaño normal, como los demás modales. */
+    .pos-btn { --bs-btn-padding-y: .25rem; --bs-btn-padding-x: .6rem; --bs-btn-font-size: .875rem; --bs-btn-border-radius: var(--bs-border-radius-sm);
+               min-height: var(--pos-toque); font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: .35rem; }
+    .modal-footer .pos-btn, .pos-btn.pos-btn--normal { --bs-btn-padding-y: .375rem; --bs-btn-padding-x: .75rem; --bs-btn-font-size: 1rem; --bs-btn-border-radius: var(--bs-border-radius); }
     .pos-tarjeta { border: 1px solid var(--bs-border-color); border-radius: var(--pos-radio); background: var(--bs-body-bg); }
 
     /* Cifras */
@@ -57,7 +67,7 @@ $posCant   = static fn ($v): string => rtrim(rtrim(number_format((float)$v, 2), 
         .pos-hoja .modal-header::before { content: ""; position: absolute; top: .4rem; left: 50%; width: 2.5rem; height: .25rem;
                                            margin-left: -1.25rem; border-radius: 1rem; background: var(--bs-border-color); }
         .pos-hoja .modal-footer { flex-wrap: nowrap; padding-bottom: max(.75rem, env(safe-area-inset-bottom)); }
-        .pos-hoja .modal-footer > .btn { flex: 1 1 0; min-height: 3rem; margin: 0 .25rem; }
+        .pos-hoja .modal-footer > .btn { flex: 1 1 0; min-height: 2.75rem; margin: 0 .25rem; white-space: nowrap; font-size: .9375rem; padding-inline: .5rem; }
     }
     /* El formulario entre .modal-content y .modal-body: cabecera y pie fijos, el cuerpo se desplaza. */
     .pos-hoja .modal-content > form { display: flex; flex-direction: column; min-height: 0; max-height: 100%; flex: 1 1 auto; }

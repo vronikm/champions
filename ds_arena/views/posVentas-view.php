@@ -36,7 +36,7 @@ require_once __DIR__ . "/inc/pos-comun.php";
 ?>
 <style>
     .vt-nav { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: .5rem; padding: .6rem; }
-    .vt-nav a.btn { width: 2.75rem; height: 2.75rem; border-radius: 50%; display: inline-grid; place-items: center; padding: 0;
+    .vt-nav a.btn { width: 2rem; height: 2rem; min-width: var(--pos-toque); min-height: var(--pos-toque); border-radius: 50%; display: inline-grid; place-items: center; padding: 0;
                     --bs-btn-color: var(--bs-body-color); --bs-btn-border-color: var(--bs-border-color); }
     .vt-nav h2 { font-size: 1.15rem; font-weight: 700; margin: 0; text-align: center; }
     .vt-filtros { display: flex; flex-wrap: wrap; gap: .5rem; padding: 0 .6rem .6rem; }
@@ -57,8 +57,8 @@ require_once __DIR__ . "/inc/pos-comun.php";
             </div>
         <?php endif; ?>
         <form method="get" class="vt-filtros" id="vtFiltros">
-            <input type="date" name="dia" class="form-control" value="<?php echo $posH($dia); ?>" max="<?php echo $hoy; ?>" aria-label="Día" onchange="this.form.q.value='';this.form.submit()">
-            <input type="search" name="q" class="form-control" value="<?php echo $posH($buscar); ?>" placeholder="Buscar por número o cliente" aria-label="Buscar venta">
+            <input type="date" name="dia" class="form-control form-control-sm" value="<?php echo $posH($dia); ?>" max="<?php echo $hoy; ?>" aria-label="Día" onchange="this.form.q.value='';this.form.submit()">
+            <input type="search" name="q" class="form-control form-control-sm" value="<?php echo $posH($buscar); ?>" placeholder="Buscar por número o cliente" aria-label="Buscar venta">
             <?php if ($buscar !== ''): ?><a class="btn btn-outline-secondary" href="?dia=<?php echo $posH($dia); ?>" style="flex:0 0 auto;">Quitar búsqueda</a><?php endif; ?>
         </form>
     </div>
@@ -113,7 +113,8 @@ require_once __DIR__ . "/inc/pos-comun.php";
                 <?php foreach ($ventas as $v): $anulada = $v['venta_estado'] === 'X'; ?>
                     <li class="pos-fila">
                         <span class="pos-fila__titulo<?php echo $anulada ? ' pos-tachada' : ''; ?>"><?php echo $posH($v['venta_numero']); ?>
-                            <?php if ($anulada): ?><span class="badge text-bg-secondary ms-1">Anulada</span><?php endif; ?></span>
+                            <?php if ($anulada): ?><span class="badge text-bg-secondary ms-1">Anulada</span><?php endif; ?>
+                            <?php if (($v['venta_origen'] ?? 'P') === 'R'): ?><span class="badge text-bg-info ms-1" title="Registrada después en «Registrar ventas»: no entró en ninguna caja">Registrada</span><?php endif; ?></span>
                         <span class="pos-fila__valor<?php echo $anulada ? ' pos-tachada' : ''; ?>"><?php echo $posDinero($v['venta_total']); ?></span>
                         <span class="pos-fila__meta">
                             <span><i class="far fa-clock me-1" aria-hidden="true"></i><?php echo date($buscar !== '' ? 'd/m H:i' : 'H:i', strtotime($v['venta_fecharegistro'])); ?></span>
@@ -156,7 +157,7 @@ require_once __DIR__ . "/inc/pos-comun.php";
                     <?php endif; ?>
                 </div>
                 <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Volver</button>
-                    <button type="submit" class="btn btn-danger pos-btn-grande"><i class="fas fa-ban" aria-hidden="true"></i>Anular</button></div>
+                    <button type="submit" class="btn btn-danger pos-btn"><i class="fas fa-ban" aria-hidden="true"></i>Anular</button></div>
             </form>
         </div>
     </div>

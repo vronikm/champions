@@ -3,8 +3,8 @@
 | Arena › Punto de Venta y Caja › Caja (migración 095).
 |
 | La caja de cada usuario: cuánto efectivo debería haber y de dónde sale
-| (saldo inicial, ventas, cobros de reservas, depósitos al monedero, otros
-| ingresos, egresos y devoluciones), lo cobrado por otros medios, los
+| (saldo inicial, ventas, otros ingresos y egresos), lo cobrado por otros
+| medios, los
 | movimientos y el cierre con arqueo. ?id= muestra una caja concreta (las
 | cerradas guardan sus cifras del momento del cierre).
 */
@@ -61,7 +61,7 @@ require_once __DIR__ . "/inc/pos-comun.php";
     @media (max-width: 991.98px) { .caja-cuentas { grid-template-columns: 1fr; } }
     @media (max-width: 575.98px) {
         .caja-acciones { width: 100%; margin-left: 0; }
-        .caja-acciones .btn { flex: 1 1 0; min-height: 2.75rem; }
+        .caja-acciones .btn { flex: 1 1 0; white-space: nowrap; padding-inline: .4rem; }
     }
 </style>
 
@@ -71,7 +71,7 @@ require_once __DIR__ . "/inc/pos-comun.php";
         <i class="fas fa-cash-register fa-2x text-body-secondary mb-2" aria-hidden="true"></i>
         <h2 class="h5">No tiene una caja abierta</h2>
         <p class="text-body-secondary">Para vender o registrar ingresos y egresos, abra su caja con el efectivo inicial.</p>
-        <a class="btn btn-primary pos-btn-grande" href="<?php echo APP_URL; ?>posVenta/"><i class="fas fa-lock-open" aria-hidden="true"></i>Abrir caja</a>
+        <a class="btn btn-primary pos-btn" href="<?php echo APP_URL; ?>posVenta/"><i class="fas fa-lock-open" aria-hidden="true"></i>Abrir caja</a>
     </div>
 <?php else: ?>
     <div class="caja-cab">
@@ -86,11 +86,11 @@ require_once __DIR__ . "/inc/pos-comun.php";
         <?php if ($abierta): ?>
             <div class="caja-acciones pos-no-imprimir">
                 <?php if ($propia && $puedeMover): ?>
-                    <button type="button" class="btn btn-outline-success" data-mov="I"><i class="fas fa-plus me-1" aria-hidden="true"></i>Ingreso</button>
-                    <button type="button" class="btn btn-outline-danger" data-mov="E"><i class="fas fa-minus me-1" aria-hidden="true"></i>Egreso</button>
+                    <button type="button" class="btn btn-outline-success pos-btn" data-mov="I"><i class="fas fa-plus" aria-hidden="true"></i>Ingreso</button>
+                    <button type="button" class="btn btn-outline-danger pos-btn" data-mov="E"><i class="fas fa-minus" aria-hidden="true"></i>Egreso</button>
                 <?php endif; ?>
                 <?php if ($propia || $supervisa): ?>
-                    <button type="button" class="btn btn-primary" id="cajaBtnCerrar"><i class="fas fa-lock me-1" aria-hidden="true"></i>Cerrar caja</button>
+                    <button type="button" class="btn btn-primary pos-btn" id="cajaBtnCerrar"><i class="fas fa-lock" aria-hidden="true"></i>Cerrar caja</button>
                 <?php endif; ?>
             </div>
         <?php else: ?>
@@ -109,11 +109,15 @@ require_once __DIR__ . "/inc/pos-comun.php";
             <strong class="pos-kpi__cifra"><?php echo $posDinero($r['vendido']); ?></strong>
             <span class="pos-kpi__nota"><?php echo (int)$r['ventas']; ?> ventas<?php echo $r['anuladas'] ? ' · ' . (int)$r['anuladas'] . ' anulada(s)' : ''; ?></span>
         </div>
+        <?php /* Los cobros de reservas ya no entran en la caja: sólo los
+                 muestra una caja cerrada antes de ese cambio que los tenía. */
+        if ((int)($r['cobrosReservas'] ?? 0) > 0): ?>
         <div class="pos-kpi">
             <span class="pos-kpi__etq"><i class="fas fa-calendar-check" aria-hidden="true"></i>Cobros de reservas</span>
             <strong class="pos-kpi__cifra"><?php echo (int)$r['cobrosReservas']; ?></strong>
             <span class="pos-kpi__nota">en efectivo <?php echo $posDinero($r['reservasEfectivo']); ?></span>
         </div>
+        <?php endif; ?>
         <?php if (!$abierta): $dif = (float)$caja['caja_diferencia']; ?>
             <div class="pos-kpi <?php echo abs($dif) < 0.01 ? 'pos-kpi--ok' : 'pos-kpi--alerta'; ?>">
                 <span class="pos-kpi__etq"><i class="fas fa-scale-balanced" aria-hidden="true"></i>Diferencia del arqueo</span>
@@ -129,7 +133,7 @@ require_once __DIR__ . "/inc/pos-comun.php";
             <ul class="caja-cuenta">
                 <li><span>Saldo inicial</span><span><?php echo $posDinero($r['inicial']); ?></span></li>
                 <li><span>+ Ventas en efectivo</span><span><?php echo $posDinero($r['ventasEfectivo']); ?></span></li>
-                <li><span>+ Cobros de reservas en efectivo</span><span><?php echo $posDinero($r['reservasEfectivo']); ?></span></li>
+                <?php if ((float)($r['reservasEfectivo'] ?? 0) > 0): ?><li><span>+ Cobros de reservas en efectivo</span><span><?php echo $posDinero($r['reservasEfectivo']); ?></span></li><?php endif; ?>
                 <?php if ($r['depositosEfectivo'] > 0): ?><li><span>+ Depósitos al monedero</span><span><?php echo $posDinero($r['depositosEfectivo']); ?></span></li><?php endif; ?>
                 <li><span>+ Otros ingresos</span><span><?php echo $posDinero($r['ingresosEfectivo']); ?></span></li>
                 <li><span>− Egresos</span><span class="pos-neg"><?php echo $posDinero(-$r['egresosEfectivo']); ?></span></li>
@@ -239,7 +243,7 @@ require_once __DIR__ . "/inc/pos-comun.php";
                     <input type="text" class="form-control" id="cajaMovDetalle" name="detalle" maxlength="200" placeholder="Ej.: factura 001-002-345">
                 </div>
                 <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Volver</button>
-                    <button type="submit" class="btn btn-primary pos-btn-grande" id="cajaMovGuardar">Registrar</button></div>
+                    <button type="submit" class="btn btn-primary pos-btn" id="cajaMovGuardar">Registrar</button></div>
             </form>
         </div>
     </div>
@@ -266,7 +270,7 @@ require_once __DIR__ . "/inc/pos-comun.php";
                     <textarea class="form-control" id="cajaObs" rows="2" maxlength="250" placeholder="Si no cuadra, explique por qué"></textarea>
                 </div>
                 <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Volver</button>
-                    <button type="submit" class="btn btn-danger pos-btn-grande"><i class="fas fa-lock" aria-hidden="true"></i>Cerrar caja</button></div>
+                    <button type="submit" class="btn btn-danger pos-btn"><i class="fas fa-lock" aria-hidden="true"></i>Cerrar caja</button></div>
             </form>
         </div>
     </div>
@@ -289,7 +293,7 @@ document.addEventListener('DOMContentLoaded', function () {
             $('cajaMovTitulo').textContent = t === 'I' ? 'Registrar un ingreso' : 'Registrar un egreso (salida de dinero)';
             $('cajaMovConcepto').value = ''; $('cajaMovValor').value = ''; $('cajaMovDetalle').value = '';
             $('cajaMovChips').innerHTML = atajos[t].map(function (a) { return '<button type="button" class="btn btn-sm btn-outline-secondary">' + a + '</button>'; }).join('');
-            $('cajaMovGuardar').className = 'btn pos-btn-grande ' + (t === 'I' ? 'btn-success' : 'btn-danger');
+            $('cajaMovGuardar').className = 'btn pos-btn ' + (t === 'I' ? 'btn-success' : 'btn-danger');
             modalMov.show();
         });
     });

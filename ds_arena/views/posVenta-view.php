@@ -68,7 +68,7 @@ require_once __DIR__ . "/inc/pos-comun.php";
                     <?php foreach ($sedes as $s): ?><option value="<?php echo (int)$s['sede_id']; ?>"><?php echo $posH($s['sede_nombre']); ?></option><?php endforeach; ?>
                 </select>
             <?php endif; ?>
-            <button type="submit" class="btn btn-primary w-100 pos-btn-grande"><i class="fas fa-lock-open" aria-hidden="true"></i>Abrir caja</button>
+            <button type="submit" class="btn btn-primary w-100 pos-btn"><i class="fas fa-lock-open" aria-hidden="true"></i>Abrir caja</button>
             <p class="small text-body-secondary text-center mt-2 mb-0">Queda a su nombre (<?php echo $posH(ds_nombre_usuario()); ?>). Al terminar el turno, ciérrela en <a href="<?php echo APP_URL; ?>posCaja/">Caja</a>.</p>
         </form>
     </div>
@@ -107,10 +107,10 @@ require_once __DIR__ . "/inc/pos-comun.php";
         .pos-vender { display: grid; grid-template-columns: minmax(0, 1fr) 24rem; gap: 1rem; align-items: start; }
         .pos-buscar { position: relative; }
         .pos-buscar i { position: absolute; left: .9rem; top: 50%; transform: translateY(-50%); color: var(--bs-secondary-color); }
-        .pos-buscar input { padding-left: 2.5rem; min-height: 3rem; font-size: 1rem; border-radius: 2rem; }
+        .pos-buscar input { padding-left: 2.5rem; min-height: var(--pos-toque); font-size: 1rem; border-radius: 2rem; }
         .pos-cats { display: flex; gap: .4rem; overflow-x: auto; padding: .6rem 0; scrollbar-width: none; }
         .pos-cats::-webkit-scrollbar { display: none; }
-        .pos-cats button { flex: 0 0 auto; border-radius: 2rem; min-height: 2.5rem; padding: .3rem .9rem;
+        .pos-cats button { flex: 0 0 auto; border-radius: 2rem; min-height: var(--pos-toque); padding: .25rem .8rem; font-size: .875rem;
                            --bs-btn-color: var(--bs-body-color); --bs-btn-border-color: var(--bs-border-color); }
         .pos-cats button[aria-pressed="true"] { background: #0e7490; border-color: #0e7490; color: #fff; }
         .pos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); gap: .6rem; }
@@ -142,16 +142,16 @@ require_once __DIR__ . "/inc/pos-comun.php";
         .pos-linea__nombre { font-weight: 600; font-size: .9rem; overflow-wrap: anywhere; }
         .pos-linea__sub { font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
         .pos-linea__ctrl { grid-column: 1 / -1; display: flex; align-items: center; gap: .4rem; }
-        .pos-paso { width: 2.5rem; height: 2.5rem; border-radius: 50%; display: inline-grid; place-items: center; padding: 0;
+        .pos-paso { width: 2rem; height: 2rem; min-width: var(--pos-toque); min-height: var(--pos-toque); border-radius: 50%; display: inline-grid; place-items: center; padding: 0;
                     --bs-btn-color: var(--bs-body-color); --bs-btn-border-color: var(--bs-border-color); }
-        .pos-linea__cant { width: 4rem; text-align: center; font-weight: 700; min-height: 2.5rem !important; }
+        .pos-linea__cant { width: 4rem; text-align: center; font-weight: 700; }
         .pos-linea__precio { font-size: .8rem; color: var(--bs-secondary-color); margin-left: auto; }
         .pos-carrito__vacio { text-align: center; color: var(--bs-secondary-color); padding: 2rem 1rem; }
         .pos-carrito__pie { padding: .75rem 1rem; border-top: 1px solid var(--bs-border-color); display: flex; flex-direction: column; gap: .5rem; }
         .pos-tot { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; }
         .pos-tot--grande { font-size: 1.5rem; font-weight: 800; }
         .pos-extra { display: flex; gap: .4rem; }
-        .pos-extra .btn { flex: 1 1 0; min-height: 2.5rem; font-size: .85rem; --bs-btn-color: var(--bs-body-color); --bs-btn-border-color: var(--bs-border-color); }
+        .pos-extra .btn { flex: 1 1 0; min-height: var(--pos-toque); font-size: .875rem; padding: .25rem .5rem; --bs-btn-color: var(--bs-body-color); --bs-btn-border-color: var(--bs-border-color); }
         .pos-cliente { display: flex; align-items: center; gap: .5rem; padding: .45rem .6rem; border-radius: .6rem; background: var(--bs-info-bg-subtle); font-size: .85rem; }
         .pos-resultados { list-style: none; margin: .3rem 0 0; padding: 0; border: 1px solid var(--bs-border-color); border-radius: .6rem; max-height: 12rem; overflow-y: auto; }
         .pos-resultados button { width: 100%; text-align: left; border: 0; background: transparent; padding: .5rem .7rem; color: var(--bs-body-color); }
@@ -176,18 +176,18 @@ require_once __DIR__ . "/inc/pos-comun.php";
                                box-shadow: 0 .5rem 1.5rem rgba(0,0,0,.3); border: 0; text-align: left; }
             .pos-barra-movil[hidden] { display: none; }
             .pos-barra-movil strong { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
-            .pos-barra-movil .btn { margin-left: auto; min-height: 2.75rem; font-weight: 700; }
+            .pos-barra-movil .btn { margin-left: auto; min-height: var(--pos-toque); font-weight: 700; }
         }
         @media (max-width: 575.98px) { .pos-grid { grid-template-columns: repeat(auto-fill, minmax(7.2rem, 1fr)); gap: .45rem; } }
 
         /* Cobrar */
         .pos-formas { display: grid; grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)); gap: .5rem; }
-        .pos-formas .btn { min-height: 4rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .25rem;
+        .pos-formas .btn { min-height: var(--pos-toque); font-size: .875rem; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: .4rem; padding: .3rem .5rem;
                            --bs-btn-color: var(--bs-body-color); --bs-btn-border-color: var(--bs-border-color); font-weight: 600; }
-        .pos-formas .btn i { font-size: 1.3rem; }
+        .pos-formas .btn i { font-size: 1rem; }
         .pos-formas .btn-check:checked + .btn { background: #0e7490; border-color: #0e7490; color: #fff; }
         .pos-rapidos { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .5rem; }
-        .pos-rapidos .btn { flex: 1 1 4.5rem; min-height: 2.75rem; font-weight: 600; --bs-btn-color: var(--bs-body-color); --bs-btn-border-color: var(--bs-border-color); }
+        .pos-rapidos .btn { flex: 1 1 4.5rem; min-height: var(--pos-toque); font-size: .875rem; padding: .25rem .5rem; font-weight: 600; --bs-btn-color: var(--bs-body-color); --bs-btn-border-color: var(--bs-border-color); }
         .pos-cambio { margin-top: .75rem; padding: .75rem 1rem; border-radius: .75rem; background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis);
                       display: flex; justify-content: space-between; align-items: center; font-size: 1.1rem; }
         .pos-cambio strong { font-size: 1.6rem; font-variant-numeric: tabular-nums; }
@@ -269,7 +269,7 @@ require_once __DIR__ . "/inc/pos-comun.php";
                 <div class="pos-tot small text-body-secondary" id="posFilaSub" hidden><span>Subtotal</span><span id="posSub">$0.00</span></div>
                 <div class="pos-tot small text-danger" id="posFilaDesc" hidden><span>Descuento</span><span id="posDesc">−$0.00</span></div>
                 <div class="pos-tot pos-tot--grande"><span>Total</span><span id="posTotal">$0.00</span></div>
-                <button type="button" class="btn btn-primary pos-btn-grande w-100" id="posCobrar" disabled>
+                <button type="button" class="btn btn-primary pos-btn w-100" id="posCobrar" disabled>
                     <i class="fas fa-hand-holding-dollar" aria-hidden="true"></i><span>Cobrar</span></button>
             </div>
         </aside>
@@ -315,7 +315,7 @@ require_once __DIR__ . "/inc/pos-comun.php";
                     </div>
                     <div class="modal-footer" id="posCobroPie">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Volver</button>
-                        <button type="submit" class="btn btn-primary pos-btn-grande" id="posConfirmar"><i class="fas fa-check" aria-hidden="true"></i>Registrar venta</button>
+                        <button type="submit" class="btn btn-primary pos-btn" id="posConfirmar"><i class="fas fa-check" aria-hidden="true"></i>Registrar venta</button>
                     </div>
                 </form>
             </div>
@@ -607,11 +607,11 @@ require_once __DIR__ . "/inc/pos-comun.php";
                     '<h3 class="h4 mt-3 mb-1">Venta registrada</h3><p class="text-body-secondary mb-2">' + esc(j.numero) + ' · ' + esc(j.forma) + ' · ' + posDinero(j.total) + '</p>' +
                     (j.cambio > 0 ? '<div class="pos-cambio justify-content-center gap-3"><span>Entregue de cambio</span><strong>' + posDinero(j.cambio) + '</strong></div>' : '') +
                     '<div class="d-grid gap-2 mt-3">' +
-                    '<a class="btn btn-outline-secondary pos-btn-grande" href="' + j.ticket + '&imprimir=1" target="_blank" rel="noopener"><i class="fas fa-print"></i>Imprimir comprobante</a>' +
+                    '<a class="btn btn-outline-secondary pos-btn" href="' + j.ticket + '&imprimir=1" target="_blank" rel="noopener"><i class="fas fa-print"></i>Imprimir comprobante</a>' +
                     /* WhatsApp: la nota de venta con el modal del recibo abierto (PDF y mensaje, sin enlaces). */
-                    '<a class="btn btn-outline-success pos-btn-grande" href="' + j.ticket + '&whatsapp=1" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i>Enviar por WhatsApp</a>' +
+                    '<a class="btn btn-outline-success pos-btn" href="' + j.ticket + '&whatsapp=1" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i>Enviar por WhatsApp</a>' +
                     '</div></div>';
-                $('posCobroPie').innerHTML = '<button type="button" class="btn btn-primary pos-btn-grande w-100" data-bs-dismiss="modal"><i class="fas fa-plus"></i>Nueva venta</button>';
+                $('posCobroPie').innerHTML = '<button type="button" class="btn btn-primary pos-btn w-100" data-bs-dismiss="modal"><i class="fas fa-plus"></i>Nueva venta</button>';
                 /* El stock de lo vendido baja también en pantalla. */
                 carrito.forEach(function (l) { var p = porId[l.id]; if (!p.servicio) { p.stock = cent(p.stock - l.cant); } });
                 carrito = []; cliente = null; limpiarDescuento(); refrescar();

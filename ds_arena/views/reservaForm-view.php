@@ -58,6 +58,11 @@ foreach ($instalaciones as $i) {
 
 $h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
 
+/* Cobrar al reservar (2026-11-26): las formas de pago y el saldo del monedero
+   del cliente ya elegido (al elegir otro, lo trae el buscador). */
+$formasCobro  = $esAlta ? $insArena->formasIngreso() : [];
+$saldoCliente = $esAlta && $clienteSel ? $insArena->saldoMonedero((int)$clienteSel['cliente_id']) : 0.0;
+
 require_once __DIR__ . "/inc/layout-top.php";
 ?>
 
@@ -265,6 +270,87 @@ require_once __DIR__ . "/inc/layout-top.php";
                     <?php endif; ?>
                 </div>
             </div>
+
+            <?php if ($esAlta && $formasCobro): ?>
+            <!-- ============ 4. Abono o pago (2026-11-26) ============ -->
+            <?php /*
+            | Cobrar en el mismo paso: lo más común es que el cliente pague al
+            | reservar. «Cobrar después» deja la reserva pendiente, como antes.
+            | Con «Pago completo» el valor es el total (el servidor lo vuelve a
+            | calcular); con «Abono», lo que se escriba, hasta el total. Los
+            | campos van en un fieldset desactivado mientras no se cobra: así no
+            | se envían. El servidor valida todo antes de crear la reserva y lo
+            | registra con las reglas de «Registrar abono».
+            */ ?>
+            <div class="card mb-3" id="cobroCard">
+                <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <h3 class="card-title"><span class="ar-paso">4</span>Abono o pago <small class="text-body-secondary fw-normal ms-1">(opcional)</small></h3>
+                    <span class="ar-cobro__total" id="cobroTotal" hidden></span>
+                </div>
+                <div class="card-body">
+                    <div class="ar-cobro__modos" role="radiogroup" aria-label="¿Cobra ahora?">
+                        <input type="radio" class="btn-check" name="cobro_modo" id="cobroDespues" value="despues" autocomplete="off" checked>
+                        <label class="btn btn-outline-secondary" for="cobroDespues"><i class="far fa-clock" aria-hidden="true"></i><span>Cobrar después</span></label>
+                        <input type="radio" class="btn-check" name="cobro_modo" id="cobroTotalSi" value="total" autocomplete="off">
+                        <label class="btn btn-outline-secondary" for="cobroTotalSi"><i class="fas fa-circle-check" aria-hidden="true"></i><span>Pago completo</span></label>
+                        <input type="radio" class="btn-check" name="cobro_modo" id="cobroAbono" value="abono" autocomplete="off">
+                        <label class="btn btn-outline-secondary" for="cobroAbono"><i class="fas fa-coins" aria-hidden="true"></i><span>Abono</span></label>
+                    </div>
+                    <p class="form-text mb-0 mt-2" id="cobroAyuda">La reserva queda pendiente; se cobra después desde su detalle.</p>
+
+                    <fieldset class="ar-cobro__campos mt-3" id="cobroCampos" hidden disabled>
+                        <legend class="visually-hidden">Datos del cobro</legend>
+                        <label class="form-label fw-medium mb-1">Forma de pago</label>
+                        <div class="ar-cobro__formas" role="radiogroup" aria-label="Forma de pago">
+                            <?php foreach ($formasCobro as $k => $f):
+                                $icono = ['EFE' => 'fa-money-bill-wave', 'TRA' => 'fa-building-columns', 'TAR' => 'fa-credit-card', 'MON' => 'fa-wallet'][$f['forma_codigo']] ?? 'fa-cash-register'; ?>
+                                <input type="radio" class="btn-check disable-adminlte-validations" name="pago_formaid" id="cobroForma<?php echo (int)$f['forma_id']; ?>"
+                                       value="<?php echo (int)$f['forma_id']; ?>" data-codigo="<?php echo $h($f['forma_codigo']); ?>"
+                                       data-ref="<?php echo $h($f['forma_requiereref']); ?>" data-monedero="<?php echo $h($f['forma_esmonedero']); ?>"<?php echo $k === 0 ? ' checked' : ''; ?>>
+                                <label class="btn btn-outline-secondary" for="cobroForma<?php echo (int)$f['forma_id']; ?>">
+                                    <i class="fas <?php echo $icono; ?>" aria-hidden="true"></i><span><?php echo $h($f['forma_nombre']); ?></span>
+                                    <?php if ($f['forma_esmonedero'] === 'S'): ?><small class="ar-cobro__saldo" id="cobroSaldoMon"></small><?php endif; ?>
+                                </label>
+                            <?php endforeach; ?>
+                        </div>
+
+                        <div class="row g-2 mt-1">
+                            <div class="col-6 col-md-4">
+                                <label for="cobroValor" class="form-label fw-medium mb-1">Valor <span class="text-danger" aria-hidden="true">*</span></label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input type="text" inputmode="decimal" class="form-control text-end fw-bold" id="cobroValor" name="pago_valor" autocomplete="off" placeholder="0.00">
+                                </div>
+                                <div class="invalid-feedback d-block" id="cobroValorError" hidden></div>
+                            </div>
+                            <div class="col-6 col-md-4">
+                                <label for="cobroFecha" class="form-label fw-medium mb-1">Fecha del cobro</label>
+                                <input type="date" class="form-control" id="cobroFecha" name="pago_fecha" value="<?php echo date('Y-m-d'); ?>"
+                                       max="<?php echo date('Y-m-d'); ?>" min="<?php echo date('Y-m-d', strtotime('-' . arenaController::COBRO_DIAS_ATRAS . ' days')); ?>">
+                            </div>
+                            <div class="col-12 col-md-4" id="cobroRecibidoGrupo">
+                                <label for="cobroRecibido" class="form-label fw-medium mb-1">Recibido <small class="text-body-secondary fw-normal">(para el vuelto)</small></label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input type="text" inputmode="decimal" class="form-control text-end" id="cobroRecibido" name="pago_recibido" autocomplete="off" placeholder="Opcional">
+                                </div>
+                            </div>
+                            <div class="col-12 col-md-4" id="cobroRefGrupo" hidden>
+                                <label for="cobroRef" class="form-label fw-medium mb-1">Comprobante <span class="text-danger" aria-hidden="true">*</span></label>
+                                <input type="text" class="form-control" id="cobroRef" name="pago_referencia" maxlength="60" autocomplete="off" placeholder="Número de la transferencia">
+                            </div>
+                        </div>
+
+                        <div class="ar-cobro__vuelto mt-2" id="cobroVuelto" hidden>
+                            <span>Vuelto: <strong id="cobroVueltoValor">$0.00</strong></span>
+                            <label class="form-check mb-0"><input class="form-check-input" type="checkbox" name="pago_vueltoamonedero" value="S" id="cobroVueltoMon">
+                                <span class="form-check-label">Dejarlo en su monedero</span></label>
+                        </div>
+                        <div class="ar-cobro__queda mt-2" id="cobroQueda" aria-live="polite"></div>
+                    </fieldset>
+                </div>
+            </div>
+            <?php endif; ?>
 
             <!-- Importe y guardar, siempre a la vista -->
             <div class="ar-barra">
@@ -535,6 +621,7 @@ require_once __DIR__ . "/inc/layout-top.php";
     function actualizarResumen() {
         if (!desde.value || !hasta.value) {
             pintarDevolucion(0, 0);
+            form.dispatchEvent(new CustomEvent('ar:importe', { detail: { importe: 0, semanal: false } }));
             resumen.hidden = true;
             caja.style.display = 'none'; pista.hidden = false;
             if (guardar) { guardar.disabled = true; guardar.title = 'Elija un horario disponible'; }
@@ -587,6 +674,8 @@ require_once __DIR__ . "/inc/layout-top.php";
         if (textoGuardar && RESERVA === 0) { textoGuardar.textContent = semanal ? 'Reservar cada ' + nombreDia : 'Reservar'; }
         if (guardar) { guardar.disabled = false; guardar.title = ''; }
         pintarDevolucion(importe, ABONADO);
+        /* El paso «Abono o pago» se entera del importe (el de una semana, si es fija). */
+        form.dispatchEvent(new CustomEvent('ar:importe', { detail: { importe: Math.round(importe * 100) / 100, semanal: !!semanal } }));
     }
 
     /*----------  Devolver la diferencia al pasar a un horario más barato  ----------*/
@@ -803,6 +892,8 @@ require_once __DIR__ . "/inc/layout-top.php";
         buscar.hidden = true;
         elegido.hidden = false;
         buscar.classList.remove('is-invalid');
+        /* El saldo de su monedero, para el paso «Abono o pago». */
+        form.dispatchEvent(new CustomEvent('ar:cliente', { detail: { saldo: +c.saldo || 0 } }));
         /* Siguiente paso: la instalación, o el horario si ya está. */
         var inst = document.getElementById('reserva_instalacionid');
         (inst.value ? document.getElementById('agendaBloques') : inst).scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -852,7 +943,144 @@ require_once __DIR__ . "/inc/layout-top.php";
 })();
 </script>
 
+<?php if ($esAlta && $formasCobro): ?>
+<script>
+/*----------  4. Abono o pago (2026-11-26)  ----------*/
+/*
+| Se entera del importe (evento ar:importe, del cálculo del horario) y del
+| saldo del monedero del cliente (ar:cliente, del buscador). El servidor lo
+| vuelve a validar todo antes de crear la reserva.
+*/
+(function () {
+    var $ = function (id) { return document.getElementById(id); };
+    var card = $('cobroCard'), form = card.closest('form');
+    var campos = $('cobroCampos'), ayuda = $('cobroAyuda'), valor = $('cobroValor'), recibido = $('cobroRecibido');
+    var fechaCobro = $('cobroFecha'), ref = $('cobroRef'), errorValor = $('cobroValorError');
+    var textoGuardar = $('textoGuardar'), fechaReserva = $('reserva_fecha');
+    var HOY = '<?php echo date('Y-m-d'); ?>';
+    var importe = 0, semanal = false, saldo = <?php echo json_encode(round($saldoCliente, 2)); ?>, base = textoGuardar.textContent, fechaTocada = false;
+    var dinero = function (v) { return '$' + (+v || 0).toFixed(2); };
+    var num = function (s) { s = String(s || '').replace(/[$\s]/g, ''); if (/^\d+,\d{1,2}$/.test(s)) { s = s.replace(',', '.'); } return Math.round((parseFloat(s.replace(/,/g, '')) || 0) * 100) / 100; };
+    var modo = function () { return form.querySelector('input[name="cobro_modo"]:checked').value; };
+    var forma = function () { return form.querySelector('input[name="pago_formaid"]:checked'); };
+
+    function pintar() {
+        var m = modo(), cobra = m !== 'despues', f = forma();
+        campos.hidden = campos.disabled = !cobra;
+
+        /* El monedero, sólo con saldo; con su disponible a la vista. */
+        var mon = form.querySelector('input[name="pago_formaid"][data-monedero="S"]');
+        if (mon) {
+            mon.disabled = saldo <= 0;
+            $('cobroSaldoMon').textContent = saldo > 0 ? 'disponible ' + dinero(saldo) : 'sin saldo';
+            if (mon.checked && mon.disabled) { form.querySelector('input[name="pago_formaid"]:not([disabled])').checked = true; f = forma(); }
+        }
+
+        if (m === 'total') { valor.value = importe > 0 ? importe.toFixed(2) : ''; }
+        valor.readOnly = m === 'total';
+        var v = num(valor.value);
+
+        ayuda.innerHTML = !cobra ? 'La reserva queda pendiente; se cobra después desde su detalle.'
+            : (importe <= 0 ? '<i class="fas fa-hand-pointer me-1" aria-hidden="true"></i>Elija primero el horario: el valor depende de él.'
+            : (m === 'total' ? 'Se cobra el total' + (semanal ? ' de la primera semana' : '') + ' y la reserva queda pagada.'
+                             : 'Se registra un abono' + (semanal ? ' de la primera semana' : '') + '; el resto queda pendiente.'));
+
+        var efe = f && f.dataset.codigo === 'EFE', pideRef = f && f.dataset.ref === 'S';
+        $('cobroRecibidoGrupo').hidden = !efe;
+        $('cobroRefGrupo').hidden = !pideRef;
+        ref.required = cobra && pideRef;
+        var r = efe ? num(recibido.value) : 0, vuelto = r > v && v > 0 ? Math.round((r - v) * 100) / 100 : 0;
+        $('cobroVuelto').hidden = !vuelto;
+        $('cobroVueltoValor').textContent = dinero(vuelto);
+
+        var queda = Math.round((importe - v) * 100) / 100;
+        $('cobroQueda').innerHTML = !cobra || importe <= 0 || v <= 0 ? ''
+            : (queda <= 0.004 ? '<i class="fas fa-circle-check me-1" aria-hidden="true"></i>La reserva queda <strong>pagada</strong>.'
+                              : '<i class="fas fa-hourglass-half me-1" aria-hidden="true"></i>Quedan <strong>' + dinero(queda) + '</strong> pendientes.');
+        $('cobroQueda').className = 'ar-cobro__queda mt-2' + (queda <= 0.004 ? ' is-pagada' : '');
+
+        $('cobroTotal').hidden = importe <= 0;
+        $('cobroTotal').textContent = 'Total ' + dinero(importe) + (semanal ? ' · 1.ª semana' : '');
+        textoGuardar.textContent = cobra && v > 0 ? (m === 'total' ? 'Reservar y cobrar ' : 'Reservar y abonar ') + dinero(v) : base;
+    }
+    function errorDeValor(t) { errorValor.textContent = t; errorValor.hidden = !t; valor.classList.toggle('is-invalid', !!t); }
+
+    form.addEventListener('ar:importe', function (e) {
+        importe = e.detail.importe; semanal = e.detail.semanal;
+        /* Con horario, el cálculo acaba de poner su texto («Reservar», «Reservar cada …»): es la base. */
+        if (importe > 0) { base = textoGuardar.textContent; }
+        pintar();
+    });
+    form.addEventListener('ar:cliente', function (e) { saldo = e.detail.saldo; pintar(); });
+    card.addEventListener('change', function (e) {
+        if (e.target.name === 'cobro_modo' && e.target.value === 'abono' && num(valor.value) >= importe) { valor.value = ''; }
+        errorDeValor(''); pintar();
+        if (e.target.name === 'cobro_modo' && e.target.value === 'abono') { valor.focus(); }
+    });
+    card.addEventListener('input', function (e) { if (e.target === valor) { errorDeValor(''); } pintar(); });
+    /* La fecha del cobro sigue a la de la reserva si es de un día anterior, salvo que se haya cambiado a mano. */
+    fechaCobro.addEventListener('input', function () { fechaTocada = true; });
+    fechaReserva.addEventListener('change', function () {
+        if (!fechaTocada) { fechaCobro.value = fechaReserva.value && fechaReserva.value < HOY ? fechaReserva.value : HOY; }
+    });
+
+    /* Antes de guardar: el cobro completo y, si está bien, en la confirmación. */
+    form.addEventListener('submit', function (e) {
+        var m = modo();
+        if (m === 'despues') { return; }
+        var v = num(valor.value), f = forma(), msg = '';
+        if (importe <= 0) { msg = 'Elija primero el horario.'; }
+        else if (v <= 0) { msg = 'Escriba cuánto abona el cliente.'; }
+        else if (v > importe + 0.001) { msg = 'No puede superar el total (' + dinero(importe) + ').'; }
+        else if (f.dataset.monedero === 'S' && v > saldo + 0.001) { msg = 'El monedero tiene ' + dinero(saldo) + '.'; }
+        else if (f.dataset.codigo === 'EFE' && num(recibido.value) > 0 && num(recibido.value) + 0.001 < v) { msg = 'Lo recibido no cubre el valor.'; }
+        if (!msg && f.dataset.ref === 'S' && !ref.value.trim()) {
+            e.preventDefault(); e.stopImmediatePropagation();
+            ref.classList.add('is-invalid'); ref.focus(); card.scrollIntoView({ behavior: 'smooth', block: 'center' }); return;
+        }
+        if (msg) {
+            e.preventDefault(); e.stopImmediatePropagation();
+            errorDeValor(msg); card.scrollIntoView({ behavior: 'smooth', block: 'center' }); valor.focus({ preventScroll: true }); return;
+        }
+        var previo = form.getAttribute('data-confirmar') || '';
+        var nombre = f.nextElementSibling.querySelector('span').textContent.trim().toLowerCase();
+        form.setAttribute('data-confirmar', (previo ? previo + ' ' : '') + (m === 'total' ? 'Se cobrará el total, ' : 'Se registrará un abono de ') + dinero(v) +
+            ' (' + nombre + (fechaCobro.value && fechaCobro.value !== HOY ? ', con fecha ' + fechaCobro.value.split('-').reverse().join('/') : '') + ')' +
+            (semanal ? ', de la primera semana.' : '.'));
+    }, true);
+    ref.addEventListener('input', function () { ref.classList.remove('is-invalid'); });
+
+    pintar();
+})();
+</script>
+<?php endif; ?>
+
 <style>
+    /* 4. Abono o pago */
+    .ar-cobro__modos { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; }
+    .ar-cobro__modos .btn, .ar-cobro__formas .btn { display: inline-flex; align-items: center; justify-content: center; gap: .4rem; font-weight: 600;
+                                                     --bs-btn-color: var(--bs-body-color); --bs-btn-border-color: var(--bs-border-color); }
+    .ar-cobro__modos .btn-check:checked + .btn, .ar-cobro__formas .btn-check:checked + .btn { background: var(--ds-acento, #0e7490); border-color: var(--ds-acento, #0e7490); color: #fff; }
+    .ar-cobro__formas { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: .5rem; }
+    .ar-cobro__formas .btn { flex-wrap: wrap; font-size: .9rem; }
+    .ar-cobro__saldo { flex-basis: 100%; font-weight: 400; font-size: .72rem; opacity: .85; margin-top: -.15rem; }
+    .ar-cobro__formas .btn-check:disabled + .btn { opacity: .5; }
+    .ar-cobro__campos { border: 0; padding: 0; margin: 0; min-width: 0; }
+    .ar-cobro__campos[hidden] { display: none; }
+    .ar-cobro__total { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--bs-emphasis-color); }
+    .ar-cobro__total[hidden] { display: none; }
+    .ar-cobro__vuelto { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem 1rem; padding: .5rem .75rem;
+                        border-radius: var(--ds-radius-sm, 10px); background: var(--bs-info-bg-subtle); color: var(--bs-info-text-emphasis); }
+    .ar-cobro__vuelto[hidden] { display: none; }
+    .ar-cobro__queda:empty { display: none; }
+    .ar-cobro__queda { padding: .5rem .75rem; border-radius: var(--ds-radius-sm, 10px); background: var(--bs-warning-bg-subtle); color: var(--bs-warning-text-emphasis); }
+    .ar-cobro__queda.is-pagada { background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
+    @media (pointer: coarse) { .ar-cobro__modos .btn, .ar-cobro__formas .btn { min-height: 44px; } }
+    @media (max-width: 575.98px) {
+        .ar-cobro__modos .btn { flex-direction: column; gap: .15rem; font-size: .8rem; padding-inline: .25rem; }
+        .ar-cobro__formas { grid-template-columns: 1fr 1fr; }
+    }
+
     /* Frecuencia: dos opciones del mismo ancho, en una fila también en el teléfono. */
     .ar-frecuencia { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
     .ar-frecuencia .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 2.75rem; white-space: nowrap; padding-inline: .5rem; }

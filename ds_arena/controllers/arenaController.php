@@ -2257,6 +2257,15 @@ class arenaController
                 : $this->alerta('simple', 'Error', 'No fue posible actualizar la reserva.', 'error');
         }
 
+        /* Cobrar al reservar (2026-11-26): se valida antes de crear nada. */
+        $cobrar = $this->cobroAlCrearPedido();
+        if ($cobrar) {
+            $error = $this->errorCobroAlCrear($total, $cliente);
+            if ($error !== '') {
+                return $this->alerta('simple', 'Revise el abono', $error, 'warning');
+            }
+        }
+
         $codigo = $this->siguienteCodigo();
 
         $n = $this->escribir(
@@ -2276,11 +2285,87 @@ class arenaController
              ':u' => (int)($_SESSION['usuarioid'] ?? 0) ?: null]
         );
 
-        return $n > 0
-            ? $this->alerta('redireccionar', 'Reserva creada',
-                "{$codigo} · " . $this->textoImporte($importe) . ". Registre el abono desde el detalle.",
-                'success', APP_URL . 'reservaList/')
-            : $this->alerta('simple', 'Error', 'No fue posible crear la reserva.', 'error');
+        if ($n <= 0) {
+            return $this->alerta('simple', 'Error', 'No fue posible crear la reserva.', 'error');
+        }
+        if ($cobrar) {
+            $nuevaId = (int)$this->escalar("SELECT reserva_id FROM dsa_reserva WHERE reserva_codigo = :c", [':c' => $codigo]);
+            return $this->cobrarReservaNueva($nuevaId, "{$codigo} · " . $this->textoImporte($importe));
+        }
+        return $this->alerta('redireccionar', 'Reserva creada',
+            "{$codigo} · " . $this->textoImporte($importe) . ". Registre el abono desde el detalle.",
+            'success', APP_URL . 'reservaList/');
+    }
+
+    /*
+    | COBRAR AL RESERVAR (2026-11-26)
+    |
+    | El formulario de reserva puede traer el pago completo o un abono
+    | (cobro_modo = 'total' | 'abono'; vacío o 'despues' = sin cobro). Se
+    | valida ANTES de crear la reserva —así un dato mal puesto no deja una
+    | reserva a medias— y, creada, se registra con registrarPago: las mismas
+    | reglas que «Registrar abono» en el detalle (vuelto, monedero,
+    | referencia, fecha del cobro). En una reserva fija, el cobro es de la
+    | primera semana. Si aun así el pago fallara, la reserva queda creada y
+    | se avisa para registrarlo desde el detalle.
+    */
+    private function cobroAlCrearPedido(): bool
+    {
+        return in_array($_POST['cobro_modo'] ?? '', ['total', 'abono'], true);
+    }
+
+    /** '' si el cobro pedido es válido para una reserva de $total; si no, el motivo. */
+    private function errorCobroAlCrear(float $total, int $cliente): string
+    {
+        $forma = $this->filas("SELECT * FROM dsa_forma_ingreso WHERE forma_id = :f AND forma_estado = 'A'",
+                              [':f' => (int)($_POST['pago_formaid'] ?? 0)])[0] ?? null;
+        if ($forma === null) {
+            return 'Elija cómo paga el cliente.';
+        }
+        /* «Pago completo»: el valor es el total que calcula el servidor, no el de la pantalla. */
+        if ($_POST['cobro_modo'] === 'total') {
+            $_POST['pago_valor'] = number_format($total, 2, '.', '');
+        }
+        $valor = round((float)str_replace(',', '.', (string)($_POST['pago_valor'] ?? '0')), 2);
+        if ($valor <= 0) {
+            return 'Escriba cuánto abona el cliente.';
+        }
+        if ($valor > $total + 0.001) {
+            return 'El abono ($' . number_format($valor, 2) . ') supera el total de la reserva ($' . number_format($total, 2) . ').';
+        }
+        if ($forma['forma_requiereref'] === 'S' && trim((string)($_POST['pago_referencia'] ?? '')) === '') {
+            return 'Indique el número de comprobante de ' . mb_strtolower($forma['forma_nombre']) . '.';
+        }
+        if ($forma['forma_esmonedero'] === 'S') {
+            $saldo = $this->saldoMonedero($cliente);
+            if ($saldo + 0.001 < $valor) {
+                return 'El monedero del cliente tiene $' . number_format($saldo, 2) . ': no alcanza para $' . number_format($valor, 2) . '.';
+            }
+        } else {
+            $recibido = round((float)str_replace(',', '.', (string)($_POST['pago_recibido'] ?? '0')), 2);
+            if ($recibido > 0 && $recibido + 0.001 < $valor) {
+                return 'Lo recibido ($' . number_format($recibido, 2) . ') no cubre el abono ($' . number_format($valor, 2) . ').';
+            }
+        }
+        $fecha = trim((string)($_POST['pago_fecha'] ?? ''));
+        if ($fecha !== '' && $this->fechaCobroPedida($fecha) === null) {
+            return 'La fecha del cobro debe ser hoy o un día anterior (hasta un año atrás).';
+        }
+        return '';
+    }
+
+    /** Registra el cobro en la reserva recién creada y arma el aviso final. */
+    private function cobrarReservaNueva(int $reservaId, string $textoReserva): string
+    {
+        $_POST['reserva_id'] = $reservaId;
+        $r = json_decode($this->registrarPago(), true) ?: [];
+        if (($r['icono'] ?? '') === 'success') {
+            return $this->alerta('redireccionar', 'Reserva creada y cobrada',
+                $textoReserva . '. ' . ($r['texto'] ?? ''), 'success', $r['url'] ?? APP_URL . 'reservaDetalle/?id=' . $reservaId);
+        }
+        return $this->alerta('redireccionar', 'Reserva creada, sin el abono',
+            $textoReserva . '. La reserva quedó creada, pero el abono no se registró: ' . ($r['texto'] ?? 'error desconocido')
+            . ' Regístrelo desde el detalle.', 'warning', APP_URL . 'reservaDetalle/?id=' . $reservaId);
     }
 
     /** Letras mínimas del motivo de una cancelación: «x» o «.» no explican nada. */
@@ -2705,6 +2790,15 @@ class arenaController
                 'La instalación no tiene tarifa por hora. Configúrela antes de reservar.', 'error');
         }
 
+        /* Cobrar al reservar: el de la primera semana, validado antes de crear nada. */
+        $cobrar = $this->cobroAlCrearPedido();
+        if ($cobrar) {
+            $error = $this->errorCobroAlCrear($importe['total'], $cliente);
+            if ($error !== '') {
+                return $this->alerta('simple', 'Revise el abono', $error, 'warning');
+            }
+        }
+
         $con = $this->con();
         if ($con === null) {
             return $this->alerta('simple', 'Error', 'Sin conexión a la base de datos.', 'error');
@@ -2739,6 +2833,16 @@ class arenaController
         if ($hecho['omitidas']) {
             $texto .= ' Sin reserva por bloqueo u horario: ' . implode(', ', array_map(
                 static fn ($f) => self::fechaCorta($f), array_keys($hecho['omitidas']))) . '.';
+        }
+
+        if ($cobrar) {
+            $primera = (int)$this->escalar(
+                "SELECT reserva_id FROM dsa_reserva WHERE reserva_fijaid = :f AND reserva_fecha = :d AND reserva_estado IN ('P','C')",
+                [':f' => $fijaId, ':d' => $fecha]);
+            if ($primera > 0) {
+                return $this->cobrarReservaNueva($primera, "{$codigo} · {$franja}, desde el " . self::fechaCorta($fecha) . '. El abono es de la primera semana');
+            }
+            $texto .= ' El abono no se registró: la primera semana no quedó en la agenda.';
         }
 
         return $this->alerta('redireccionar', 'Reserva fija creada', $texto,

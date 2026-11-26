@@ -36,7 +36,11 @@ require_once __DIR__ . "/inc/pos-comun.php";
     .cp-lineas td, .cp-lineas th { vertical-align: middle; }
     .cp-agregar { display: grid; grid-template-columns: minmax(0, 2fr) 6rem 7rem 9rem auto; gap: .5rem; align-items: end; }
     .cp-pago { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; }
-    .cp-pago .btn { min-height: 3.25rem; --bs-btn-color: var(--bs-body-color); --bs-btn-border-color: var(--bs-border-color); font-weight: 600; font-size: .85rem; line-height: 1.2; }
+    .cp-pago .btn { min-height: var(--pos-toque); --bs-btn-color: var(--bs-body-color); --bs-btn-border-color: var(--bs-border-color); font-weight: 600; font-size: .875rem; line-height: 1.5;
+                   display: flex; align-items: center; justify-content: center; gap: .4rem; padding: .3rem .5rem; }
+    /* El ícono al lado del texto, no encima: el botón no crece. */
+    .cp-pago .btn i.d-block { display: inline-block !important; margin: 0 !important; }
+    @media (max-width: 575.98px) { .cp-pago { grid-template-columns: 1fr; } }
     .cp-pago .btn-check:checked + .btn { background: #0e7490; border-color: #0e7490; color: #fff; }
     @media (max-width: 767.98px) {
         .cp-agregar { grid-template-columns: 1fr 1fr; }
@@ -110,7 +114,7 @@ require_once __DIR__ . "/inc/pos-comun.php";
             <a class="btn btn-sm <?php echo $filtro === 'pendiente' ? 'btn-primary' : 'btn-outline-secondary'; ?>" href="?ver=pendientes">Por pagar</a>
         </div>
         <?php if ($puedeCrear): ?>
-            <button type="button" class="btn btn-primary pos-btn-grande ms-auto" id="cpNueva"<?php echo $productos ? '' : ' disabled title="Primero registre productos"'; ?>><i class="fas fa-plus" aria-hidden="true"></i>Nueva compra</button>
+            <button type="button" class="btn btn-primary pos-btn ms-auto" id="cpNueva"<?php echo $productos ? '' : ' disabled title="Primero registre productos"'; ?>><i class="fas fa-plus" aria-hidden="true"></i>Nueva compra</button>
         <?php endif; ?>
     </div>
 
@@ -163,7 +167,7 @@ require_once __DIR__ . "/inc/pos-comun.php";
                         <div><label class="form-label small" for="cpCant">Cantidad</label><input type="text" inputmode="decimal" class="form-control text-end" id="cpCant" placeholder="0"></div>
                         <div><label class="form-label small" for="cpCosto">Costo c/u</label><input type="text" inputmode="decimal" class="form-control text-end" id="cpCosto" placeholder="0.00"></div>
                         <div><label class="form-label small" for="cpVence">Vence</label><input type="date" class="form-control" id="cpVence" disabled></div>
-                        <button type="button" class="btn btn-outline-primary" id="cpAgregar" style="min-height:2.75rem;"><i class="fas fa-plus me-1" aria-hidden="true"></i>Agregar</button>
+                        <button type="button" class="btn btn-outline-primary" id="cpAgregar"><i class="fas fa-plus me-1" aria-hidden="true"></i>Agregar</button>
                     </div>
                     <div class="table-responsive">
                         <table class="table table-sm cp-lineas"><thead><tr><th>Producto</th><th class="text-end">Cant.</th><th class="text-end">Costo</th><th class="text-end">Subtotal</th><th>Vence</th><th></th></tr></thead>
@@ -184,7 +188,7 @@ require_once __DIR__ . "/inc/pos-comun.php";
                     <p class="small text-body-secondary mt-2 mb-0" id="cpNota">El stock entra ahora; el pago se registra después en la compra.</p>
                 </div>
                 <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Volver</button>
-                    <button type="submit" class="btn btn-primary pos-btn-grande" id="cpGuardar"><i class="fas fa-check" aria-hidden="true"></i>Registrar compra</button></div>
+                    <button type="submit" class="btn btn-primary pos-btn" id="cpGuardar"><i class="fas fa-check" aria-hidden="true"></i>Registrar compra</button></div>
             </form>
         </div>
     </div>
@@ -212,7 +216,7 @@ require_once __DIR__ . "/inc/pos-comun.php";
                     </div>
                 </div>
                 <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Volver</button>
-                    <button type="submit" class="btn btn-primary pos-btn-grande">Registrar pago</button></div>
+                    <button type="submit" class="btn btn-primary pos-btn">Registrar pago</button></div>
             </form>
         </div>
     </div>

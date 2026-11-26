@@ -104,7 +104,9 @@ require_once __DIR__ . "/inc/pos-comun.php";
     <div class="pos-tarjeta">
         <div class="p-3 border-bottom d-flex align-items-center gap-2">
             <h3 class="h6 fw-bold mb-0"><?php echo $buscar !== '' ? 'Resultados' : 'Ventas del día'; ?> <small class="text-body-secondary fw-normal">· <?php echo count($ventas); ?></small></h3>
+            <?php if (puede_crear('posVenta')): ?>
             <a class="btn btn-primary btn-sm ms-auto" href="<?php echo APP_URL; ?>posVenta/"><i class="fas fa-plus me-1" aria-hidden="true"></i>Nueva venta</a>
+            <?php endif; ?>
         </div>
         <?php if (!$ventas): ?>
             <p class="text-body-secondary text-center p-4 mb-0"><i class="fas fa-receipt fa-2x d-block mb-2 opacity-50" aria-hidden="true"></i>No hay ventas <?php echo $buscar !== '' ? 'que coincidan' : 'este día'; ?>.</p>

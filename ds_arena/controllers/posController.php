@@ -369,7 +369,8 @@ class posController extends arenaController
             return $this->error('No fue posible abrir la caja. ¿Ya hay una abierta con su usuario?');
         }
         return $this->json(['ok' => true, 'tipo' => 'recargar', 'icono' => 'success', 'titulo' => 'Caja abierta',
-                            'texto' => 'Saldo inicial: $' . number_format($inicial, 2) . '. Ya puede vender.']);
+                            'texto' => 'Saldo inicial: $' . number_format($inicial, 2) . '. '
+                                     . (puede_crear('posVenta') ? 'Ya puede vender.' : 'Ya puede registrar ingresos y egresos en ella.')]);
     }
 
     /** AJAX posMovimientoCaja: un ingreso o egreso adicional. */

@@ -33,6 +33,9 @@ if ($caja) {
 $cajas  = $pos->cajas(40);
 $formas = array_values(array_filter($pos->formasCobro(), static fn ($f) => $f['forma_esmonedero'] !== 'S'));
 $puedeMover = puede_crear('posCaja');
+/* Abrir caja: con permiso sobre Caja o sobre Vender (las mismas reglas que abrirCaja). */
+$puedeAbrir = puede_crear('posCaja') || puede_crear('posVenta');
+$sedesCaja  = $puedeAbrir && !$miCaja ? $pos->sedesCaja() : [];
 
 require_once __DIR__ . "/inc/layout-top.php";
 require_once __DIR__ . "/inc/pos-comun.php";
@@ -67,11 +70,53 @@ require_once __DIR__ . "/inc/pos-comun.php";
 
 <div class="pos">
 <?php if (!$caja): ?>
-    <div class="pos-tarjeta p-4 text-center mb-3">
-        <i class="fas fa-cash-register fa-2x text-body-secondary mb-2" aria-hidden="true"></i>
-        <h2 class="h5">No tiene una caja abierta</h2>
-        <p class="text-body-secondary">Para vender o registrar ingresos y egresos, abra su caja con el efectivo inicial.</p>
-        <a class="btn btn-primary pos-btn" href="<?php echo APP_URL; ?>posVenta/"><i class="fas fa-lock-open" aria-hidden="true"></i>Abrir caja</a>
+    <?php /* Abrir la caja aquí mismo (2026-11-26): antes el botón llevaba a
+             «Vender», y un rol con permiso sobre Caja pero no sobre Vender
+             recibía «Acceso denegado». abrirCaja ya admite cualquiera de los dos. */ ?>
+    <div class="pos-tarjeta mx-auto p-3 p-md-4 mb-3" style="max-width: 34rem;">
+        <div class="text-center mb-3">
+            <i class="fas fa-cash-register fa-2x text-body-secondary mb-2" aria-hidden="true"></i>
+            <h2 class="h5 mb-1">No tiene una caja abierta</h2>
+            <p class="text-body-secondary mb-0">Para vender o registrar ingresos y egresos, ábrala con el efectivo inicial (el «sencillo» para dar cambio). Si no tiene, deje 0.</p>
+        </div>
+        <?php if ($puedeAbrir): ?>
+            <form id="cajaAbrir" autocomplete="off">
+                <label for="cajaInicial" class="form-label fw-semibold">Efectivo inicial</label>
+                <div class="input-group mb-2">
+                    <span class="input-group-text">$</span>
+                    <input type="text" inputmode="decimal" class="form-control text-end fw-bold" id="cajaInicial" value="0.00" required>
+                </div>
+                <details class="mb-3">
+                    <summary class="small text-primary" style="cursor:pointer;"><i class="fas fa-calculator me-1" aria-hidden="true"></i>Contar billetes y monedas</summary>
+                    <p class="small text-body-secondary my-2">Escriba cuántos hay de cada uno: el total se pone solo.</p>
+                    <?php echo $posConteoHtml('cajaConteoAbrir'); ?>
+                </details>
+                <?php if (count($sedesCaja) > 1): ?>
+                    <label for="cajaSede" class="form-label fw-semibold">Sede</label>
+                    <select class="form-select mb-3" id="cajaSede">
+                        <?php foreach ($sedesCaja as $s): ?><option value="<?php echo (int)$s['sede_id']; ?>"><?php echo $posH($s['sede_nombre']); ?></option><?php endforeach; ?>
+                    </select>
+                <?php endif; ?>
+                <button type="submit" class="btn btn-primary w-100 pos-btn pos-btn--normal"><i class="fas fa-lock-open" aria-hidden="true"></i>Abrir caja</button>
+                <p class="small text-body-secondary text-center mt-2 mb-0">Queda a su nombre (<?php echo $posH(ds_nombre_usuario()); ?>).</p>
+            </form>
+            <script>
+            document.addEventListener('DOMContentLoaded', function () {
+                var form = document.getElementById('cajaAbrir'), conteo = document.getElementById('cajaConteoAbrir'), ini = document.getElementById('cajaInicial');
+                conteo.addEventListener('input', function () { ini.value = posContar(conteo).total.toFixed(2); });
+                form.addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    var c = posContar(conteo), b = form.querySelector('button[type=submit]');
+                    var datos = { modulo_arena: 'posAbrirCaja', saldo_inicial: ini.value, sede: (document.getElementById('cajaSede') || {}).value || '' };
+                    if (c.total > 0) { datos.conteo = c.json; }
+                    b.disabled = true;
+                    posEnviar(datos).then(function (j) { b.disabled = false; posAviso(j); });
+                });
+            });
+            </script>
+        <?php else: ?>
+            <p class="alert alert-warning mb-0 small">Su rol no puede abrir caja. Pida a un administrador el permiso «crear» sobre «Caja» en Core › Roles.</p>
+        <?php endif; ?>
     </div>
 <?php else: ?>
     <div class="caja-cab">

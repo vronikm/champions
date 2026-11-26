@@ -1682,21 +1682,20 @@ class posController extends arenaController
     }
 
     /**
-     * Lo que entró por reservas frente a los egresos de las instalaciones.
+     * Lo que produjeron las reservas frente a los egresos de las instalaciones.
      *
-     * Lo que entró es lo de Reportes › Pagos (el mismo cálculo, así que las
-     * dos pantallas dicen lo mismo): los cobros que trajeron dinero (los
-     * pagados con monedero no: ese dinero entró al depositarlo) y los
-     * depósitos al monedero, menos las devoluciones de reservas en efectivo
-     * o transferencia y las devoluciones del monedero.
+     * Ingreso es lo que se pagó por reservas (2026-11-26): los cobros en
+     * efectivo, transferencia o tarjeta Y los pagados con monedero, menos
+     * las devoluciones de reservas (en efectivo, transferencia o al
+     * monedero). El MONEDERO NO ES INGRESO: es el ahorro de los clientes.
+     * Sus depósitos, sus retiros y el vuelto que se deja en él no cuentan;
+     * cuenta cuando el cliente lo usa para pagar una reserva. Los cobros
+     * salen de Reportes › Pagos (misma jornada, filtros y anulaciones).
      */
     public function resumenInstalaciones(string $desde, string $hasta, ?array $salidas = null): array
     {
         $rp = $this->reportePagos($this->filtroReportePagos(['desde' => $desde, 'hasta' => $hasta]));
-        $p  = $rp['resumen'];
-        $r = ['cobros' => round($p['recaudado'] - $p['depositos'], 2), 'nCobros' => (int)$p['nPagos'],
-              'depositos' => round($p['depositos'], 2), 'devReservas' => round($p['devEfectivo'] + $p['devBancos'], 2),
-              'devMonedero' => round($p['devoluciones'], 2), 'monederoAplicado' => round($p['monederoAplicado'], 2),
+        $r = ['cobros' => 0.0, 'nCobros' => 0, 'monederoAplicado' => 0.0, 'nMonedero' => 0, 'devReservas' => 0.0,
               'egresos' => 0.0, 'porOrigen' => ['C' => 0.0, 'P' => 0.0, 'O' => 0.0],
               'porCategoria' => [], 'porPersona' => [], 'porInstalacion' => [], 'porDia' => []];
         $dia = static function (array &$r, string $f, string $k, float $v) {
@@ -1704,9 +1703,18 @@ class posController extends arenaController
             $r['porDia'][$f][$k] += $v;
         };
         foreach ($rp['movimientos'] as $m) {
-            /* Una devolución del monedero no dice cómo salió (entra = 0): se resta su valor. */
-            $v = $m['tipo'] === 'devolucion' ? -(float)$m['valor'] : (float)$m['entra'];
-            if ($v != 0.0) { $dia($r, $m['dia'] ?? date('Y-m-d', $m['ts']), 'ingresos', $v); }
+            $f = $m['dia'] ?? date('Y-m-d', $m['ts']);
+            $v = (float)$m['valor'];
+            if ($m['tipo'] === 'pago') {
+                /* El valor del abono, sin el vuelto que quedó en el monedero. */
+                if ($m['esMonedero']) { $r['monederoAplicado'] += $v; $r['nMonedero']++; }
+                else { $r['cobros'] += $v; $r['nCobros']++; }
+                $dia($r, $f, 'ingresos', $v);
+            } elseif ($m['tipo'] === 'devreserva') {
+                $r['devReservas'] += $v;
+                $dia($r, $f, 'ingresos', -$v);
+            }
+            /* 'deposito' y 'devolucion' son del monedero: ahorro del cliente, no ingreso. */
         }
         foreach ($salidas ?? $this->salidasPeriodo($desde, $hasta, 'I') as $s) {
             if ($s['anulado']) { continue; }
@@ -1723,7 +1731,8 @@ class posController extends arenaController
         foreach ($r['porDia'] as &$x) { $x = array_map(static fn ($v) => round($v, 2), $x); }
         unset($x);
         $r['egresos']  = round($r['egresos'], 2);
-        $r['ingresos'] = round($r['cobros'] + $r['depositos'] - $r['devReservas'] - $r['devMonedero'], 2);
+        foreach (['cobros', 'monederoAplicado', 'devReservas'] as $k) { $r[$k] = round($r[$k], 2); }
+        $r['ingresos'] = round($r['cobros'] + $r['monederoAplicado'] - $r['devReservas'], 2);
         $r['ganancia'] = round($r['ingresos'] - $r['egresos'], 2);
         return $r;
     }

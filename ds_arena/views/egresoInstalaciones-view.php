@@ -5,8 +5,9 @@
 | Los gastos de las instalaciones: luz, agua, mantenimiento de la cancha,
 | arreglo del césped… con su fecha, la cancha (o general), el detalle y el
 | valor. No se pregunta de dónde salió el dinero (2026-11-26).
-| Arriba, lo que entró por reservas frente a estos egresos: la ganancia de
-| las instalaciones en el período. La pantalla es inc/egresos-vista.php,
+| Arriba, lo pagado por reservas (también con monedero; los depósitos al
+| monedero no son ingreso: son ahorro de los clientes) frente a estos
+| egresos: la ganancia de las instalaciones en el período. La pantalla es inc/egresos-vista.php,
 | común con los egresos del bar.
 */
 
@@ -39,7 +40,7 @@ $egIntro  = 'Registre los <strong>gastos de las instalaciones</strong>: luz, agu
 $egConcepto = 'Ej.: planilla de luz de noviembre, resiembra del césped';
 $nSalidas = count(array_filter($salidas, static fn ($s) => !$s['anulado']));
 $egKpis = [
-    ['Ingresos por reservas', 'fa-calendar-check', $r['ingresos'], $r['nCobros'] . ' cobro(s)', 'pos-kpi--acento'],
+    ['Ingresos por reservas', 'fa-calendar-check', $r['ingresos'], ($r['nCobros'] + $r['nMonedero']) . ' pago(s) de reservas', 'pos-kpi--acento'],
     ['Egresos', 'fa-arrow-up', $r['egresos'], $nSalidas . ' egreso(s)', ''],
     ['Ganancia', 'fa-sack-dollar', $r['ganancia'], $r['ganancia'] < 0 ? 'Se gastó más de lo que entró' : 'Ingresos menos egresos',
      $r['ganancia'] < 0 ? 'pos-kpi--alerta' : 'pos-kpi--ok'],
@@ -47,16 +48,15 @@ $egKpis = [
 $egTituloCuadro = 'Ingresos por reservas y egresos';
 $egCuadro = [
     ['Cobros de reservas <small class="text-body-secondary">(' . $r['nCobros'] . ')</small>', $r['cobros'], '', ''],
-    ['Depósitos al monedero', $r['depositos'], '', ''],
+    ['Pagado con monedero <small class="text-body-secondary">(' . $r['nMonedero'] . ')</small>', $r['monederoAplicado'], '', ''],
 ];
 if ($r['devReservas'] > 0) { $egCuadro[] = ['Devoluciones de reservas', -$r['devReservas'], '', '']; }
-if ($r['devMonedero'] > 0) { $egCuadro[] = ['Devoluciones del monedero', -$r['devMonedero'], '', '']; }
 $egCuadro[] = ['Total ingresos', $r['ingresos'], 'eg-total', 'pos-pos'];
 array_push($egCuadro,
     ['Total egresos', -$r['egresos'], 'eg-total', 'pos-neg'],
     ['Ganancia', $r['ganancia'], 'eg-resultado', $r['ganancia'] < 0 ? 'pos-neg' : 'pos-pos']);
-$egNotaCuadro = 'Los ingresos son los de <a href="' . APP_URL . 'reportePagos/?desde=' . $desde . '&amp;hasta=' . $hasta . '">Reportes › Pagos Reservas</a>.'
-              . ($r['monederoAplicado'] > 0 ? ' Además se pagaron ' . $posDinero($r['monederoAplicado']) . ' con monedero: ese dinero ya contó al depositarse.' : '');
+$egNotaCuadro = 'Ingreso es lo pagado por reservas, también con monedero. Los depósitos y retiros del monedero no son ingreso: son el ahorro de los clientes.'
+              . ' Cobros como en <a href="' . APP_URL . 'reportePagos/?desde=' . $desde . '&amp;hasta=' . $hasta . '">Reportes › Pagos Reservas</a>.';
 $egPorCategoria   = $r['porCategoria'];
 $egPorPersona     = [];
 $egPorInstalacion = count($r['porInstalacion']) > 1 || !isset($r['porInstalacion']['General (todas)']) ? $r['porInstalacion'] : [];

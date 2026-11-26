@@ -3,7 +3,8 @@
 | Arena › Reportes › Ganancias (migración 101).
 |
 | La ganancia del período en una sola pantalla:
-|   Instalaciones = lo que entró por reservas (Reportes › Pagos) − Egresos Instalaciones
+|   Instalaciones = lo pagado por reservas, también con monedero (el monedero
+|                   en sí es ahorro de los clientes, no ingreso) − Egresos Instalaciones
 |   Bar           = lo vendido + otros ingresos de caja − egresos del bar (Egresos,
 |                   egresos anotados en caja y pagos de compras)
 |   Total         = las dos
@@ -125,9 +126,8 @@ require_once __DIR__ . "/inc/pos-comun.php";
                     <a class="small pos-no-imprimir" href="<?php echo $enlace('egresoInstalaciones'); ?>">Egresos Instalaciones</a></div>
                 <ul class="gn-cuadro">
                     <li><span>Cobros de reservas <small class="text-body-secondary">(<?php echo $inst['nCobros']; ?>)</small></span><span><?php echo $posDinero($inst['cobros']); ?></span></li>
-                    <li><span>Depósitos al monedero</span><span><?php echo $posDinero($inst['depositos']); ?></span></li>
+                    <li><span>Pagado con monedero <small class="text-body-secondary">(<?php echo $inst['nMonedero']; ?>)</small></span><span><?php echo $posDinero($inst['monederoAplicado']); ?></span></li>
                     <?php if ($inst['devReservas'] > 0): ?><li><span>Devoluciones de reservas</span><span><?php echo $posDinero(-$inst['devReservas']); ?></span></li><?php endif; ?>
-                    <?php if ($inst['devMonedero'] > 0): ?><li><span>Devoluciones del monedero</span><span><?php echo $posDinero(-$inst['devMonedero']); ?></span></li><?php endif; ?>
                     <li class="gn-total"><span>Ingresos por reservas</span><span class="pos-pos"><?php echo $posDinero($inst['ingresos']); ?></span></li>
                     <?php foreach (array_slice($inst['porCategoria'], 0, 6, true) as $cat => $v): ?>
                         <li class="gn-sub"><span><?php echo $posH($cat); ?></span><span><?php echo $posDinero(-$v); ?></span></li>
@@ -196,8 +196,8 @@ require_once __DIR__ . "/inc/pos-comun.php";
         <?php endif; ?>
     </div>
     <p class="small text-body-secondary mt-3 mb-0">
-        Ingresos por reservas: el dinero que entró (cobros y depósitos al monedero, menos devoluciones), como en
-        <a href="<?php echo $enlace('reportePagos'); ?>">Reportes › Pagos Reservas</a>; lo pagado con monedero ya contó al depositarse.
+        Ingresos por reservas: lo pagado por reservas (también con monedero), menos las devoluciones de reservas. Los depósitos y
+        retiros del monedero no son ingreso: son el ahorro de los clientes. Cobros como en <a href="<?php echo $enlace('reportePagos'); ?>">Reportes › Pagos Reservas</a>.
         Bar: lo vendido (anuladas fuera) y los otros ingresos de caja, menos sus egresos y los pagos de compras.
     </p>
 </div>

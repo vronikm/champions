@@ -1811,6 +1811,44 @@ body.layout-fixed .app-main:has(.ds-reporte__tabla),
     color: var(--bs-secondary-color);
 }
 .ds-horarios__ayuda { color: var(--bs-secondary-color); }
+/* Días (chips L M X…, hoy resaltado) y la hora debajo; el profesor con su
+   icono. Si da clase más de uno, van separados por comas y se parten. */
+.ds-horarios__cuando { white-space: nowrap; }
+.ds-horarios__hora { display: block; margin-top: .2rem; font-size: .8rem; color: var(--bs-secondary-color); font-variant-numeric: tabular-nums; }
+.ds-horarios__profesor { display: inline-flex; align-items: baseline; gap: .45rem; min-width: 12rem; }
+.ds-horarios__profesor > .fas { color: var(--bs-secondary-color); }
+.ds-horarios__profe { display: block; line-height: 1.35; }
+.ds-horarios__sedefila { font-weight: 600; }
+.ds-horarios__sedefila > .fas { color: var(--bs-secondary-color); margin-right: .15rem; }
+
+/* Escritorio: el nombre del horario no se parte («Horario 3-/4pm») y las
+   acciones se compactan para que la tabla quepa en su tarjeta: el número de
+   alumnos sin la palabra (lo dice la cabecera), «Asignar» sin «alumnos»
+   por debajo de 1400 px y botones más juntos. */
+@media (min-width: 992px) {
+    #horarios-resultado .ds-ficha__principal { min-width: 10rem; }
+    #horarios-resultado .ds-ficha__nombre { white-space: nowrap; }
+    #horarios-resultado .ds-horarios__unidad { display: none; }
+    #horarios-resultado .ds-horarios__acciones,
+    #horarios-resultado .ds-horarios__principales,
+    #horarios-resultado .ds-horarios__acciones .ds-ficha__botones { gap: .25rem; }
+}
+@media (min-width: 992px) and (max-width: 1399.98px) {
+    #horarios-resultado .ds-horarios__largo { display: none; }
+    /* Acciones en dos filas: arriba las de uso diario, debajo los iconos. */
+    #horarios-resultado .ds-horarios__acciones { flex-wrap: wrap; max-width: 12.5rem; margin-left: auto; }
+}
+/* Días y hora bajo el nombre: sólo donde su columna se oculta (portátil con
+   el menú abierto, .ds-col-opcional); en la ficha y en pantalla grande van
+   en su sitio. */
+.ds-horarios__cuando-meta { display: none; }
+@media (min-width: 992px) and (max-width: 1279.98px) {
+    .ds-horarios__cuando-meta { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; margin-top: .3rem; }
+    .ds-horarios__cuando-meta .ds-horarios__hora { display: inline; margin: 0; }
+    /* «Ver lista» sólo con su icono (el texto va en title y aria-label). */
+    #horarios-resultado .ds-horarios__txt { display: none; }
+    .ds-horarios__profesor { min-width: 10rem; }
+}
 .ds-horarios__alumnos { white-space: nowrap; }
 .ds-horarios__alumnos > .fas { color: var(--bs-secondary-color); margin-right: .35rem; }
 .ds-horarios__unidad { color: var(--bs-secondary-color); }
@@ -1828,6 +1866,15 @@ body.layout-fixed .app-main:has(.ds-reporte__tabla),
 @media (max-width: 991.98px) {
     /* Ficha: el número de alumnos junto al nombre, sin rótulo delante. */
     .ds-crud__tabla td.ds-horarios__alumnos { grid-column: 1 / -1; }
+
+    /* Días y hora en una línea (chips y, a su lado, la hora) y el profesor
+       debajo: sin «Días y hora:» ni «Profesor:» delante, los chips y el
+       icono ya dicen qué es cada línea. */
+    .ds-crud__tabla td.ds-horarios__cuando::before,
+    .ds-crud__tabla td.ds-horarios__prof::before { display: none; }
+    .ds-crud__tabla td.ds-horarios__cuando { display: flex !important; align-items: center; gap: .5rem; flex-wrap: wrap; margin-top: .35rem; }
+    .ds-horarios__cuando .ds-horarios__hora { display: inline; margin: 0; font-size: .875rem; }
+    .ds-horarios__profesor { min-width: 0; }
 
     /* Una sola fila de botones de 44 px: las dos acciones diarias se reparten
        el ancho libre, con su texto, y las de mantenimiento van en iconos a la

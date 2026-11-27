@@ -22,16 +22,22 @@
 
 	$h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
 
+	/*
+	| Sede (2026-11-27): sólo las activas que la sesión puede ver, y «Todas»
+	| (valor 0), que es lo que se elige al entrar. ANTES salían también las
+	| sedes cerradas y la pantalla abría vacía hasta elegir una sede y pulsar
+	| Buscar. Una sede que ya no está en la lista vuelve a «Todas».
+	*/
+	$sedes = $insHorario->sedesParaHorarios();
+	$horario_sedeid = (int)$horario_sedeid;
+	if ($horario_sedeid !== 0 && !isset($sedes[$horario_sedeid])) { $horario_sedeid = 0; }
+	$sedeNombre = $horario_sedeid !== 0 ? $sedes[$horario_sedeid] : 'Todas las sedes';
+
 	/* La búsqueda se hace antes de pintar para poder contar los horarios en
 	   la cabecera del resultado. */
-	$hayCriterio = $horario_nombre != '' || $horario_detalle != '' || $horario_sedeid != 0;
-	$filas       = $hayCriterio ? $insHorario->listarHorarios($horario_nombre, $horario_detalle, $horario_sedeid) : '';
-	$total       = substr_count($filas, '<tr');
-
-	$opcionesSede = $insHorario->listarOptionSedebusqueda($horario_sedeid);
-	/* Nombre de la sede elegida, para rotular el resultado. */
-	$sedeNombre = ($horario_sedeid != 0 && preg_match('/<option value=' . preg_quote((string)$horario_sedeid, '/') . ' selected>([^<]*)</', $opcionesSede, $m))
-		? trim($m[1]) : '';
+	$filas = $insHorario->listarHorarios($horario_nombre, $horario_detalle, $horario_sedeid);
+	$total = substr_count($filas, '<tr');
+	$hayFiltroTexto = $horario_nombre !== '' || $horario_detalle !== '';
 ?>
 
 
@@ -83,18 +89,13 @@
 
 				<?php
 				/*
-				| Criterios de búsqueda. ANTES la tarjeta tenía 140 px de alto fijo
-				| y la fila 60: en el teléfono los campos se apilaban, la Sede y el
-				| botón Buscar quedaban debajo de la tarjeta del resultado y no se
-				| podían pulsar.
-				|
-				| La Sede va PRIMERO en el marcado: es el criterio con el que se busca
-				| casi siempre, y en el teléfono se ve y se recorre antes que nada.
-				| En escritorio (lg) las clases order-lg-* conservan el orden de
-				| siempre: nombre, detalle, sede y el botón.
+				| Criterios de búsqueda. La Sede va primero: es el criterio de casi
+				| siempre, y al cambiarla se busca sola (el botón queda para el
+				| nombre y el detalle). En el teléfono, la sede a todo lo ancho y
+				| nombre y detalle en dos columnas.
 				*/
 				?>
-				<form action="<?php echo APP_URL."asistenciaListHorario/" ?>" method="POST" autocomplete="off" class="card ds-horarios__filtros">
+				<form action="<?php echo APP_URL."asistenciaListHorario/" ?>" method="POST" autocomplete="off" class="card ds-horarios__filtros" id="horarios-filtros">
 					<div class="card-header">
 						<h3 class="card-title"><i class="fas fa-filter me-2" aria-hidden="true"></i>Criterios de búsqueda</h3>
 						<div class="card-tools">
@@ -103,22 +104,24 @@
 					</div>
 					<div class="card-body">
 						<div class="row g-3">
-							<div class="col-12 col-sm-6 col-lg-3 order-lg-3">
+							<div class="col-12 col-lg-4">
 								<label for="horario_sedeid" class="form-label">Sede</label>
 								<select class="form-select" id="horario_sedeid" name="horario_sedeid">
-									<option value="0" <?php echo $horario_sedeid == 0 ? 'selected' : ''; ?>>Seleccionar sede</option>
-									<?php echo $opcionesSede; ?>
+									<option value="0" <?php echo $horario_sedeid === 0 ? 'selected' : ''; ?>>Todas las sedes</option>
+									<?php foreach ($sedes as $idSede => $nombreSede): ?>
+										<option value="<?php echo (int)$idSede; ?>" <?php echo $horario_sedeid === (int)$idSede ? 'selected' : ''; ?>><?php echo $h($nombreSede); ?></option>
+									<?php endforeach; ?>
 								</select>
 							</div>
-							<div class="col-6 col-sm-6 col-lg-3 order-lg-1">
-								<label for="horario_nombre" class="form-label">Horario nombre</label>
-								<input type="text" class="form-control" id="horario_nombre" name="horario_nombre" placeholder="Nombre" value="<?php echo $h($horario_nombre); ?>">
+							<div class="col-6 col-lg-3">
+								<label for="horario_nombre" class="form-label">Nombre</label>
+								<input type="search" class="form-control" id="horario_nombre" name="horario_nombre" placeholder="Ej.: Grupo 2" value="<?php echo $h($horario_nombre); ?>" enterkeyhint="search">
 							</div>
-							<div class="col-6 col-sm-6 col-lg-3 order-lg-2">
-								<label for="horario_detalle" class="form-label">Horario detalle</label>
-								<input type="text" class="form-control" id="horario_detalle" name="horario_detalle" placeholder="Detalle" value="<?php echo $h($horario_detalle); ?>">
+							<div class="col-6 col-lg-3">
+								<label for="horario_detalle" class="form-label">Detalle</label>
+								<input type="search" class="form-control" id="horario_detalle" name="horario_detalle" placeholder="Ej.: Sub 12" value="<?php echo $h($horario_detalle); ?>" enterkeyhint="search">
 							</div>
-							<div class="col-12 col-sm-6 col-lg-3 order-lg-4 d-flex align-items-end">
+							<div class="col-12 col-lg-2 d-flex align-items-end">
 								<div class="w-100">
 									<?php echo ds_boton_buscar(); ?>
 								</div>
@@ -131,13 +134,9 @@
 				<div class="card ds-crud__lista" id="horarios-resultado">
 					<div class="card-header">
 						<h3 class="card-title me-auto">
-							<i class="far fa-clock me-2" aria-hidden="true"></i>Resultado de la búsqueda
-							<?php if ($hayCriterio): ?>
-								<span class="badge text-bg-secondary ms-1"><?php echo $total; ?></span>
-							<?php endif; ?>
-							<?php if ($sedeNombre !== ''): ?>
-								<span class="ds-horarios__sede"><i class="fas fa-map-marker-alt me-1" aria-hidden="true"></i><?php echo $h($sedeNombre); ?></span>
-							<?php endif; ?>
+							<i class="far fa-clock me-2" aria-hidden="true"></i>Horarios
+							<span class="badge text-bg-secondary ms-1"><?php echo $total; ?></span>
+							<span class="ds-horarios__sede"><i class="fas fa-map-marker-alt me-1" aria-hidden="true"></i><?php echo $h($sedeNombre); ?></span>
 						</h3>
 						<div class="card-tools d-flex align-items-center gap-1">
 							<?php
@@ -154,15 +153,24 @@
 					</div>
 
 					<div class="card-body">
-						<?php if (!$hayCriterio): ?>
+						<?php if ($total === 0): ?>
 							<p class="ds-horarios__ayuda mb-0">
-								<i class="fas fa-hand-point-up me-1" aria-hidden="true"></i>Elija una sede y pulse <strong>Buscar</strong> para ver sus horarios.
+								<i class="fas fa-circle-info me-1" aria-hidden="true"></i>
+								<?php if (!$sedes): ?>
+									No tiene sedes activas asignadas. Se asignan en Core › Usuarios.
+								<?php elseif ($hayFiltroTexto): ?>
+									Ningún horario coincide con el nombre o el detalle escritos en <?php echo $h($sedeNombre); ?>.
+								<?php else: ?>
+									<?php echo $h($sedeNombre); ?> no tiene horarios todavía.
+								<?php endif; ?>
 							</p>
 						<?php else: ?>
 						<table id="example1" class="table table-hover align-middle ds-crud__tabla" style="width:100%">
 							<thead>
 								<tr>
 									<th>Horario</th>
+									<th class="ds-col-opcional">Días y hora</th>
+									<th>Profesor</th>
 									<th>Alumnos</th>
 									<th>Estado</th>
 									<th class="text-end"><span class="visually-hidden">Acciones</span></th>
@@ -214,6 +222,12 @@
 		| .ds-crud). Sin búsqueda no hay tabla y no se inicia nada.
 		*/
 		document.addEventListener('DOMContentLoaded', function () {
+			/* Cambiar la sede busca sola: es el criterio de casi siempre. */
+			var sede = document.getElementById('horario_sedeid');
+			if (sede) {
+				sede.addEventListener('change', function () { document.getElementById('horarios-filtros').submit(); });
+			}
+
 			if (!document.getElementById('example1')) { return; }
 			new DataTable("#example1", {
 				autoWidth: false,
@@ -221,8 +235,8 @@
 				pageLength: 25,
 				order: [[0, 'asc']],
 				columnDefs: [
-					{ targets: 1, type: 'num' },
-					{ targets: 3, orderable: false, searchable: false }   /* acciones */
+					{ targets: 3, type: 'num' },
+					{ targets: 5, orderable: false, searchable: false }   /* acciones */
 				],
 				layout: {
 					topStart: null,

@@ -698,91 +698,114 @@
 			return json_encode($alerta);
 		}
 
-		public function listarHorarios($horario_nombre, $horario_detalle, $horario_sedeid){					
-			if($horario_nombre!=""){
-				$horario_nombre .= '%'; 
+		/*
+		| Sedes del selector de Horarios (2026-11-27): sólo las ACTIVAS y, de
+		| ellas, las que la sesión puede ver (sedes_de_la_sesion(), como el
+		| resto de listados). Antes salían todas, también las cerradas.
+		| Devuelve [sede_id => sede_nombre]. Es también lo que abarca «Todas».
+		*/
+		public function sedesParaHorarios(): array{
+			$permitidas = $this->sedesDeLaSesion();
+			if ($permitidas === []) { return []; }
+			$filtro = $permitidas === null ? '' : ' AND sede_id IN (' . implode(',', array_map('intval', $permitidas)) . ')';
+			$sedes = [];
+			foreach ($this->ejecutarConsulta("SELECT sede_id, sede_nombre FROM general_sede
+					WHERE " . sql_sede_activa('sede_id') . $filtro . "
+					ORDER BY sede_nombre")->fetchAll() as $s) {
+				$sedes[(int)$s['sede_id']] = (string)$s['sede_nombre'];
 			}
-			if($horario_detalle!=""){
-				$horario_detalle .= '%';
-			} 	
+			return $sedes;
+		}
 
-			$tabla="";
-			/* El array se arma a la par que la consulta: cada rama
-			   registra solo lo que su SQL usa. */
+		/*
+		| Horarios de una sede, o de todas ($horario_sedeid = 0: las de
+		| sedesParaHorarios()). Nombre y detalle buscan por un trozo del texto y
+		| se suman si se dan los dos (ANTES: «empieza por» y bastaba con uno).
+		|
+		| Con cada horario: sus días y la hora, el profesor (o profesores: cada
+		| día puede darlo uno distinto) y los alumnos activos de su lista.
+		| LEFT JOIN al detalle: un horario recién creado y aún sin días se ve
+		| (antes no aparecía y no se podía editar desde aquí).
+		*/
+		public function listarHorarios($horario_nombre, $horario_detalle, $horario_sedeid){
+			$sedes = $this->sedesParaHorarios();
+			$horario_sedeid = (int)$horario_sedeid;
+			/* Una sede que no está en el selector (cerrada o ajena) no se lista. */
+			$ids = $horario_sedeid > 0 ? (isset($sedes[$horario_sedeid]) ? [$horario_sedeid] : []) : array_keys($sedes);
+			if (!$ids) { return ''; }
+
 			$parametros = [];
-			$consulta_datos="SELECT distinct AH.*, IFNULL(TOTAL.TOTAL,0) ALUMNOS 
-								FROM asistencia_horario AH
-									INNER JOIN asistencia_horario_detalle on detalle_horarioid = horario_id
-										LEFT JOIN(
-												SELECT G.asignahorario_horarioid HORARIOID, COUNT(DISTINCT G.asignahorario_alumnoid) TOTAL
-												FROM asistencia_asignahorario G
-												INNER JOIN sujeto_alumno A ON A.alumno_id = G.asignahorario_alumnoid
-												       AND A.alumno_estado = 'A'   /* como «Ver lista»: sólo activos */
-												GROUP BY G.asignahorario_horarioid
-										)TOTAL ON TOTAL.HORARIOID = AH.horario_id 
-								WHERE (horario_nombre LIKE :nombre 
-								OR horario_detalle LIKE :detalle) ";			
-			$parametros[':nombre']  = $horario_nombre;
-			$parametros[':detalle'] = $horario_detalle;
-
-			if($horario_nombre=="" && $horario_detalle=="" ){
-				$consulta_datos="SELECT distinct AH.*, IFNULL(TOTAL.TOTAL,0) ALUMNOS
-									FROM asistencia_horario AH
-										INNER JOIN asistencia_horario_detalle on detalle_horarioid = horario_id
-										LEFT JOIN(
-												SELECT G.asignahorario_horarioid HORARIOID, COUNT(DISTINCT G.asignahorario_alumnoid) TOTAL
-												FROM asistencia_asignahorario G
-												INNER JOIN sujeto_alumno A ON A.alumno_id = G.asignahorario_alumnoid
-												       AND A.alumno_estado = 'A'   /* como «Ver lista»: sólo activos */
-												GROUP BY G.asignahorario_horarioid
-										)TOTAL ON TOTAL.HORARIOID = AH.horario_id
-									WHERE horario_nombre <> '' ";
-				$parametros = [];
+			$condiciones = "H.horario_estado <> 'E' AND H.horario_sedeid IN (" . implode(',', $ids) . ")";
+			if ($horario_nombre !== '') {
+				$condiciones .= " AND H.horario_nombre LIKE :nombre";
+				$parametros[':nombre'] = '%' . $horario_nombre . '%';
+			}
+			if ($horario_detalle !== '') {
+				$condiciones .= " AND H.horario_detalle LIKE :detalle";
+				$parametros[':detalle'] = '%' . $horario_detalle . '%';
 			}
 
-			if($horario_sedeid!=""){
-				if($horario_sedeid == 0){
-					$consulta_datos .= " and horario_sedeid <> :sede"; 
-					$parametros[':sede'] = $horario_sedeid;
-				}else{
-					$consulta_datos .= " and horario_sedeid = :sede"; 
-					$parametros[':sede'] = $horario_sedeid;
-				}
-			}else{
-				$consulta_datos = "SELECT distinct AH.*, IFNULL(TOTAL.TOTAL,0) ALUMNOS
-									FROM asistencia_horario AH
-										INNER JOIN asistencia_horario_detalle on detalle_horarioid = horario_id
-										LEFT JOIN(
-												SELECT G.asignahorario_horarioid HORARIOID, COUNT(DISTINCT G.asignahorario_alumnoid) TOTAL
-												FROM asistencia_asignahorario G
-												INNER JOIN sujeto_alumno A ON A.alumno_id = G.asignahorario_alumnoid
-												       AND A.alumno_estado = 'A'   /* como «Ver lista»: sólo activos */
-												GROUP BY G.asignahorario_horarioid
-										)TOTAL ON TOTAL.HORARIOID = AH.horario_id
-									WHERE horario_nombre = '' ";
-				$parametros = [];
-			}			
+			$datos = $this->ejecutarConsulta("SELECT H.horario_id, H.horario_nombre, H.horario_detalle, H.horario_estado,
+						H.horario_sedeid, S.sede_nombre,
+						GROUP_CONCAT(DISTINCT D.detalle_dia ORDER BY D.detalle_dia) AS dias,
+						MIN(HR.hora_inicio) AS inicio, MAX(HR.hora_fin) AS fin,
+						GROUP_CONCAT(DISTINCT E.empleado_nombre ORDER BY E.empleado_nombre SEPARATOR '|') AS profesores,
+						IFNULL(T.total, 0) AS ALUMNOS
+					FROM asistencia_horario H
+					INNER JOIN general_sede S ON S.sede_id = H.horario_sedeid
+					LEFT JOIN asistencia_horario_detalle D ON D.detalle_horarioid = H.horario_id
+					LEFT JOIN asistencia_hora HR ON HR.hora_id = D.detalle_horaid
+					LEFT JOIN sujeto_empleado E ON E.empleado_id = D.detalle_profesorid
+					LEFT JOIN (SELECT G.asignahorario_horarioid AS horario, COUNT(DISTINCT G.asignahorario_alumnoid) AS total
+							FROM asistencia_asignahorario G
+							INNER JOIN sujeto_alumno A ON A.alumno_id = G.asignahorario_alumnoid
+							       AND A.alumno_estado = 'A'   /* como «Ver lista»: sólo activos */
+							GROUP BY G.asignahorario_horarioid) T ON T.horario = H.horario_id
+					WHERE " . $condiciones . "
+					GROUP BY H.horario_id, H.horario_nombre, H.horario_detalle, H.horario_estado,
+						H.horario_sedeid, S.sede_nombre, T.total
+					ORDER BY S.sede_nombre, inicio, H.horario_nombre", $parametros)->fetchAll();
 
-			$consulta_datos .= " AND horario_estado <> 'E'"; 
-			$datos = $this->ejecutarConsulta($consulta_datos, $parametros);
-			$datos = $datos->fetchAll();
 			/*
 			| Una fila por horario con el marcado de fichas (.ds-crud, futbol.css):
-			| tabla en escritorio y ficha en el teléfono. ANTES eran seis columnas
-			| con los botones flotando a la derecha (float-end), y en el teléfono
-			| el modo adaptable de DataTables escondía «Ver lista» y «Asignar
-			| alumnos» —lo que más se usa— detrás de un ▶.
+			| tabla en escritorio y ficha en el teléfono.
 			|
 			| Las dos acciones de uso diario («Ver lista» y «Asignar alumnos») van
 			| con texto; las de mantenimiento (ver, editar, eliminar), en iconos.
 			*/
 			$h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+			$hora = static fn($t) => $t ? substr((string)$t, 0, 5) : '';
+			$LETRAS = [1 => ['L', 'Lunes'], 2 => ['M', 'Martes'], 3 => ['X', 'Miércoles'], 4 => ['J', 'Jueves'], 5 => ['V', 'Viernes'], 6 => ['S', 'Sábado'], 7 => ['D', 'Domingo']];
+			$hoyIso = (int)date('N');
+			$conSede = $horario_sedeid === 0;   /* con «Todas», cada ficha dice su sede */
+			$tabla = '';
 			foreach($datos as $rows){
 				$id       = (int)$rows['horario_id'];
 				$nombre   = $h($rows['horario_nombre']);
 				$detalle  = trim((string)$rows['horario_detalle']);
 				$alumnos  = (int)$rows['ALUMNOS'];
 				$activo   = $rows['horario_estado'] == 'A';
+				$sedeFila = (int)$rows['horario_sedeid'];
+
+				$dias = array_map('intval', array_filter(explode(',', (string)$rows['dias']), 'strlen'));
+				$chips = '';
+				foreach ($dias as $d) {
+					if (!isset($LETRAS[$d])) { continue; }
+					$chips .= '<abbr title="' . $LETRAS[$d][1] . '" class="ds-toma__dia' . ($d === $hoyIso ? ' ds-toma__dia--hoy' : '') . '">' . $LETRAS[$d][0] . '</abbr>';
+				}
+				$rango = $hora($rows['inicio']) !== '' ? $hora($rows['inicio']) . ' – ' . $hora($rows['fin']) : '';
+				$celdaDias = $chips !== ''
+					? '<span class="ds-toma__dias">' . $chips . '</span>' . ($rango !== '' ? '<span class="ds-horarios__hora">' . $rango . '</span>' : '')
+					: '<span class="text-body-secondary">Sin días</span>';
+				/* Uno por línea: cada día puede darlo un profesor distinto, y con
+				   comas los nombres largos se partían por la mitad. */
+				$nombresProfesor = array_filter(array_map('trim', explode('|', (string)$rows['profesores'])), 'strlen');
+				$profesor = $nombresProfesor
+					? '<span class="ds-horarios__profesor"><i class="fas fa-chalkboard-user" aria-hidden="true"></i><span>'
+						. implode('', array_map(static fn($n) => '<span class="ds-horarios__profe">' . $h($n) . '</span>', $nombresProfesor))
+						. '</span></span>'
+					: '<span class="text-body-secondary">Sin asignar</span>';
+				$rows['profesores'] = implode(', ', $nombresProfesor);   /* para ordenar y filtrar */
 
 				$eliminar = $this->siPuede('eliminar','asistenciaListHorario','<form class="FormularioAjax" action="'.APP_URL.'app/ajax/asistenciaAjax.php" method="POST" autocomplete="off">
 								<input type="hidden" name="modulo_asistencia" value="eliminar_horario">
@@ -792,10 +815,14 @@
 
 				$tabla.='
 					<tr>
-						<td class="ds-ficha__principal" data-order="'.$nombre.'">
+						<td class="ds-ficha__principal" data-order="'.$h($rows['sede_nombre'].' '.$rows['inicio'].' '.$rows['horario_nombre']).'">
 							<div class="ds-ficha__nombre">'.$nombre.'</div>
 							'.($detalle !== '' ? '<div class="ds-ficha__meta">'.$h($detalle).'</div>' : '').'
+							'.($conSede ? '<div class="ds-ficha__meta ds-horarios__sedefila"><i class="fas fa-location-dot" aria-hidden="true"></i> '.$h($rows['sede_nombre']).'</div>' : '').'
+							<div class="ds-horarios__cuando-meta">'.$celdaDias.'</div>
 						</td>
+						<td class="ds-ficha__dato ds-horarios__cuando ds-col-opcional" data-etiqueta="Días y hora" data-order="'.$h($rows['inicio']).'">'.$celdaDias.'</td>
+						<td class="ds-ficha__dato ds-horarios__prof" data-etiqueta="Profesor" data-order="'.$h($rows['profesores']).'">'.$profesor.'</td>
 						<td class="ds-ficha__dato ds-horarios__alumnos" data-order="'.$alumnos.'">
 							<i class="fas fa-users" aria-hidden="true"></i><strong>'.$alumnos.'</strong> <span class="ds-horarios__unidad">'.($alumnos === 1 ? 'alumno' : 'alumnos').'</span>
 						</td>
@@ -803,8 +830,8 @@
 						<td class="ds-tabla-acciones ds-ficha__acciones">
 							<div class="ds-horarios__acciones">
 								<div class="ds-horarios__principales">
-									<a href="'.APP_URL.'asistenciaHorarioLista/'.$id.'/" target="_blank" class="btn btn-ver btn-sm"><i class="fas fa-list me-1" aria-hidden="true"></i>Ver lista</a>
-									<a href="'.APP_URL.'asistenciaHorarioJugador/'.$id.'/'.(int)$horario_sedeid.'/" target="_blank" class="btn btn-warning btn-sm" title="Asignar alumnos"><i class="fas fa-link me-1" aria-hidden="true"></i>Asignar<span class="ds-horarios__largo">&nbsp;alumnos</span></a>
+									<a href="'.APP_URL.'asistenciaHorarioLista/'.$id.'/" target="_blank" class="btn btn-ver btn-sm" title="Ver lista" aria-label="Ver la lista de '.$nombre.'"><i class="fas fa-list" aria-hidden="true"></i><span class="ds-horarios__txt ms-1">Ver lista</span></a>
+									<a href="'.APP_URL.'asistenciaHorarioJugador/'.$id.'/'.$sedeFila.'/" target="_blank" class="btn btn-warning btn-sm" title="Asignar alumnos"><i class="fas fa-link me-1" aria-hidden="true"></i>Asignar<span class="ds-horarios__largo">&nbsp;alumnos</span></a>
 								</div>
 								<div class="ds-ficha__botones">
 									<a href="'.APP_URL.'asistenciaVerHorario/'.$id.'/" target="_blank" class="btn btn-ver btn-sm" title="Ver horario" aria-label="Ver el horario '.$nombre.'"><i class="fas fa-eye" aria-hidden="true"></i></a>

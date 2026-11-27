@@ -135,34 +135,220 @@
 ?>
 
 <?php
+	/*
+	| Presentación (2026-11-27): pensada primero para el celular.
+	| Respaldo de la versión anterior: etiqueta git
+	| respaldo/pagosNew-antes-ux-2026-11-27 y copia en
+	| C:\wamp64\respaldos\champions_cf_new\2026-11-27_pagosNew\.
+	| Los nombres, ids y valores que viajan al servidor no cambian.
+	*/
+	/* Hay textos que ya se guardan escapados (limpiarCadena): se
+	   decodifican antes para no mostrar «&quot;». */
+	$pgE = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+	$esPendiente = ($pendiente === 'Pendiente');
+	$sinPago     = ds_recurso('ds_futbol/app/views/dist/img/sinpago.jpg');
+	$fechaCorta  = static fn($f) => $f ? date('d/m/Y', strtotime($f)) : '';
+
+	/* Lo que debe: pensiones sin pagar + rubros con saldo. Las filas las
+	   arma el controlador; aquí sólo se cuentan y se suma el valor. */
+	$filasDeuda = $pension . $insAlumno->pagosPendintes($alumno);
+	$totalDeuda = 0.0;
+	$nDeuda     = 0;
+	if (preg_match_all('#<tr[^>]*>\s*<td>[^<]*</td>\s*<td>[^<]*</td>\s*<td>([^<]*)</td>#', $filasDeuda, $pgM)) {
+		$nDeuda = count($pgM[1]);
+		foreach ($pgM[1] as $v) { $totalDeuda += (float)$v; }
+	}
+
+	/* El comprobante: miniatura pequeña y un botón; el <input type=file>
+	   nativo queda encima del botón, invisible. foto.js entiende este
+	   marcado (fileinput-new / fileinput-exists). */
+	$pgComprobante = static function (string $id, string $imgId, string $dis) use ($sinPago, $pgE): string {
+		return '
+			<label class="form-label" for="' . $id . '">Comprobante</label>
+			<div class="fileinput fileinput-new ds-pg-foto" data-provides="fileinput">
+				<div class="fileinput-new thumbnail" data-trigger="fileinput"><img src="' . $pgE($sinPago) . '" alt="Sin comprobante" id="' . $imgId . '"></div>
+				<div class="fileinput-preview fileinput-exists thumbnail"></div>
+				<div class="ds-pg-foto__botones">
+					<span class="bton bton-white bton-file btn btn-outline-secondary">
+						<i class="fas fa-camera me-1"></i><span class="fileinput-new">Subir foto</span><span class="fileinput-exists">Cambiar</span>
+						<input type="file" name="pago_archivo" id="' . $id . '" accept="image/jpeg,image/png" ' . $dis . '>
+					</span>
+					<a href="#" class="bton bton-orange fileinput-exists btn btn-link text-danger" data-bs-dismiss="fileinput">Quitar</a>
+					<div class="form-text">JPG o PNG, hasta 3 MB</div>
+				</div>
+			</div>';
+	};
+
+	/* Historial de cada rubro: tabla en escritorio, tarjetas en el celular
+	   (las etiquetas de cada dato las pone el script desde el <thead>). */
+	$pgHistorial = static function (string $titulo, string $tablaId, array $columnas, string $filas): string {
+		$n = substr_count($filas, '<tr');
+		$html = '<section class="ds-pg-historial">
+			<h3 class="ds-pg-historial__titulo">' . $titulo . ' <span class="badge rounded-pill text-bg-secondary">' . $n . '</span></h3>';
+		if ($n === 0) {
+			return $html . '<p class="ds-pg-historial__vacio"><i class="far fa-folder-open me-1"></i>Aún no hay pagos registrados.</p></section>';
+		}
+		$th = '';
+		foreach ($columnas as $c) { $th .= '<th>' . $c . '</th>'; }
+		return $html . '
+			<div class="table-responsive">
+				<table id="' . $tablaId . '" class="table table-bordered table-striped table-sm ds-pg-tabla">
+					<thead><tr>' . $th . '<th class="ds-pg-tabla__acciones">Opciones</th></tr></thead>
+					<tbody>' . $filas . '</tbody>
+				</table>
+			</div>
+		</section>';
+	};
+
+	$pgAviso = static function (string $clase, string $titulo, string $detalle) use ($pgE): string {
+		return '<div class="alert ' . $clase . ' ds-pg-aviso" role="status">
+			<i class="fas fa-info-circle"></i>
+			<div><strong>' . $pgE(trim($titulo)) . '</strong> ' . $pgE($detalle) . '</div>
+		</div>';
+	};
+
+	$accionesPago = ds_acciones_form('', ['limpiar' => true, 'respaldo' => APP_URL . 'pagosList/']);
+	$colsMes = ['No', 'Fecha registro', 'Mes/Año', 'Pago', 'Saldo', 'Recibo', 'Estado'];
+?>
+
+<?php
 	/* La cabecera es comun a todas las vistas: ds_futbol/app/views/inc/cabecera.php */
 	$tituloVista = 'Registro de pagos';
 	$extras      = array (0 => 'lightbox',1 => 'swal',);
 	$cabeceraExtra = <<<'CSS'
 	<style>
-		.oculto{
-			display: none;
+		input:invalid { box-shadow: 0 0 2px 1px var(--bs-danger); }
+		input:focus:invalid { box-shadow: none; }
+
+		/* ---------- Ficha del alumno ---------- */
+		.ds-pg-alumno__cabeza { display: flex; align-items: center; gap: .875rem; }
+		.ds-pg-alumno__foto {
+			width: 72px; height: 72px; flex: 0 0 72px;
+			border-radius: 50%; object-fit: cover;
+			border: 2px solid var(--bs-border-color); background: var(--bs-tertiary-bg);
+		}
+		.ds-pg-alumno__id { min-width: 0; }
+		.ds-pg-alumno__nombre { font-size: 1.15rem; font-weight: 600; margin: 0; line-height: 1.25; overflow-wrap: anywhere; }
+		.ds-pg-alumno__cedula { font-size: .85rem; color: var(--bs-secondary-color); font-variant-numeric: tabular-nums; }
+		.ds-pg-alumno__chips { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .35rem; }
+		.ds-pg-alumno__chips .badge { font-weight: 500; }
+		.ds-pg-alumno__datos {
+			display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+			gap: .5rem 1rem; margin: 1rem 0 0; padding: .75rem 0 0;
+			border-top: 1px solid var(--bs-border-color-translucent);
+		}
+		.ds-pg-alumno__datos dt { font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--bs-secondary-color); }
+		.ds-pg-alumno__datos dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+		/* ---------- Lo que debe ---------- */
+		.ds-pg-deuda { margin-top: 1rem; border-radius: var(--bs-border-radius-lg); border: 1px solid; }
+		.ds-pg-deuda--pendiente { border-color: var(--bs-danger-border-subtle); background: var(--bs-danger-bg-subtle); }
+		.ds-pg-deuda--aldia { border-color: var(--bs-success-border-subtle); background: var(--bs-success-bg-subtle); }
+		.ds-pg-deuda summary, .ds-pg-deuda__cabeza {
+			display: grid; grid-template-columns: 1fr auto; align-items: center;
+			gap: 0 .75rem; padding: .7rem .9rem; list-style: none;
+		}
+		.ds-pg-deuda summary { cursor: pointer; }
+		.ds-pg-deuda summary::-webkit-details-marker { display: none; }
+		.ds-pg-deuda__rotulo { font-weight: 600; }
+		.ds-pg-deuda--pendiente .ds-pg-deuda__rotulo { color: var(--bs-danger-text-emphasis); }
+		.ds-pg-deuda--aldia .ds-pg-deuda__rotulo { color: var(--bs-success-text-emphasis); }
+		.ds-pg-deuda__total { font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--bs-danger-text-emphasis); grid-row: span 2; }
+		.ds-pg-deuda__n { font-size: .8rem; color: var(--bs-secondary-color); }
+		.ds-pg-deuda__ver::after { content: " \25BE"; }
+		.ds-pg-deuda details[open] .ds-pg-deuda__ver::after { content: " \25B4"; }
+		.ds-pg-deuda__lista { padding: 0 .9rem .6rem; }
+		.ds-pg-deuda__lista table { margin: 0; --bs-table-bg: transparent; }
+		.ds-pg-deuda__lista td { font-size: .85rem !important; padding: .3rem .25rem; color: var(--bs-body-color) !important; border-color: var(--bs-danger-border-subtle); }
+		.ds-pg-deuda__lista td:nth-child(2) { white-space: nowrap; }
+		.ds-pg-deuda__lista td:nth-child(3) { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+		/* ---------- Pestañas: una sola línea que se desliza en el celular ---------- */
+		.ds-pg-tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: .25rem; -webkit-overflow-scrolling: touch; }
+		.ds-pg-tabs::-webkit-scrollbar { display: none; }
+		.ds-pg-tabs .nav-link { white-space: nowrap; padding: .5rem .8rem; }
+		.ds-pg-tabs .nav-link i { margin-right: .35rem; opacity: .85; }
+
+		/* ---------- Formulario ---------- */
+		.ds-pg-form .form-label { font-weight: 500; margin-bottom: .3rem; }
+		.ds-pg-form input[type="date"] { min-width: 0; }
+		.ds-pg-form .ds-pg-monto { text-align: right; font-variant-numeric: tabular-nums; }
+		.ds-pg-form .form-control[readonly] { background-color: var(--bs-secondary-bg); }
+		.ds-pg-aviso { display: flex; gap: .6rem; align-items: flex-start; }
+		.ds-pg-aviso i { margin-top: .2rem; }
+
+		/* Comprobante: miniatura y botón en una línea, no una imagen de 158 px. */
+		.ds-pg-foto { display: flex !important; align-items: center; gap: .75rem; }
+		.ds-pg-foto .thumbnail {
+			width: 64px; height: 64px; flex: 0 0 64px;
+			border: 1px dashed var(--bs-border-color); border-radius: var(--bs-border-radius);
+			background: var(--bs-tertiary-bg); overflow: hidden; cursor: pointer;
+		}
+		.ds-pg-foto .thumbnail img { width: 100%; height: 100%; object-fit: cover; }
+		.ds-pg-foto.fileinput-new .fileinput-preview { display: none !important; }
+		.ds-pg-foto__botones { min-width: 0; }
+		.ds-pg-foto .bton-file { position: relative; overflow: hidden; }
+		.ds-pg-foto .bton-file input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; font-size: 0; }
+		.ds-pg-foto .bton-file:focus-within { outline: 2px solid var(--bs-primary); outline-offset: 2px; }
+		.ds-pg-foto .form-text { margin-top: .15rem; font-size: .75rem; }
+
+		/* ---------- Historial ---------- */
+		.ds-pg-historial { margin-top: 1.5rem; }
+		.ds-pg-historial__titulo { font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: .5rem; margin-bottom: .6rem; }
+		.ds-pg-historial__vacio { color: var(--bs-secondary-color); padding: 1rem; border: 1px dashed var(--bs-border-color); border-radius: var(--bs-border-radius); text-align: center; margin: 0; }
+		.ds-pg-tabla td, .ds-pg-tabla th { vertical-align: middle; }
+		.ds-pg-tabla td:nth-last-child(-n+1) { white-space: nowrap; }
+		.ds-pg-tabla .ds-pg-tabla__acciones { width: 1%; }
+		.ds-pg-tabla td:last-child { display: flex; flex-direction: row-reverse; justify-content: flex-start; gap: .3rem; }
+		.ds-pg-tabla td:last-child .btn { float: none !important; margin: 0 !important; }
+		.ds-pg-tabla td:last-child form { margin: 0; }
+
+		@media (max-width: 767.98px) {
+			/* Cada pago es una tarjeta: nada se sale de la pantalla y los
+			   botones quedan a la vista. */
+			.ds-pg-historial .table-responsive { overflow: visible; }
+			.ds-pg-tabla, .ds-pg-tabla tbody { display: block; border: 0; }
+			.ds-pg-tabla thead { display: none; }
+			.ds-pg-tabla tr {
+				display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem .75rem;
+				padding: .75rem .9rem; margin-bottom: .6rem;
+				border: 1px solid var(--bs-border-color); border-left-width: 4px;
+				border-radius: var(--bs-border-radius-lg); background: var(--bs-body-bg);
+			}
+			.ds-pg-tabla tr.text-danger  { border-left-color: var(--bs-danger); }
+			.ds-pg-tabla tr.text-primary { border-left-color: var(--bs-primary); }
+			.ds-pg-tabla td {
+				display: block; border: 0 !important; padding: 0 !important;
+				box-shadow: none !important; background: none !important; min-width: 0;
+				font-variant-numeric: tabular-nums; white-space: normal !important; overflow-wrap: anywhere; font-size: .9rem;
+			}
+			.ds-pg-tabla td::before {
+				content: attr(data-label); display: block;
+				font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em;
+				color: var(--bs-secondary-color);
+			}
+			.ds-pg-tabla td:first-child { display: none; }
+			.ds-pg-tabla td:last-child {
+				grid-column: 1 / -1; display: flex; flex-wrap: wrap;
+				padding-top: .6rem !important; border-top: 1px dashed var(--bs-border-color) !important;
+			}
+			.ds-pg-tabla td:last-child::before { display: none; }
+			.ds-pg-tabla td:last-child .btn { min-height: 2.5rem; min-width: 2.5rem; display: inline-flex; align-items: center; justify-content: center; }
+
+			/* Guardar siempre a mano mientras se llena el formulario. */
+			.ds-pg-form .ds-acciones {
+				position: sticky; bottom: 0; z-index: 5;
+				display: grid; grid-template-columns: 1fr 1fr; gap: .5rem;
+				margin: 1rem -1rem 0; padding: .75rem 1rem;
+				background: var(--bs-body-bg); border-top: 1px solid var(--bs-border-color);
+				box-shadow: 0 -6px 14px rgba(0, 0, 0, .06);
+			}
+			.ds-pg-form .ds-acciones .btn { width: auto; min-width: 0; }
+			.ds-pg-form .ds-acciones [type="submit"] { grid-column: 1 / -1; order: -1; min-height: 2.75rem; }
 		}
 
-		.errorMSG {
-		  display: none;
-		}
-
-		input:invalid {
-		  box-shadow: 0 0 2px 1px red;
-		}
-
-		input:invalid ~ .errorMSG{
-		 
-		  width: 180px;
-		  font-size: 12px;		  
-		  color: red;
-		  vertical-align: top;
-		  margin: 0;
-		}
-
-		input:focus:invalid {
-		  box-shadow: none;
+		@media (min-width: 992px) {
+			.ds-pg-col-alumno .card { position: sticky; top: 1rem; }
 		}
 	</style>
 CSS;
@@ -171,17 +357,13 @@ CSS;
   <body class="layout-fixed sidebar-expand-lg bg-body-tertiary">
     <div class="app-wrapper ds-core">
 
-		<!-- Preloader -->
-		<!--?php require_once "app/views/inc/preloader.php"; ?-->
-		<!-- /.Preloader -->
-
 		<!-- Navbar -->
 		<?php require_once "app/views/inc/navbar.php"; ?>
 		<!-- /.navbar -->
 
 		<!-- Main Sidebar Container -->
 		<?php require_once "app/views/inc/main-sidebar.php"; ?>
-		<!-- /.Main Sidebar Container -->  
+		<!-- /.Main Sidebar Container -->
 
 		<!-- vista -->
 		<div class="app-main">
@@ -197,7 +379,7 @@ CSS;
 							<ol class="breadcrumb float-sm-end">
 								<li class="breadcrumb-item"><a href="<?php echo APP_URL; ?>dashboard/">Inicio</a></li>
 								<li class="breadcrumb-item"><a href="<?php echo APP_URL; ?>pagosList/">Pagos</a></li>
-								<li class="breadcrumb-item active" aria-current="page"><?php echo htmlspecialchars($datos['alumno_primernombre'].' '.$datos['alumno_apellidopaterno'], ENT_QUOTES, 'UTF-8'); ?></li>
+								<li class="breadcrumb-item active" aria-current="page"><?php echo $pgE($datos['alumno_primernombre'].' '.$datos['alumno_apellidopaterno']); ?></li>
 							</ol>
 						</div><!-- /.col -->
 					</div><!-- /.row -->
@@ -206,877 +388,388 @@ CSS;
 			<!-- /.content-header -->
 
 			<!-- Main content -->
-			<section class="app-content">				
-				<!-- /.container-fluid información alumno -->
+			<section class="app-content">
 				<div class="container-fluid">
+					<div class="row g-3">
 
-					<div class="row">
-						<div class="col-md-3">	
-							<!-- Profile Image -->
-							<div class="card card-primary card-outline">
-								<div class="card-body box-profile">
-									<div class="text-center">
-										<img class="profile-user-img img-fluid rounded-circle"
-											src="<?php echo $foto; ?>"
-											alt="User profile picture">
+						<!-- Ficha del alumno -->
+						<div class="col-lg-4 col-xl-3 ds-pg-col-alumno">
+							<div class="card card-primary card-outline ds-pg-alumno">
+								<div class="card-body">
+									<div class="ds-pg-alumno__cabeza">
+										<a href="<?php echo $pgE($foto); ?>" data-bs-toggle="lightbox" data-title="<?php echo $pgE($datos['alumno_primernombre'].' '.$datos['alumno_apellidopaterno']); ?>">
+											<img class="ds-pg-alumno__foto" src="<?php echo $pgE($foto); ?>" alt="Foto del alumno">
+										</a>
+										<div class="ds-pg-alumno__id">
+											<h2 class="ds-pg-alumno__nombre"><?php echo $pgE($datos['alumno_primernombre']." ".$datos['alumno_apellidopaterno']); ?></h2>
+											<div class="ds-pg-alumno__cedula"><?php echo $pgE($datos['alumno_identificacion']); ?></div>
+											<div class="ds-pg-alumno__chips">
+												<span class="badge rounded-pill <?php echo $datos['alumno_estado'] === 'A' ? 'text-bg-success' : 'text-bg-secondary'; ?>"><?php echo $pgE($datos['estado']); ?></span>
+												<span class="badge rounded-pill bg-body-secondary text-body-emphasis border">Categoría <?php echo $pgE($datos['anio']); ?></span>
+											</div>
+										</div>
 									</div>
 
-									<h3 class="profile-username text-center"><?php echo $datos['alumno_primernombre']." ".$datos['alumno_apellidopaterno'] ; ?></h3>
+									<dl class="ds-pg-alumno__datos">
+										<div><dt>Ingreso</dt><dd><?php echo $pgE($fechaCorta($datos['alumno_fechaingreso'])); ?></dd></div>
+										<div><dt>Última asistencia</dt><dd><?php echo $ultimaAsistencia ? $pgE($fechaCorta($ultimaAsistencia)) : '<span class="text-body-secondary">Sin asistencias</span>'; ?></dd></div>
+										<?php if (!empty($sede['sede_nombre'])) { ?>
+										<div><dt>Sede</dt><dd><?php echo $pgE($sede['sede_nombre']); ?></dd></div>
+										<?php } ?>
+									</dl>
 
-									<p class="text-muted text-center"><?php echo $datos['alumno_identificacion']; ?></p>
-
-									<ul class="list-group list-group-unbordered mb-3">
-										<li class="list-group-item">
-											<b>Categoría</b> <a class="float-end"><?php echo $datos['anio']; ?></a>
-										</li>
-										<li class="list-group-item">
-											<b>Estado alumno</b> <a class="float-end"><?php echo $datos['estado']; ?></a>
-										</li>
-										<li class="list-group-item">
-											<b>Fecha de ingreso</b> <a class="float-end"><?php echo $datos['alumno_fechaingreso']; ?></a>
-										</li>
-										<li class="list-group-item">
-											<b>Última asistencia</b> <span class="float-end"><?php echo $ultimaAsistencia ? date('d/m/Y', strtotime($ultimaAsistencia)) : '<span class="text-body-secondary">Sin asistencias</span>'; ?></span>
-										</li>
-										<li class="list-group-item">
-											<b>Estado pagos</b>												
-											<?php												
-												echo $clase.$pendiente.'</a>'; 												
-											?>
-										</li>
-										<li class="list-group-item">
-											<b>Detalle rubros pendientes</b> 
-											<div class="table-responsive">
-											<table class="table table-sm">	
-
-												<?php 
-												echo $pension;
-												echo $insAlumno->pagosPendintes($alumno); 
-												?>											
-											</table>
-											</div>											
-										</li>
-									</ul>
+									<?php if ($esPendiente && $nDeuda > 0) { ?>
+									<div class="ds-pg-deuda ds-pg-deuda--pendiente">
+										<details id="ds-pg-deuda">
+											<summary>
+												<span class="ds-pg-deuda__rotulo"><i class="fas fa-exclamation-circle me-1"></i>Pendiente</span>
+												<span class="ds-pg-deuda__total">$<?php echo number_format($totalDeuda, 2, '.', ','); ?></span>
+												<span class="ds-pg-deuda__n"><?php echo $nDeuda; ?> <?php echo $nDeuda === 1 ? 'rubro' : 'rubros'; ?> · <span class="ds-pg-deuda__ver">detalle</span></span>
+											</summary>
+											<div class="ds-pg-deuda__lista">
+												<table class="table table-sm"><tbody><?php echo $filasDeuda; ?></tbody></table>
+											</div>
+										</details>
+									</div>
+									<?php } elseif ($esPendiente) { ?>
+									<div class="ds-pg-deuda ds-pg-deuda--pendiente">
+										<div class="ds-pg-deuda__cabeza"><span class="ds-pg-deuda__rotulo"><i class="fas fa-exclamation-circle me-1"></i>Pendiente</span></div>
+									</div>
+									<?php } else { ?>
+									<div class="ds-pg-deuda ds-pg-deuda--aldia">
+										<div class="ds-pg-deuda__cabeza">
+											<span class="ds-pg-deuda__rotulo"><i class="fas fa-check-circle me-1"></i>Al día</span>
+											<span class="ds-pg-deuda__n">Sin rubros pendientes</span>
+										</div>
+									</div>
+									<?php } ?>
 								</div>
-								<!-- /.card-body -->
 							</div>
-							<!-- /.card -->
 						</div>
 
-						<div class="col-md-9">
+						<!-- Registro de pagos -->
+						<div class="col-lg-8 col-xl-9">
 							<div class="card">
 								<div class="card-header p-2">
-									<ul class="nav nav-pills">
-										<li class="nav-item"><a class="nav-link active" href="#pension" data-bs-toggle="tab">Pensiones</a></li>
-										<li class="nav-item"><a class="nav-link" href="#inscripcion" data-bs-toggle="tab">Inscripción</a></li>
-										<li class="nav-item"><a class="nav-link" href="#torneo" data-bs-toggle="tab">Campeonato</a></li>
-										<li class="nav-item"><a class="nav-link" href="#uniforme" data-bs-toggle="tab">Nuevo Uniforme</a></li>										
-										<li class="nav-item"><a class="nav-link" href="#kit" data-bs-toggle="tab">Adicionales entrenamiento</a></li>									
-										<li class="nav-item"><a class="nav-link" href="#otros" data-bs-toggle="tab">Otros</a></li>									
+									<ul class="nav nav-pills ds-pg-tabs" role="tablist">
+										<li class="nav-item"><a class="nav-link active" href="#pension" data-bs-toggle="tab"><i class="fas fa-calendar-check"></i>Pensiones</a></li>
+										<li class="nav-item"><a class="nav-link" href="#inscripcion" data-bs-toggle="tab"><i class="fas fa-id-card"></i>Inscripción</a></li>
+										<li class="nav-item"><a class="nav-link" href="#torneo" data-bs-toggle="tab"><i class="fas fa-trophy"></i>Campeonato</a></li>
+										<li class="nav-item"><a class="nav-link" href="#uniforme" data-bs-toggle="tab" title="Nuevo uniforme"><i class="fas fa-tshirt"></i>Uniforme</a></li>
+										<li class="nav-item"><a class="nav-link" href="#kit" data-bs-toggle="tab" title="Adicionales de entrenamiento"><i class="fas fa-dumbbell"></i>Adicionales</a></li>
+										<li class="nav-item"><a class="nav-link" href="#otros" data-bs-toggle="tab"><i class="fas fa-ellipsis-h"></i>Otros</a></li>
 									</ul>
 								</div><!-- /.card-header -->
-							
+
 								<div class="card-body">
 									<div class="tab-content">
-										<!-- /.tab-pane -->
-										<div class="active tab-pane" id="pension"> 
-											<form class="FormularioAjax" action="<?php echo APP_URL; ?>app/ajax/pagosAjax.php" method="POST" autocomplete="off" enctype="multipart/form-data" >
-											<input type="hidden" name="modulo_pagos" value="registrar">											
-											<input type="hidden" name="pago_alumnoid" value="<?php echo $datos['alumno_id']; ?>">
-											<input type="hidden" name="pago_rubro" value="pension">
-																	<!-- Post -->
-											<div class="row">
-												<div class="col-md-4">
-													<div class="mb-3 campo">
-														<label for="pago_fecha">Fecha de pago</label>
-														<div class="input-group">
-																											<span class="input-group-text"><i class="far fa-calendar-alt"></i></span>
-											
-															<input type="date" class="form-control js-fecha-en-palabras" id="pago_fecha" name="pago_fecha" value="<?php echo $fechahoy; ?>" <?php echo $disabled; ?> required>
-															
-														</div>
-														<!-- /.input group -->
-													</div>
-												</div>
-												<div class="col-md-4">
-													<div class="mb-3">
-														<label for="pago_fecharegistro">Fecha de registro</label>
-														<div class="input-group">
-																											<span class="input-group-text"><i class="far fa-calendar-alt"></i></span>
-											
-															<input type="date" class="form-control" id="pago_fecharegistro" name="pago_fecharegistro" value="<?php echo $fechahoy; ?>" <?php echo $disabled; ?> required>
-														</div>
-														<!-- /.input group -->
-													</div>								
-												</div>
-												<div class="col-md-4">
-													<div class="mb-3">
-														<label for="pago_periodo">Periodo(mes/año)</label>															
-														<input type="text" class="form-control" id="pago_periodo" name="pago_periodo" value="<?php echo $nombreMes; ?>" <?php echo $disabled; ?> required>															
-													</div>								
-												</div>
-												<div class="col-md-4">
-													<div class="mb-3">
-														<label for="pago_valor">Pago</label>
-														<input type="text" class="form-control text-end" id="pago_valor" name="pago_valor" placeholder="0.00" pattern="^\d+(\.\d{1,2})?$" <?php echo ' value="'.$rubro_valor.'" '.$disabled; ?>  required>
-													</div>
-												</div>
 
-												<div class="col-md-4">
-													<div class="mb-3">
-														<label for="pago_saldo">Saldo pendiente</label>
-														<input type="text" class="form-control text-end" id="pago_saldo" name="pago_saldo" placeholder="0.00" <?php echo ' value="'.$saldo.'" '.$disabled; ?>>
+										<!-- Pensiones -->
+										<div class="active tab-pane" id="pension">
+											<form class="FormularioAjax ds-pg-form" action="<?php echo APP_URL; ?>app/ajax/pagosAjax.php" method="POST" autocomplete="off" enctype="multipart/form-data">
+												<input type="hidden" name="modulo_pagos" value="registrar">
+												<input type="hidden" name="pago_alumnoid" value="<?php echo $datos['alumno_id']; ?>">
+												<input type="hidden" name="pago_rubro" value="pension">
+												<?php if ($alerta == "S") { echo $pgAviso($alert, $textodescuento, $textodescripcion); } ?>
+												<div class="row g-3">
+													<div class="col-6 col-md-4">
+														<label class="form-label" for="pago_fecha">Fecha de pago</label>
+														<input type="date" class="form-control js-fecha-en-palabras" id="pago_fecha" name="pago_fecha" value="<?php echo $fechahoy; ?>" <?php echo $disabled; ?> required>
+													</div>
+													<div class="col-6 col-md-4">
+														<label class="form-label" for="pago_fecharegistro">Fecha de registro</label>
+														<input type="date" class="form-control" id="pago_fecharegistro" name="pago_fecharegistro" value="<?php echo $fechahoy; ?>" <?php echo $disabled; ?> required>
+													</div>
+													<div class="col-12 col-md-4">
+														<label class="form-label" for="pago_periodo">Periodo (mes / año)</label>
+														<input type="text" class="form-control" id="pago_periodo" name="pago_periodo" value="<?php echo $nombreMes; ?>" <?php echo $disabled; ?> required>
+													</div>
+													<div class="col-6 col-md-4">
+														<label class="form-label" for="pago_valor">Valor pagado</label>
+														<div class="input-group"><span class="input-group-text">$</span>
+														<input type="text" inputmode="decimal" class="form-control ds-pg-monto" id="pago_valor" name="pago_valor" data-ds-total="<?php echo $pgE($rubro_valor); ?>" data-ds-saldo="pago_saldo" placeholder="0.00" pattern="^\d+(\.\d{1,2})?$" value="<?php echo $rubro_valor; ?>" <?php echo $disabled; ?> required></div>
+													</div>
+													<div class="col-6 col-md-4">
+														<label class="form-label" for="pago_saldo">Saldo pendiente</label>
+														<div class="input-group"><span class="input-group-text">$</span>
+														<input type="text" inputmode="decimal" class="form-control ds-pg-monto" id="pago_saldo" name="pago_saldo" placeholder="0.00" value="<?php echo $saldo; ?>" <?php echo $disabled; ?>></div>
+														<?php if ($beca != "S") { ?><div class="form-text">Total: $<?php echo $pgE($rubro_valor); ?></div><?php } ?>
+													</div>
+													<div class="col-12 col-md-4">
+														<label class="form-label" for="pago_formapagoid">Forma de pago</label>
+														<select class="form-select" id="pago_formapagoid" name="pago_formapagoid" <?php echo $disabled; ?>>
+															<?php echo $insAlumno->listarOptionPago(); ?>
+														</select>
+													</div>
+													<div class="col-12 col-md-8">
+														<label class="form-label" for="pago_concepto">Detalle</label>
+														<textarea class="form-control" id="pago_concepto" name="pago_concepto" placeholder="Detalle del pago" rows="2" <?php echo $disabled; ?>></textarea>
+													</div>
+													<div class="col-12 col-md-4">
+														<?php echo $pgComprobante('pago_archivo', 'miImagen', $disabled); ?>
 													</div>
 												</div>
-												
-												<div class="col-md-4">
-													<div class="mb-3">
-													<label for="pago_formapagoid">Forma de pago</label>
-													<select class="form-select" id="pago_formapagoid" name="pago_formapagoid" <?php echo $disabled; ?>>																									
-														<?php echo $insAlumno->listarOptionPago(); ?>
-													</select>	
-													</div>
-												</div>
-												<div class="container-fluid">
-													<div class="row mb-2">
-														<div class="col-md-2">
-															<div class="mb-3">
-																<label for="pago_archivo">Imagen Pago</label>		
-																<div class="input-group">											
-																	<div class="fileinput fileinput-new" data-provides="fileinput">
-																	<div class="fileinput-new thumbnail" style="width: 130px; min-height: 158px;" data-trigger="fileinput"><img src="<?php echo ds_recurso('ds_futbol/app/views/dist/img/sinpago.jpg'); ?>" alt="" id="miImagen"></div>
-																			<div class="fileinput-preview fileinput-exists thumbnail" style="max-width: 130px; max-height: 158px"></div>
-																		<div>
-																			<span class="bton bton-white bton-file">
-																				<span class="fileinput-new">Subir Pago</span>
-																				<span class="fileinput-exists">Cambiar</span>
-																				<input type="file" name="pago_archivo" id="pago_archivo" <?php echo $disabled; ?>>
-																			</span>
-																			<a href="#" class="bton bton-orange fileinput-exists" data-bs-dismiss="fileinput">X</a>
-																		</div>
-																	</div>
-																</div>		
-															</div>
-														<!-- /.mb-3 -->	
-														</div>
-														<div class="col-md-10">
-															<div class="col-md-12">
-																<div class="mb-3">
-																<label for="pago_concepto">Detalle</label>
-																<textarea class="form-control" id="pago_concepto" name="pago_concepto" placeholder="Detalle del pago" rows="3" <?php echo $disabled; ?>></textarea>
-																</div>
-															</div>
-															<?php 
-																if($alerta == "S"){
-																	echo '
-																	<div class="col-md-12">
-																		<div class="alert '.$alert.' alert-dismissible">
-																			<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
-																			<h5><i class="icon fas fa-info"></i> Aviso!</h5>
-																			'.$textodescuento.$textodescripcion.'
-																		</div>
-																	</div>
-																	';
-																}
-															?>
-														</div>
-														
-													</div>
-												</div>
-											</div>		
-																					
-											<!-- /.post -->
-											<?php
-												if($beca != 'S'){
-													echo '						
-														' . ds_acciones_form('', ['limpiar' => true, 'respaldo' => APP_URL . 'pagosList/']) . '
-													';
-												}
-												
-											?>
+												<?php if ($beca != 'S') { echo $accionesPago; } ?>
 											</form>
 
-											<div class="tab-custom-content">
-												<p class="lead mb-0">Pagos realizados</p>
-											</div>
-											<div class="tab-content" id="custom-content-above-tabContent">
-												<div class="table-responsive">
-												<table id="example1" class="table table-bordered table-striped table-sm">
-													<thead>
-														<tr>
-															<th>No</th>															
-															<th>Fecha registro</th>
-															<th>Mes/Año</th>
-															<th>Pago</th>
-															<th>Saldo</th>	
-															<th>Recibo</th>													
-															<th>Estado</th>															
-															<th style="width:280px;">Opciones</th>																
-														</tr>
-													</thead>
-													<tbody>
-														<?php 
-															echo $insAlumno->listarPagosRubro($alumno,'RPE'); 
-														?>								
-													</tbody>
-												</table>
-												</div>
-											</div>
-											
-										</div>											
+											<?php echo $pgHistorial('Pagos realizados', 'example1', $colsMes, $insAlumno->listarPagosRubro($alumno, 'RPE')); ?>
+										</div>
 
-										<!-- /.tab-pane -->
+										<!-- Inscripción -->
 										<div class="tab-pane" id="inscripcion">
-											<form class="FormularioAjax" action="<?php echo APP_URL; ?>app/ajax/pagosAjax.php" method="POST" autocomplete="off" enctype="multipart/form-data" >
-											<input type="hidden" name="modulo_pagos" value="registrar">											
-											<input type="hidden" name="pago_alumnoid" value="<?php echo $datos['alumno_id']; ?>">
-											<input type="hidden" name="pago_rubro" value="inscripcion">
-																	<!-- Post -->
-												<div class="row">
-													<div class="col-md-4">
-														<div class="mb-3">
-															<label for="inscripcion_pago_fecha">Fecha pago inscripción</label>
-															<div class="input-group">
-																													<span class="input-group-text"><i class="far fa-calendar-alt"></i></span>
-												
-																<input type="date" class="form-control js-fecha-en-palabras" id="inscripcion_pago_fecha" name="pago_fecha" <?php echo $disabled; ?> required>
-															</div>
-															<!-- /.input group -->
-														</div>
+											<form class="FormularioAjax ds-pg-form" action="<?php echo APP_URL; ?>app/ajax/pagosAjax.php" method="POST" autocomplete="off" enctype="multipart/form-data">
+												<input type="hidden" name="modulo_pagos" value="registrar">
+												<input type="hidden" name="pago_alumnoid" value="<?php echo $datos['alumno_id']; ?>">
+												<input type="hidden" name="pago_rubro" value="inscripcion">
+												<?php if ($beca == 'S') { echo $pgAviso($alert, $textodescuento, $textodescripcion); } ?>
+												<div class="row g-3">
+													<div class="col-6 col-md-4">
+														<label class="form-label" for="inscripcion_pago_fecha">Fecha de pago</label>
+														<input type="date" class="form-control js-fecha-en-palabras" id="inscripcion_pago_fecha" name="pago_fecha" <?php echo $disabled; ?> required>
 													</div>
-													<div class="col-md-4">
-														<div class="mb-3">
-															<label for="inscripcion_pago_fecharegistro">Fecha registro inscripción</label>
-															<div class="input-group">
-																													<span class="input-group-text"><i class="far fa-calendar-alt"></i></span>
-												
-																<input type="date" class="form-control" id="inscripcion_pago_fecharegistro" name="pago_fecharegistro" <?php echo $disabled; ?> required>
-															</div>
-															<!-- /.input group -->
-														</div>								
+													<div class="col-6 col-md-4">
+														<label class="form-label" for="inscripcion_pago_fecharegistro">Fecha de registro</label>
+														<input type="date" class="form-control" id="inscripcion_pago_fecharegistro" name="pago_fecharegistro" <?php echo $disabled; ?> required>
 													</div>
-													<div class="col-md-4">
-														<div class="mb-3">
-															<label for="inscripcion_pago_periodo">Periodo inscripción</label>															
-															<input type="text" class="form-control" id="inscripcion_pago_periodo" name="pago_periodo" <?php echo $disabled; ?> required>															
-														</div>								
+													<div class="col-12 col-md-4">
+														<label class="form-label" for="inscripcion_pago_periodo">Periodo</label>
+														<input type="text" class="form-control" id="inscripcion_pago_periodo" name="pago_periodo" <?php echo $disabled; ?> required>
 													</div>
-													
-													<div class="col-md-4">
-														<div class="mb-3">
-															<label for="inscripcion_pago_valor">Pago inscripción</label>
-															<input type="text" class="form-control text-end" id="inscripcion_pago_valor" name="pago_valor" placeholder="0.00" <?php echo ' value="'.$rubro_inscripcion.'" '.$disabled; ?>  required>
-														</div>
+													<div class="col-6 col-md-4">
+														<label class="form-label" for="inscripcion_pago_valor">Valor pagado</label>
+														<div class="input-group"><span class="input-group-text">$</span>
+														<input type="text" inputmode="decimal" class="form-control ds-pg-monto" id="inscripcion_pago_valor" name="pago_valor" data-ds-total="<?php echo $pgE($rubro_inscripcion); ?>" data-ds-saldo="inscripcion_pago_saldo" placeholder="0.00" value="<?php echo $rubro_inscripcion; ?>" <?php echo $disabled; ?> required></div>
 													</div>
-
-													<div class="col-md-4">
-														<div class="mb-3">
-															<label for="inscripcion_pago_saldo">Saldo inscripción</label>
-															<input type="text" class="form-control text-end" id="inscripcion_pago_saldo" name="pago_saldo" placeholder="0.00"  <?php echo ' value="'.$saldo.'" '.$disabled; ?> >
-														</div>
+													<div class="col-6 col-md-4">
+														<label class="form-label" for="inscripcion_pago_saldo">Saldo pendiente</label>
+														<div class="input-group"><span class="input-group-text">$</span>
+														<input type="text" inputmode="decimal" class="form-control ds-pg-monto" id="inscripcion_pago_saldo" name="pago_saldo" placeholder="0.00" value="<?php echo $saldo; ?>" <?php echo $disabled; ?>></div>
+														<?php if ($beca != "S") { ?><div class="form-text">Total: $<?php echo $pgE($rubro_inscripcion); ?></div><?php } ?>
 													</div>
-													
-													<div class="col-md-4">
-														<div class="mb-3">
-														<label for="inscripcion_pago_formapagoid">Forma de pago inscripción</label>
-														<select class="form-select" id="inscripcion_pago_formapagoid" name="pago_formapagoid" onchange="ocultarDiv()" <?php echo $disabled; ?>>																									
+													<div class="col-12 col-md-4">
+														<label class="form-label" for="inscripcion_pago_formapagoid">Forma de pago</label>
+														<select class="form-select" id="inscripcion_pago_formapagoid" name="pago_formapagoid" <?php echo $disabled; ?>>
 															<?php echo $insAlumno->listarOptionPago(); ?>
-														</select>	
-														</div>
+														</select>
 													</div>
-													
-													<div class="container-fluid">
-														<div class="row mb-2">
-
-															<div class="col-2">
-																<div class="mb-3">
-																	<label for="inscripcion_pago_archivo">Imagen pago</label>		
-																	<div class="input-group">											
-																		<div class="fileinput fileinput-new" data-provides="fileinput">
-																		<div class="fileinput-new thumbnail" style="width: 130px; min-height: 158px;" data-trigger="fileinput"><img src="<?php echo ds_recurso('ds_futbol/app/views/dist/img/sinpago.jpg'); ?>" alt="" id="inscripcion_miImagen"></div>
-																			<div class="fileinput-preview fileinput-exists thumbnail" style="max-width: 130px; max-height: 158px"></div>
-																			<div>
-																				<span class="bton bton-white bton-file">
-																					<span class="fileinput-new">Subir Pago</span>
-																					<span class="fileinput-exists">Cambiar</span>
-																					<input type="file" name="pago_archivo" id="inscripcion_pago_archivo" <?php echo $disabled; ?>>
-																				</span>
-																				<a href="#" class="bton bton-orange fileinput-exists" data-bs-dismiss="fileinput">X</a>
-																			</div>
-																		</div>
-																	</div>		
-																</div>
-															<!-- /.mb-3 -->	
-															</div>
-															<div class="col-10">
-																<div class="col-12">
-																	<div class="mb-3">
-																	<label for="inscripcion_pago_concepto">Detalle inscripción</label>
-																	<textarea class="form-control" id="inscripcion_pago_concepto" name="pago_concepto" placeholder="Detalle del pago" rows="3" <?php echo $disabled; ?>></textarea>
-																	</div>
-																</div>
-																<?php 
-																	if($beca == 'S'){
-																		echo '
-																		<div class="col-md-12">
-																			<div class="alert '.$alert.' alert-dismissible">
-																				<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
-																				<h5><i class="icon fas fa-info"></i> Aviso!</h5>
-																				'.$textodescuento.$textodescripcion.'
-																			</div>
-																		</div>
-																		';
-																	}
-																?>
-															</div>
-														</div>
+													<div class="col-12 col-md-8">
+														<label class="form-label" for="inscripcion_pago_concepto">Detalle</label>
+														<textarea class="form-control" id="inscripcion_pago_concepto" name="pago_concepto" placeholder="Detalle del pago" rows="2" <?php echo $disabled; ?>></textarea>
+													</div>
+													<div class="col-12 col-md-4">
+														<?php echo $pgComprobante('inscripcion_pago_archivo', 'inscripcion_miImagen', $disabled); ?>
 													</div>
 												</div>
-
-													
-											
-											<!-- /.post -->
-											<?php
-												if($beca != 'S'){
-													echo '
-														' . ds_acciones_form('', ['limpiar' => true, 'respaldo' => APP_URL . 'pagosList/']) . '
-													';							
-												}
-											?>
-											</form>	
-											<div class="tab-custom-content">
-												<p class="lead mb-0">Pagos realizados de inscripción</p>
-											</div>
-											<div class="tab-content" id="inscripcion_custom-content-above-tabContent">
-												<div class="table-responsive">
-												<table id="inscripcion_example1" class="table table-bordered table-striped table-sm">
-													<thead>
-														<tr>
-															<th>No</th>															
-															<th>Fecha registro</th>
-															<th>Mes/Año</th>
-															<th>Pago</th>
-															<th>Saldo</th>	
-															<th>Recibo</th>													
-															<th>Estado</th>															
-															<th style="width:280px;">Opciones</th>																	
-														</tr>
-													</thead>
-													<tbody>
-														<?php 
-															echo $insAlumno->listarPagosRubro($alumno,'RIN'); 
-														?>								
-													</tbody>
-												</table>
-												</div>
-											</div>
-										</div>
-										
-										<!-- /.tab-pane -->
-										<div class="tab-pane" id="torneo"> 
-											<form class="FormularioAjax" action="<?php echo APP_URL; ?>app/ajax/pagosAjax.php" method="POST" autocomplete="off" enctype="multipart/form-data" >
-											<input type="hidden" name="modulo_pagos" value="registrarcampeonato">											
-											<input type="hidden" name="pago_alumnoid" value="<?php echo $datos['alumno_id']; ?>">
-											<input type="hidden" name="pago_rubro" value="campeonato">
-																	<!-- Post -->
-											<div class="row">
-												<div class="col-md-4">
-													<div class="mb-3 campo">
-														<label for="torneo_pago_fecha">Fecha de pago campeonato</label>
-														<div class="input-group">
-																											<span class="input-group-text"><i class="far fa-calendar-alt"></i></span>
-											
-															<input type="date" class="form-control js-fecha-en-palabras" id="torneo_pago_fecha" name="pago_fecha" value="<?php echo $fechahoy; ?>" required>
-															
-														</div>
-														<!-- /.input group -->
-													</div>
-												</div>
-												<div class="col-md-4">
-													<div class="mb-3">
-														<label for="torneo_pago_fecharegistro">Fecha de registro campeonato</label>
-														<div class="input-group">
-																											<span class="input-group-text"><i class="far fa-calendar-alt"></i></span>
-											
-															<input type="date" class="form-control" id="torneo_pago_fecharegistro" name="pago_fecharegistro" value="<?php echo $fechahoy; ?>" required>
-														</div>
-														<!-- /.input group -->
-													</div>								
-												</div>
-												<div class="col-md-4">
-													<div class="mb-3">
-													<label for="torneo_pago_campeonatoid">Campeonato</label>
-													<select id="torneo_pago_campeonatoid" class="form-select" name="pago_campeonatoid" <?php echo $disabled; ?>>																									
-														<?php echo $insAlumno->listarCampeonatos(); ?>
-													</select>	
-													</div>
-												</div>
-												<div class="col-md-4">
-													<div class="mb-3">
-														<label for="torneo_pago_valor">Pago campeonato</label>
-														<input type="text" class="form-control text-end" id="torneo_pago_valor" name="pago_valor" placeholder="0.00" pattern="^\d+(\.\d{1,2})?$" value="" required>
-													</div>
-												</div>
-
-												<div class="col-md-4">
-													<div class="mb-3">
-														<label for="torneo_pago_saldo">Saldo campeonato</label>
-														<input type="text" class="form-control text-end" id="torneo_pago_saldo" name="pago_saldo" placeholder="0.00" value="0.00"; >
-													</div>
-												</div>
-												
-												<div class="col-md-4">
-													<div class="mb-3">
-													<label for="torneo_pago_formapagoid">Forma de pago campeonato</label>
-													<select class="form-select" id="torneo_pago_formapagoid" name="pago_formapagoid">																									
-														<?php echo $insAlumno->listarOptionPago(); ?>
-													</select>	
-													</div>
-												</div>
-												<div class="container-fluid">
-													<div class="row mb-2">
-														<div class="col-md-2">
-															<div class="mb-3">
-																<label for="torneo_pago_archivo">Imagen Pago</label>		
-																<div class="input-group">											
-																	<div class="fileinput fileinput-new" data-provides="fileinput">
-																	<div class="fileinput-new thumbnail" style="width: 130px; min-height: 158px;" data-trigger="fileinput"><img src="<?php echo ds_recurso('ds_futbol/app/views/dist/img/sinpago.jpg'); ?>" alt="" id="torneo_miImagen"></div>
-																			<div class="fileinput-preview fileinput-exists thumbnail" style="max-width: 130px; max-height: 158px"></div>
-																		<div>
-																			<span class="bton bton-white bton-file">
-																				<span class="fileinput-new">Subir Pago</span>
-																				<span class="fileinput-exists">Cambiar</span>
-																				<input type="file" name="pago_archivo" id="torneo_pago_archivo">
-																			</span>
-																			<a href="#" class="bton bton-orange fileinput-exists" data-bs-dismiss="fileinput">X</a>
-																		</div>
-																	</div>
-																</div>		
-															</div>
-														<!-- /.mb-3 -->	
-														</div>
-														<div class="col-md-10">
-															<div class="col-md-12">
-																<div class="mb-3">
-																<label for="torneo_pago_concepto">Detalle campeonato</label>
-																<textarea class="form-control" id="torneo_pago_concepto" name="pago_concepto" placeholder="Detalle del pago" rows="3"></textarea>
-																</div>
-															</div>															
-														</div>														
-													</div>
-												</div>
-											</div>		
-																					
-											<!-- /.post -->
-											<?php echo ds_acciones_form('', ['limpiar' => true, 'respaldo' => APP_URL . 'pagosList/']); ?>
+												<?php if ($beca != 'S') { echo $accionesPago; } ?>
 											</form>
 
-											<div class="tab-custom-content">
-												<p class="lead mb-0">Pagos realizados de campeonatos</p>
-											</div>
-											<div class="tab-content" id="torneo_custom-content-above-tabContent">
-												<div class="table-responsive">
-												<table id="torneo_example1" class="table table-bordered table-striped table-sm">
-													<thead>
-														<tr>
-															<th>No</th>															
-															<th>Fecha registro</th>		
-															<th>Campeonato</th>													
-															<th>Pago</th>
-															<th>Saldo</th>
-															<th>Recibo</th>													
-															<th>Estado</th>															
-															<th style="width:280px;">Opciones</th>																
-														</tr>
-													</thead>
-													<tbody>
-														<?php 
-															echo $insAlumno->listarPagosRubro($alumno,'RPC'); 
-														?>								
-													</tbody>
-												</table>
-												</div>
-											</div>
-											
+											<?php echo $pgHistorial('Pagos de inscripción', 'inscripcion_example1', $colsMes, $insAlumno->listarPagosRubro($alumno, 'RIN')); ?>
 										</div>
 
-										<!-- /.tab-pane -->
+										<!-- Campeonato -->
+										<div class="tab-pane" id="torneo">
+											<form class="FormularioAjax ds-pg-form" action="<?php echo APP_URL; ?>app/ajax/pagosAjax.php" method="POST" autocomplete="off" enctype="multipart/form-data">
+												<input type="hidden" name="modulo_pagos" value="registrarcampeonato">
+												<input type="hidden" name="pago_alumnoid" value="<?php echo $datos['alumno_id']; ?>">
+												<input type="hidden" name="pago_rubro" value="campeonato">
+												<div class="row g-3">
+													<div class="col-6 col-md-4">
+														<label class="form-label" for="torneo_pago_fecha">Fecha de pago</label>
+														<input type="date" class="form-control js-fecha-en-palabras" id="torneo_pago_fecha" name="pago_fecha" value="<?php echo $fechahoy; ?>" required>
+													</div>
+													<div class="col-6 col-md-4">
+														<label class="form-label" for="torneo_pago_fecharegistro">Fecha de registro</label>
+														<input type="date" class="form-control" id="torneo_pago_fecharegistro" name="pago_fecharegistro" value="<?php echo $fechahoy; ?>" required>
+													</div>
+													<div class="col-12 col-md-4">
+														<label class="form-label" for="torneo_pago_campeonatoid">Campeonato</label>
+														<select id="torneo_pago_campeonatoid" class="form-select" name="pago_campeonatoid" <?php echo $disabled; ?>>
+															<?php echo $insAlumno->listarCampeonatos(); ?>
+														</select>
+													</div>
+													<div class="col-6 col-md-4">
+														<label class="form-label" for="torneo_pago_valor">Valor pagado</label>
+														<div class="input-group"><span class="input-group-text">$</span>
+														<input type="text" inputmode="decimal" class="form-control ds-pg-monto" id="torneo_pago_valor" name="pago_valor" placeholder="0.00" pattern="^\d+(\.\d{1,2})?$" value="" required></div>
+													</div>
+													<div class="col-6 col-md-4">
+														<label class="form-label" for="torneo_pago_saldo">Saldo pendiente</label>
+														<div class="input-group"><span class="input-group-text">$</span>
+														<input type="text" inputmode="decimal" class="form-control ds-pg-monto" id="torneo_pago_saldo" name="pago_saldo" placeholder="0.00" value="0.00"></div>
+													</div>
+													<div class="col-12 col-md-4">
+														<label class="form-label" for="torneo_pago_formapagoid">Forma de pago</label>
+														<select class="form-select" id="torneo_pago_formapagoid" name="pago_formapagoid">
+															<?php echo $insAlumno->listarOptionPago(); ?>
+														</select>
+													</div>
+													<div class="col-12 col-md-8">
+														<label class="form-label" for="torneo_pago_concepto">Detalle</label>
+														<textarea class="form-control" id="torneo_pago_concepto" name="pago_concepto" placeholder="Detalle del pago" rows="2"></textarea>
+													</div>
+													<div class="col-12 col-md-4">
+														<?php echo $pgComprobante('torneo_pago_archivo', 'torneo_miImagen', ''); ?>
+													</div>
+												</div>
+												<?php echo $accionesPago; ?>
+											</form>
+
+											<?php echo $pgHistorial('Pagos de campeonatos', 'torneo_example1', ['No', 'Fecha registro', 'Campeonato', 'Pago', 'Saldo', 'Recibo', 'Estado'], $insAlumno->listarPagosRubro($alumno, 'RPC')); ?>
+										</div>
+
+										<!-- Nuevo uniforme -->
 										<div class="tab-pane" id="uniforme">
-											<form class="FormularioAjax" action="<?php echo APP_URL; ?>app/ajax/pagosAjax.php" method="POST" autocomplete="off" enctype="multipart/form-data" >
-											<input type="hidden" name="modulo_pagos" value="registraruniforme">											
-											<input type="hidden" name="pago_alumnoid" value="<?php echo $datos['alumno_id']; ?>">
-											<input type="hidden" name="pago_rubro" value="uniforme">
-																	<!-- Post -->
-												<div class="row">
-													<div class="col-md-3">
-														<div class="mb-3">
-															<label for="uniforme_pago_fecha">Fecha pago uniforme</label>
-															<div class="input-group">
-																													<span class="input-group-text"><i class="far fa-calendar-alt"></i></span>
-												
-																<input type="date" class="form-control js-fecha-en-palabras" id="uniforme_pago_fecha" name="pago_fecha" required>
-															</div>
-															<!-- /.input group -->
-														</div>
+											<form class="FormularioAjax ds-pg-form" action="<?php echo APP_URL; ?>app/ajax/pagosAjax.php" method="POST" autocomplete="off" enctype="multipart/form-data">
+												<input type="hidden" name="modulo_pagos" value="registraruniforme">
+												<input type="hidden" name="pago_alumnoid" value="<?php echo $datos['alumno_id']; ?>">
+												<input type="hidden" name="pago_rubro" value="uniforme">
+												<div class="row g-3">
+													<div class="col-6 col-md-3">
+														<label class="form-label" for="uniforme_pago_fecha">Fecha de pago</label>
+														<input type="date" class="form-control js-fecha-en-palabras" id="uniforme_pago_fecha" name="pago_fecha" required>
 													</div>
-													<div class="col-md-3">
-														<div class="mb-3">
-															<label for="uniforme_pago_fecharegistro">Fecha registro uniforme</label>
-															<div class="input-group">
-																													<span class="input-group-text"><i class="far fa-calendar-alt"></i></span>
-												
-																<input type="date" class="form-control" id="uniforme_pago_fecharegistro" name="pago_fecharegistro" required>
-															</div>
-															<!-- /.input group -->
-														</div>								
+													<div class="col-6 col-md-3">
+														<label class="form-label" for="uniforme_pago_fecharegistro">Fecha de registro</label>
+														<input type="date" class="form-control" id="uniforme_pago_fecharegistro" name="pago_fecharegistro" required>
 													</div>
-													<div class="col-md-3">
-														<div class="mb-3">
-															<label for="uniforme_pago_periodo">Periodo uniforme</label>															
-															<input type="text" class="form-control" id="uniforme_pago_periodo" name="pago_periodo" required>															
-														</div>								
+													<div class="col-6 col-md-3">
+														<label class="form-label" for="uniforme_pago_periodo">Periodo</label>
+														<input type="text" class="form-control" id="uniforme_pago_periodo" name="pago_periodo" required>
 													</div>
-																									
-													<div class="col-md-3">
-														<div class="mb-3">
-														<label for="uniforme_pago_talla">Talla</label>
-														<select class="form-select" id="uniforme_pago_talla" name="pago_talla" required>																									
+													<div class="col-6 col-md-3">
+														<label class="form-label" for="uniforme_pago_talla">Talla</label>
+														<select class="form-select" id="uniforme_pago_talla" name="pago_talla" required>
 															<?php echo $insAlumno->listarOptionTalla(""); ?>
-														</select>	
-														</div>
+														</select>
 													</div>
-													
-													<div class="col-md-4">
-														<div class="mb-3">
-															<label for="uniforme_pago_valor">Pago uniforme</label>
-															<input type="text" class="form-control text-end" id="uniforme_pago_valor" name="pago_valor" placeholder="0.00" required>
-														</div>
+													<div class="col-6 col-md-4">
+														<label class="form-label" for="uniforme_pago_valor">Valor pagado</label>
+														<div class="input-group"><span class="input-group-text">$</span>
+														<input type="text" inputmode="decimal" class="form-control ds-pg-monto" id="uniforme_pago_valor" name="pago_valor" placeholder="0.00" required></div>
 													</div>
-
-													<div class="col-md-4">
-														<div class="mb-3">
-															<label for="uniforme_pago_saldo">Saldo uniforme</label>
-															<input type="text" class="form-control text-end" id="uniforme_pago_saldo" name="pago_saldo" placeholder="0.00">
-														</div>
+													<div class="col-6 col-md-4">
+														<label class="form-label" for="uniforme_pago_saldo">Saldo pendiente</label>
+														<div class="input-group"><span class="input-group-text">$</span>
+														<input type="text" inputmode="decimal" class="form-control ds-pg-monto" id="uniforme_pago_saldo" name="pago_saldo" placeholder="0.00"></div>
 													</div>
-													
-													<div class="col-md-4">
-														<div class="mb-3">
-														<label for="uniforme_pago_formapagoid">Forma de pago uniforme</label>
-														<select class="form-select" id="uniforme_pago_formapagoid" name="pago_formapagoid" onchange="ocultarDiv()" >																									
+													<div class="col-12 col-md-4">
+														<label class="form-label" for="uniforme_pago_formapagoid">Forma de pago</label>
+														<select class="form-select" id="uniforme_pago_formapagoid" name="pago_formapagoid">
 															<?php echo $insAlumno->listarOptionPago(); ?>
-														</select>	
-														</div>
-													</div>													
-													
-													<div class="col-md-2" id="uniforme_miDiv">
-														<div class="mb-3">
-															<label for="uniforme_pago_archivo">Imagen Pago</label>		
-															<div class="input-group">											
-																<div class="fileinput fileinput-new" data-provides="fileinput">
-																	<div class="fileinput-new thumbnail" style="width: 130px; min-height: 158px;" data-trigger="fileinput"><img src="<?php echo ds_recurso('ds_futbol/app/views/dist/img/sinpago.jpg'); ?>" alt="" id="uniforme_miImagen"></div>
-																	<div class="fileinput-preview fileinput-exists thumbnail" style="max-width: 130px; max-height: 158px"></div>
-																	<div>
-																		<span class="bton bton-white bton-file">
-																			<span class="fileinput-new">Subir Pago</span>
-																			<span class="fileinput-exists">Cambiar</span>
-																			<input type="file" name="pago_archivo" id="uniforme_pago_archivo">
-																		</span>
-																		<a href="#" class="bton bton-orange fileinput-exists" data-bs-dismiss="fileinput">X</a>
-																	</div>
-																</div>
-															</div>		
-														</div>
-													<!-- /.mb-3 -->	
+														</select>
 													</div>
-
-													<div class="col-md-10">
-														<div class="col-md-12">
-															<div class="mb-3">
-																<label for="uniforme_pago_concepto">Detalle uniforme</label>
-																<textarea class="form-control" id="uniforme_pago_concepto" name="pago_concepto" placeholder="Detalle del pago" rows="3" ></textarea>
-															</div>
-														</div>
+													<div class="col-12 col-md-8">
+														<label class="form-label" for="uniforme_pago_concepto">Detalle</label>
+														<textarea class="form-control" id="uniforme_pago_concepto" name="pago_concepto" placeholder="Detalle del pago" rows="2"></textarea>
 													</div>
-												</div>											
-											<!-- /.post -->
-											<?php echo ds_acciones_form('', ['limpiar' => true, 'respaldo' => APP_URL . 'pagosList/']); ?>
-											</form>	
-											
-											<div class="tab-custom-content">
-												<p class="lead mb-0">Pagos de Nuevo Uniforme realizados</p>
-											</div>
-											<div class="tab-content" id="uniforme_custom-content-above-tabContent">
-												<div class="table-responsive">
-												<table id="uniforme_example1" class="table table-bordered table-striped table-sm">
-													<thead>
-														<tr>
-															<th>No</th>
-															<th>Fecha registro</th>
-															<th>Periodo</th>
-															<th>Talla</th>
-															<th>Pago</th>
-															<th>Saldo</th>															
-															<th>Recibo</th>
-															<th>Estado</th>
-															<th style="width:280px;">Opciones</th>																
-														</tr>
-													</thead>
-													<tbody>
-														<?php 
-															echo $insAlumno->listarPagosRubro($alumno,'RNU');
-														?>								
-													</tbody>
-												</table>
+													<div class="col-12 col-md-4" id="uniforme_miDiv">
+														<?php echo $pgComprobante('uniforme_pago_archivo', 'uniforme_miImagen', ''); ?>
+													</div>
 												</div>
-											</div>											
+												<?php echo $accionesPago; ?>
+											</form>
+
+											<?php echo $pgHistorial('Pagos de nuevo uniforme', 'uniforme_example1', ['No', 'Fecha registro', 'Periodo', 'Talla', 'Pago', 'Saldo', 'Recibo', 'Estado'], $insAlumno->listarPagosRubro($alumno, 'RNU')); ?>
 										</div>
 
-										<!-- /.tab-pane -->										
+										<!-- Adicionales de entrenamiento -->
 										<div class="tab-pane" id="kit">
-											<form class="FormularioAjax" action="<?php echo APP_URL; ?>app/ajax/pagosAjax.php" method="POST" autocomplete="off" enctype="multipart/form-data" >
-											<input type="hidden" name="modulo_pagos" value="registrar">											
-											<input type="hidden" name="pago_alumnoid" value="<?php echo $datos['alumno_id']; ?>">
-											<input type="hidden" name="pago_rubro" value="kit">
-																	<!-- Post -->
-												<div class="row">
-													<div class="col-md-4">
-														<div class="mb-3">
-															<label for="kit_pago_fecha">Fecha pago accesorio entrenamiento</label>
-															<div class="input-group">
-																													<span class="input-group-text"><i class="far fa-calendar-alt"></i></span>
-												
-																<input type="date" class="form-control js-fecha-en-palabras" id="kit_pago_fecha" name="pago_fecha" required>
-															</div>
-															<!-- /.input group -->
-														</div>
+											<form class="FormularioAjax ds-pg-form" action="<?php echo APP_URL; ?>app/ajax/pagosAjax.php" method="POST" autocomplete="off" enctype="multipart/form-data">
+												<input type="hidden" name="modulo_pagos" value="registrar">
+												<input type="hidden" name="pago_alumnoid" value="<?php echo $datos['alumno_id']; ?>">
+												<input type="hidden" name="pago_rubro" value="kit">
+												<div class="row g-3">
+													<div class="col-6 col-md-4">
+														<label class="form-label" for="kit_pago_fecha">Fecha de pago</label>
+														<input type="date" class="form-control js-fecha-en-palabras" id="kit_pago_fecha" name="pago_fecha" required>
 													</div>
-													<div class="col-md-4">
-														<div class="mb-3">
-															<label for="kit_pago_fecharegistro">Fecha registro accesorio entrenamiento</label>
-															<div class="input-group">
-																													<span class="input-group-text"><i class="far fa-calendar-alt"></i></span>
-												
-																<input type="date" class="form-control" id="kit_pago_fecharegistro" name="pago_fecharegistro" required>
-															</div>
-															<!-- /.input group -->
-														</div>								
+													<div class="col-6 col-md-4">
+														<label class="form-label" for="kit_pago_fecharegistro">Fecha de registro</label>
+														<input type="date" class="form-control" id="kit_pago_fecharegistro" name="pago_fecharegistro" required>
 													</div>
-													<div class="col-md-4">
-														<div class="mb-3">
-															<label for="kit_pago_periodo">Periodo accesorio entrenamiento</label>															
-															<input type="text" class="form-control" id="kit_pago_periodo" name="pago_periodo" required>															
-														</div>								
+													<div class="col-12 col-md-4">
+														<label class="form-label" for="kit_pago_periodo">Periodo</label>
+														<input type="text" class="form-control" id="kit_pago_periodo" name="pago_periodo" required>
 													</div>
-													
-													<div class="col-md-4">
-														<div class="mb-3">
-															<label for="kit_pago_valor">Pago accesorio entrenamiento</label>
-															<input type="text" class="form-control text-end" id="kit_pago_valor" name="pago_valor" placeholder="0.00" required>
-														</div>
+													<div class="col-6 col-md-4">
+														<label class="form-label" for="kit_pago_valor">Valor pagado</label>
+														<div class="input-group"><span class="input-group-text">$</span>
+														<input type="text" inputmode="decimal" class="form-control ds-pg-monto" id="kit_pago_valor" name="pago_valor" placeholder="0.00" required></div>
 													</div>
-
-													<div class="col-md-4">
-														<div class="mb-3">
-															<label for="kit_pago_saldo">Saldo accesorio entrenamiento</label>
-															<input type="text" class="form-control text-end" id="kit_pago_saldo" name="pago_saldo" placeholder="0.00">
-														</div>
+													<div class="col-6 col-md-4">
+														<label class="form-label" for="kit_pago_saldo">Saldo pendiente</label>
+														<div class="input-group"><span class="input-group-text">$</span>
+														<input type="text" inputmode="decimal" class="form-control ds-pg-monto" id="kit_pago_saldo" name="pago_saldo" placeholder="0.00"></div>
 													</div>
-													
-													<div class="col-md-4">
-														<div class="mb-3">
-														<label for="kit_pago_formapagoid">Forma de pago</label>
-														<select class="form-select" id="kit_pago_formapagoid" name="pago_formapagoid" onchange="ocultarDiv()" >																									
+													<div class="col-12 col-md-4">
+														<label class="form-label" for="kit_pago_formapagoid">Forma de pago</label>
+														<select class="form-select" id="kit_pago_formapagoid" name="pago_formapagoid">
 															<?php echo $insAlumno->listarOptionPago(); ?>
-														</select>	
-														</div>
-													</div>													
-													
-													<div class="col-md-2" id="kit_miDiv">
-														<div class="mb-3">
-															<label for="kit_pago_archivo">Imagen Pago</label>		
-															<div class="input-group">											
-																<div class="fileinput fileinput-new" data-provides="fileinput">
-																	<div class="fileinput-new thumbnail" style="width: 130px; min-height: 158px;" data-trigger="fileinput"><img src="<?php echo ds_recurso('ds_futbol/app/views/dist/img/sinpago.jpg'); ?>" alt="" id="kit_miImagen"></div>
-																	<div class="fileinput-preview fileinput-exists thumbnail" style="max-width: 130px; max-height: 158px"></div>
-																	<div>
-																		<span class="bton bton-white bton-file">
-																			<span class="fileinput-new">Subir Pago</span>
-																			<span class="fileinput-exists">Cambiar</span>
-																			<input type="file" name="pago_archivo" id="kit_pago_archivo">
-																		</span>
-																		<a href="#" class="bton bton-orange fileinput-exists" data-bs-dismiss="fileinput">X</a>
-																	</div>
-																</div>
-															</div>		
-														</div>
-													<!-- /.mb-3 -->	
+														</select>
 													</div>
-
-													<div class="col-md-10">
-														<div class="col-md-12">
-															<div class="mb-3">
-																<label for="kit_pago_concepto">Detalle accesorios entrenamiento</label>
-																<textarea class="form-control" id="kit_pago_concepto" name="pago_concepto" placeholder="Detalle del pago" rows="3" ></textarea>
-															</div>
-														</div>
+													<div class="col-12 col-md-8">
+														<label class="form-label" for="kit_pago_concepto">Detalle</label>
+														<textarea class="form-control" id="kit_pago_concepto" name="pago_concepto" placeholder="Detalle del pago" rows="2"></textarea>
 													</div>
-												</div>										
-												<!-- /.post -->
-											<?php echo ds_acciones_form('', ['limpiar' => true, 'respaldo' => APP_URL . 'pagosList/']); ?>
-											</form>	
-											
-											<div class="tab-custom-content">
-												<p class="lead mb-0">Pagos realizados por accesorios de entrenamiento</p>
-											</div>
-											<div class="tab-content" id="kit_custom-content-above-tabContent">
-												<div class="table-responsive">
-												<table id="kit_example1" class="table table-bordered table-striped table-sm">
-													<thead>
-														<tr>
-															<th>No</th>
-															<th>Fecha registro</th>		
-															<th>Periodo</th>													
-															<th>Pago</th>
-															<th>Saldo</th>														
-															<th>Recibo</th>
-															<th>Estado</th>
-															<th style="width:300px;">Opciones</th>																
-														</tr>
-													</thead>
-													<tbody>
-														<?php 
-															echo $insAlumno->listarPagosRubro($alumno,'RKE'); 
-														?>								
-													</tbody>
-												</table>
+													<div class="col-12 col-md-4" id="kit_miDiv">
+														<?php echo $pgComprobante('kit_pago_archivo', 'kit_miImagen', ''); ?>
+													</div>
 												</div>
-											</div>	
+												<?php echo $accionesPago; ?>
+											</form>
+
+											<?php echo $pgHistorial('Pagos de adicionales de entrenamiento', 'kit_example1', $colsMes, $insAlumno->listarPagosRubro($alumno, 'RKE')); ?>
 										</div>
 
-										<!-- /.tab-pane -->										
+										<!-- Otros -->
 										<div class="tab-pane" id="otros">
-											<form class="FormularioAjax" action="<?php echo APP_URL; ?>app/ajax/pagosAjax.php" method="POST" autocomplete="off" enctype="multipart/form-data" >
-											<input type="hidden" name="modulo_pagos" value="registrar">											
-											<input type="hidden" name="pago_alumnoid" value="<?php echo $datos['alumno_id']; ?>">
-											<input type="hidden" name="pago_rubro" value="otros">
-																	<!-- Post -->
-												<div class="row">
-													<div class="col-md-4">
-														<div class="mb-3">
-															<label for="otros_pago_fecha">Fecha pago Otros</label>
-															<div class="input-group">
-																													<span class="input-group-text"><i class="far fa-calendar-alt"></i></span>
-												
-																<input type="date" class="form-control js-fecha-en-palabras" id="otros_pago_fecha" name="pago_fecha" required>
-															</div>
-															<!-- /.input group -->
-														</div>
+											<form class="FormularioAjax ds-pg-form" action="<?php echo APP_URL; ?>app/ajax/pagosAjax.php" method="POST" autocomplete="off" enctype="multipart/form-data">
+												<input type="hidden" name="modulo_pagos" value="registrar">
+												<input type="hidden" name="pago_alumnoid" value="<?php echo $datos['alumno_id']; ?>">
+												<input type="hidden" name="pago_rubro" value="otros">
+												<div class="row g-3">
+													<div class="col-6 col-md-4">
+														<label class="form-label" for="otros_pago_fecha">Fecha de pago</label>
+														<input type="date" class="form-control js-fecha-en-palabras" id="otros_pago_fecha" name="pago_fecha" required>
 													</div>
-													<div class="col-md-4">
-														<div class="mb-3">
-															<label for="otros_pago_fecharegistro">Fecha registro Otros</label>
-															<div class="input-group">
-																													<span class="input-group-text"><i class="far fa-calendar-alt"></i></span>
-												
-																<input type="date" class="form-control" id="otros_pago_fecharegistro" name="pago_fecharegistro" required>
-															</div>
-															<!-- /.input group -->
-														</div>								
+													<div class="col-6 col-md-4">
+														<label class="form-label" for="otros_pago_fecharegistro">Fecha de registro</label>
+														<input type="date" class="form-control" id="otros_pago_fecharegistro" name="pago_fecharegistro" required>
 													</div>
-													<div class="col-md-4">
-														<div class="mb-3">
-															<label for="otros_pago_periodo">Periodo Otros</label>															
-															<input type="text" class="form-control" id="otros_pago_periodo" name="pago_periodo" required>															
-														</div>								
+													<div class="col-12 col-md-4">
+														<label class="form-label" for="otros_pago_periodo">Periodo</label>
+														<input type="text" class="form-control" id="otros_pago_periodo" name="pago_periodo" required>
 													</div>
-													
-													<div class="col-md-4">
-														<div class="mb-3">
-															<label for="otros_pago_valor">Pago Otros</label>
-															<input type="text" class="form-control text-end" id="otros_pago_valor" name="pago_valor" placeholder="0.00" required>
-														</div>
+													<div class="col-6 col-md-4">
+														<label class="form-label" for="otros_pago_valor">Valor pagado</label>
+														<div class="input-group"><span class="input-group-text">$</span>
+														<input type="text" inputmode="decimal" class="form-control ds-pg-monto" id="otros_pago_valor" name="pago_valor" placeholder="0.00" required></div>
 													</div>
-
-													<div class="col-md-4">
-														<div class="mb-3">
-															<label for="otros_pago_saldo">Saldo Otros</label>
-															<input type="text" class="form-control text-end" id="otros_pago_saldo" name="pago_saldo" placeholder="0.00">
-														</div>
+													<div class="col-6 col-md-4">
+														<label class="form-label" for="otros_pago_saldo">Saldo pendiente</label>
+														<div class="input-group"><span class="input-group-text">$</span>
+														<input type="text" inputmode="decimal" class="form-control ds-pg-monto" id="otros_pago_saldo" name="pago_saldo" placeholder="0.00"></div>
 													</div>
-													
-													<div class="col-md-4">
-														<div class="mb-3">
-														<label for="otros_pago_formapagoid">Forma de pago Otros</label>
-														<select class="form-select" id="otros_pago_formapagoid" name="pago_formapagoid" onchange="ocultarDiv()" >																									
+													<div class="col-12 col-md-4">
+														<label class="form-label" for="otros_pago_formapagoid">Forma de pago</label>
+														<select class="form-select" id="otros_pago_formapagoid" name="pago_formapagoid">
 															<?php echo $insAlumno->listarOptionPago(); ?>
-														</select>	
-														</div>
-													</div>										
-
-													<div class="col-md-2" id="otros_miDiv">
-														<div class="mb-3">
-															<label for="otros_pago_archivo">Imagen Pago</label>		
-															<div class="input-group">											
-																<div class="fileinput fileinput-new" data-provides="fileinput">
-																	<div class="fileinput-new thumbnail" style="width: 130px; min-height: 158px;" data-trigger="fileinput"><img src="<?php echo ds_recurso('ds_futbol/app/views/dist/img/sinpago.jpg'); ?>" alt="" id="otros_miImagen"></div>
-																	<div class="fileinput-preview fileinput-exists thumbnail" style="max-width: 130px; max-height: 158px"></div>
-																	<div>
-																		<span class="bton bton-white bton-file">
-																			<span class="fileinput-new">Subir Pago</span>
-																			<span class="fileinput-exists">Cambiar</span>
-																			<input type="file" name="pago_archivo" id="otros_pago_archivo">
-																		</span>
-																		<a href="#" class="bton bton-orange fileinput-exists" data-bs-dismiss="fileinput">X</a>
-																	</div>
-																</div>
-															</div>		
-														</div>
-													<!-- /.mb-3 -->	
+														</select>
 													</div>
-
-													<div class="col-md-10">
-														<div class="col-md-12">
-															<div class="mb-3">
-																<label for="otros_pago_concepto">Detalle Otros</label>
-																<textarea class="form-control" id="otros_pago_concepto" name="pago_concepto" placeholder="Detalle del pago" rows="3" ></textarea>
-															</div>
-														</div>
+													<div class="col-12 col-md-8">
+														<label class="form-label" for="otros_pago_concepto">Detalle</label>
+														<textarea class="form-control" id="otros_pago_concepto" name="pago_concepto" placeholder="Detalle del pago" rows="2"></textarea>
 													</div>
-												</div>											
-											<!-- /.post -->
-
-											<?php echo ds_acciones_form('', ['limpiar' => true, 'respaldo' => APP_URL . 'pagosList/']); ?>
-											</form>	
-											
-											<div class="tab-custom-content">
-												<p class="lead mb-0">Pagos Otros realizados</p>
-											</div>
-											<div class="tab-content" id="otros_custom-content-above-tabContent">
-												<div class="table-responsive">
-												<table id="otros_example1" class="table table-bordered table-striped table-sm">
-													<thead>
-														<tr>
-															<th>No</th>
-															<th>Fecha registro</th>
-															<th>Periodo</th>
-															<th>Pago</th>
-															<th>Saldo</th>														
-															<th>Recibo</th>
-															<th>Estado</th>		
-															<th style="width:300px;">Opciones</th>																
-														</tr>
-													</thead>
-													<tbody>
-														<?php 
-															echo $insAlumno->listarPagosRubro($alumno,'ROT');  
-														?>								
-													</tbody>
-												</table>
+													<div class="col-12 col-md-4" id="otros_miDiv">
+														<?php echo $pgComprobante('otros_pago_archivo', 'otros_miImagen', ''); ?>
+													</div>
 												</div>
-											</div>											
+												<?php echo $accionesPago; ?>
+											</form>
+
+											<?php echo $pgHistorial('Otros pagos', 'otros_example1', $colsMes, $insAlumno->listarPagosRubro($alumno, 'ROT')); ?>
 										</div>
-																			
+
 									</div>
 									<!-- /.tab-content -->
 								</div><!-- /.card-body -->
@@ -1086,120 +779,182 @@ CSS;
 					</div>
 				</div>
 			</section>
-			<!-- /.content -->      
+			<!-- /.content -->
 		</div>
 		<!-- /.vista -->
 
 		<?php require_once "app/views/inc/footer.php"; ?>
-
-		<!-- Control Sidebar -->
-		<aside class="control-sidebar control-sidebar-dark">
-		<!-- Control sidebar content goes here -->
-		</aside>
-      <!-- /.control-sidebar -->
     </div>
     <!-- ./wrapper -->
 
-    
 	<!-- jQuery -->
 	<script src="<?php echo APP_URL; ?>app/views/dist/plugins/jquery/jquery.min.js"></script>
-	<!-- Bootstrap 4 -->
 	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/overlayscrollbars/js/overlayscrollbars.browser.es6.min.js"></script>
-	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/bootstrap5/js/bootstrap.bundle.min.js"></script>	
-	<!-- Select2 -->
-	<!-- Bootstrap4 Duallistbox -->
-	<!-- InputMask -->
-	<script src="<?php echo APP_URL; ?>app/views/dist/plugins/inputmask/jquery.inputmask.min.js"></script>
-	<!-- date-range-picker -->
-	<!-- bootstrap color picker -->
-	<!-- Tempusdominus Bootstrap 4 -->
-	<!-- Bootstrap Switch -->
-	<!-- BS-Stepper -->
-	<!-- AdminLTE App -->
-	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/adminlte4/js/adminlte.min.js"></script>		
-	<script src="<?php echo ds_recurso('ds_futbol/app/views/dist/js/ajax.js'); ?>" ></script>	
-	<!-- fileinput -->
-
+	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/bootstrap5/js/bootstrap.bundle.min.js"></script>
+	<script src="<?php echo DS_HUB_URL; ?>ds_core/assets/vendor/adminlte4/js/adminlte.min.js"></script>
+	<script src="<?php echo ds_recurso('ds_futbol/app/views/dist/js/ajax.js'); ?>"></script>
 	<script src="<?php echo ds_recurso('ds_core/assets/js/visor.js'); ?>"></script>
-		
-	<script>
-		$(document).ready(function () {
-			$(".js-fecha-en-palabras").keyup(function () {
-				var value = $(this).val();
-				
-				// Dividir la fecha manualmente para evitar problemas de zona horaria
-				var partes = value.split('-'); // Formato esperado: YYYY-MM-DD
-				
-				if (partes.length === 3) {
-					var año = parseInt(partes[0]);
-					var mesNumero = parseInt(partes[1]) - 1; // Restar 1 porque los meses van de 0 a 11
-					var dia = parseInt(partes[2]);
-					
-					// Array con los nombres de los meses
-					var nombresMeses = [
-						"Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-						"Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
-					];
-					
-					var mesNombre = nombresMeses[mesNumero];
-					$("#pago_periodo").val(mesNombre + " / " + año);
-				}
-			});
-		});
-	</script>
-
-	<script>	
-		$(function () {
-			
-
-			$('.btn[data-filter]').on('click', function() {
-			$('.btn[data-filter]').removeClass('active');
-			$(this).addClass('active');
-			});
-		})
-	</script>
 
 	<script>
-		$(function () {
-			/* Lo único del bloque de ejemplo de AdminLTE que esta página
-			   usaba de verdad. El resto —tempusdominus, daterangepicker,
-			   duallistbox, colorpicker, bootstrap-switch y bs-stepper—
-			   apuntaba a selectores inexistentes: se descargaban seis
-			   librerías para ejecutar código contra nada. */
-			$('[data-mask]').inputmask()
-		})
-	</script>
+	(function () {
+		'use strict';
 
-	<script>
-		// Guardar el tab activo cuando el usuario cambia de pestaña
-		document.querySelectorAll('a[data-bs-toggle="tab"]').forEach(tab => {
-			tab.addEventListener('shown.bs.tab', function (e) {
-				localStorage.setItem('activeTab', e.target.getAttribute('href'));
-			});
-		});
-
-		// Antes de enviar cualquier formulario Ajax, guardar el tab activo
-		document.querySelectorAll("form.FormularioAjax").forEach(form => {
-			form.addEventListener("submit", function () {
-				let activeTab = document.querySelector(".nav-pills .nav-link.active");
-				if (activeTab) {
-					localStorage.setItem("activeTab", activeTab.getAttribute("href"));
-				}
-			});
-		});
-
-		// Restaurar el tab activo después del reload
-		window.addEventListener("load", function () {
-			let activeTab = localStorage.getItem("activeTab");
-			if (activeTab) {
-				let tab = document.querySelector(`a[href="${activeTab}"]`);
-				if (tab) {
-					new bootstrap.Tab(tab).show(); // Bootstrap 4/5 activa el tab
-				}
+		/* Periodo de la pensión según la fecha de pago. Antes escuchaba
+		   «keyup», que no se dispara al elegir la fecha en el calendario
+		   (lo normal en el celular). */
+		var meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+		             'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+		var fecha = document.getElementById('pago_fecha');
+		var periodo = document.getElementById('pago_periodo');
+		function ponerPeriodo() {
+			var p = (fecha.value || '').split('-');
+			if (p.length === 3 && meses[parseInt(p[1], 10) - 1]) {
+				periodo.value = meses[parseInt(p[1], 10) - 1] + ' / ' + parseInt(p[0], 10); periodo.dispatchEvent(new Event('change'));
 			}
+		}
+		if (fecha && periodo) {
+			fecha.addEventListener('change', ponerPeriodo);
+			fecha.addEventListener('input', ponerPeriodo);
+		}
+
+		/* Abono: lo que falta para completar el valor del rubro (pensión o
+		   inscripción) pasa solo a «Saldo pendiente». Sigue siendo
+		   editable a mano. Pagar más que el total deja el saldo en 0. */
+		document.querySelectorAll('input[data-ds-total][data-ds-saldo]').forEach(function (valor) {
+			var total = parseFloat(valor.getAttribute('data-ds-total'));
+			var saldo = document.getElementById(valor.getAttribute('data-ds-saldo'));
+			if (!saldo || isNaN(total)) { return; }
+			valor.addEventListener('input', function () {
+				var texto = valor.value.trim().replace(',', '.');
+				var pagado = texto === '' ? 0 : parseFloat(texto);
+				if (isNaN(pagado)) { return; }
+				saldo.value = Math.max(total - pagado, 0).toFixed(2);
+			});
 		});
+
+		/* Forma de pago «Justificado» (FJU): el alumno no asiste ese mes y
+		   no paga. Valor y saldo quedan en 0.00 y bloqueados (así el
+		   servidor lo registra como justificado), y el Detalle pide el
+		   motivo con un texto inicial editable. Al volver a otra forma de
+		   pago se repone el valor que corresponde: el del rubro si se
+		   conoce (pensión, inscripción) o el que había antes. */
+		document.querySelectorAll('form.ds-pg-form').forEach(function (form) {
+			var forma   = form.querySelector('[name="pago_formapagoid"]');
+			var valor   = form.querySelector('[name="pago_valor"]');
+			var saldo   = form.querySelector('[name="pago_saldo"]');
+			var detalle = form.querySelector('[name="pago_concepto"]');
+			var periodo = form.querySelector('[name="pago_periodo"]');
+			if (!forma || !valor || !saldo || !detalle || forma.disabled) { return; }
+
+			var justificado = false, textoAuto = '', previo = { valor: '', saldo: '' };
+			var placeholder = detalle.getAttribute('placeholder') || '';
+
+			function textoJustificacion() {
+				var p = periodo ? periodo.value.trim() : '';
+				return 'Justificado: el alumno no asistirá' + (p ? ' en ' + p : '') + '.';
+			}
+			function bloquear(si) {
+				valor.readOnly = si; saldo.readOnly = si;
+				detalle.required = si;
+				detalle.setAttribute('placeholder', si ? 'Motivo de la justificación' : placeholder);
+			}
+			function aplicar() {
+				var ahora = forma.value === 'FJU';
+				if (ahora === justificado) { return; }
+				justificado = ahora;
+				if (ahora) {
+					previo = { valor: valor.value, saldo: saldo.value };
+					valor.value = '0.00';
+					saldo.value = '0.00';
+					if (detalle.value.trim() === '') { textoAuto = textoJustificacion(); detalle.value = textoAuto; }
+				} else {
+					var total = parseFloat(valor.getAttribute('data-ds-total'));
+					if (!isNaN(total)) {
+						valor.value = total.toFixed(2);
+						saldo.value = '0.00';
+					} else {
+						valor.value = previo.valor;
+						saldo.value = previo.saldo;
+					}
+					if (textoAuto !== '' && detalle.value === textoAuto) { detalle.value = ''; }
+					textoAuto = '';
+				}
+				bloquear(ahora);
+			}
+			forma.addEventListener('change', aplicar);
+
+			/* Si cambia el periodo y el texto sigue siendo el propuesto, se
+			   actualiza el mes. */
+			if (periodo) {
+				['input', 'change'].forEach(function (ev) {
+					periodo.addEventListener(ev, function () {
+						if (textoAuto !== '' && detalle.value === textoAuto) {
+							textoAuto = textoJustificacion();
+							detalle.value = textoAuto;
+						}
+					});
+				});
+			}
+
+			/* Limpiar devuelve el formulario a su estado inicial. */
+			form.addEventListener('reset', function () {
+				justificado = false; textoAuto = '';
+				bloquear(false);
+				setTimeout(aplicar, 0);
+			});
+
+			aplicar();
+		});
+
+		/* En el celular cada pago es una tarjeta: cada dato lleva el
+		   nombre de su columna. */
+		document.querySelectorAll('.ds-pg-tabla').forEach(function (tabla) {
+			var nombres = Array.prototype.map.call(tabla.querySelectorAll('thead th'), function (th) {
+				return th.textContent.trim();
+			});
+			tabla.querySelectorAll('tbody tr').forEach(function (fila) {
+				Array.prototype.forEach.call(fila.children, function (celda, i) {
+					if (nombres[i]) { celda.setAttribute('data-label', nombres[i]); }
+				});
+			});
+		});
+
+		/* El detalle de lo que debe: abierto en escritorio, plegado en el
+		   celular para que el formulario quede a la vista. */
+		var deuda = document.getElementById('ds-pg-deuda');
+		if (deuda && window.matchMedia('(min-width: 992px)').matches) { deuda.open = true; }
+
+		/* La pestaña activa se recuerda tras guardar (la página se recarga)
+		   y, en el celular, se desliza hasta quedar a la vista. */
+		var barra = document.querySelector('.ds-pg-tabs');
+		function centrar(enlace) {
+			if (!barra || !enlace) { return; }
+			var li = enlace.parentElement;
+			barra.scrollLeft = li.offsetLeft - (barra.clientWidth - li.offsetWidth) / 2;
+		}
+		function guardarPestana(href) { try { localStorage.setItem('activeTab', href); } catch (e) {} }
+
+		document.querySelectorAll('.ds-pg-tabs a[data-bs-toggle="tab"]').forEach(function (tab) {
+			tab.addEventListener('shown.bs.tab', function (e) {
+				guardarPestana(e.target.getAttribute('href'));
+				centrar(e.target);
+			});
+		});
+		document.querySelectorAll('form.FormularioAjax.ds-pg-form').forEach(function (form) {
+			form.addEventListener('submit', function () {
+				var activa = document.querySelector('.ds-pg-tabs .nav-link.active');
+				if (activa) { guardarPestana(activa.getAttribute('href')); }
+			});
+		});
+		window.addEventListener('load', function () {
+			var guardada = null;
+			try { guardada = localStorage.getItem('activeTab'); } catch (e) {}
+			var tab = guardada ? document.querySelector('.ds-pg-tabs a[href="' + guardada + '"]') : null;
+			if (tab) { bootstrap.Tab.getOrCreateInstance(tab).show(); centrar(tab); }
+		});
+	})();
 	</script>
-	
+
 	<script src="<?php echo ds_recurso('ds_core/assets/js/foto.js'); ?>"></script>
   </body>
 </html>

@@ -1505,11 +1505,13 @@
 
 		public function ListaAlumnosHorario($horarioid){			
 			$tabla="";
-			$consulta_datos = "SELECT 
-										A.alumno_identificacion, 
-										CONCAT(A.alumno_primernombre, ' ',A.alumno_segundonombre) AS NOMBRES,  
+			$consulta_datos = "SELECT
+										A.alumno_id, A.alumno_identificacion, A.alumno_imagen,
+										A.alumno_primernombre, A.alumno_apellidopaterno,
+										CONCAT(A.alumno_primernombre, ' ',A.alumno_segundonombre) AS NOMBRES,
 									CONCAT(A.alumno_apellidopaterno, ' ',A.alumno_apellidomaterno) AS APELLIDOS,
-										YEAR(A.alumno_fechanacimiento) AS CATEGORIA, H.*
+										YEAR(A.alumno_fechanacimiento) AS CATEGORIA,
+										TIMESTAMPDIFF(YEAR, A.alumno_fechanacimiento, CURDATE()) AS EDAD, H.*
 								FROM asistencia_asignahorario H
 										INNER JOIN sujeto_alumno A ON A.alumno_id = H.asignahorario_alumnoid
 								WHERE H.asignahorario_horarioid = :horario
@@ -1528,23 +1530,43 @@
 			| <form> iba entre <tr> y <td>, que no es HTML válido: ahora vive
 			| dentro de la celda de operaciones.
 			*/
-			$e = static fn ($t) => htmlspecialchars(trim(preg_replace('/\s+/u', ' ', (string)$t)), ENT_QUOTES, 'UTF-8');
+			/*
+			| Presentación (2026-11-27): ficha como Alumnos y el Reporte de
+			| asistencia —foto o iniciales, nombre, cédula, categoría y edad—,
+			| tabla en escritorio y fichas en el teléfono (.ds-crud, futbol.css).
+			| Columnas: Alumno, Categoría, Acciones.
+			*/
+			$e = static fn ($t) => htmlspecialchars(trim(preg_replace('/\s+/u', ' ', html_entity_decode((string)$t, ENT_QUOTES, 'UTF-8'))), ENT_QUOTES, 'UTF-8');
 			$puedeEliminar = puede('eliminar', 'asistencia');
 			foreach($datos as $rows){
-				$operaciones = $puedeEliminar
-					? '<form class="FormularioAjax d-inline" action="'.APP_URL.'app/ajax/asistenciaAjax.php" method="POST" autocomplete="off">
+				$nombre  = trim(preg_replace('/\s+/u', ' ', $rows['NOMBRES'].' '.$rows['APELLIDOS']));
+				$orden   = trim(preg_replace('/\s+/u', ' ', $rows['APELLIDOS'].' '.$rows['NOMBRES']));
+				$inicial = mb_strtoupper(mb_substr(html_entity_decode((string)$rows['alumno_primernombre']), 0, 1) . mb_substr(html_entity_decode((string)$rows['alumno_apellidopaterno']), 0, 1));
+				$edad    = $rows['EDAD'] !== null ? (int)$rows['EDAD'] : null;
+
+				$botones = '<a href="'.APP_URL.'alumnoProfile/'.(int)$rows['alumno_id'].'/" class="btn btn-primary btn-sm ds-ficha__primario" title="Ver ficha" aria-label="Ver la ficha de '.$e($nombre).'"><i class="fas fa-id-card me-1" aria-hidden="true"></i><span class="ds-ficha__texto">Ver ficha</span></a>';
+				if ($puedeEliminar) {
+					$botones .= '<form class="FormularioAjax d-inline" action="'.APP_URL.'app/ajax/asistenciaAjax.php" method="POST" autocomplete="off">
 							<input type="hidden" name="asignahorario_alumnoid" value="'.(int)$rows['asignahorario_alumnoid'].'">
 							<input type="hidden" name="modulo_asistencia" value="eliminar_alumnolista">
-							<button type="submit" class="btn btn-danger btn-sm" title="Quitar del horario" aria-label="Quitar a '.$e($rows['NOMBRES'].' '.$rows['APELLIDOS']).' del horario"><i class="fas fa-trash" aria-hidden="true"></i></button>
-						</form>'
-					: '<span class="text-body-secondary" title="Sin permiso para quitar alumnos del horario">—</span>';
+							<button type="submit" class="btn btn-outline-danger btn-sm" title="Quitar del horario" aria-label="Quitar a '.$e($nombre).' del horario"><i class="fas fa-user-minus" aria-hidden="true"></i></button>
+						</form>';
+				}
+
 				$tabla.='
 					<tr>
-						<td>'.$e($rows['alumno_identificacion']).'</td>
-						<td>'.$e($rows['NOMBRES']).'</td>
-						<td>'.$e($rows['APELLIDOS']).'</td>
-						<td>'.$e($rows['CATEGORIA']).'</td>
-						<td class="text-end">'.$operaciones.'</td>
+						<td class="ds-ficha__principal" data-order="'.$e($orden).'">
+							<div class="ds-ficha__con-imagen">
+								'.$this->avatarAlumno($rows['alumno_imagen'], $inicial).'
+								<div class="min-w-0">
+									<div class="ds-ficha__nombre">'.$e($nombre).'</div>
+									<div class="ds-ficha__meta"><i class="fas fa-id-card" aria-hidden="true"></i> '.$e($rows['alumno_identificacion']).'</div>
+								</div>
+							</div>
+						</td>
+						<td class="ds-ficha__dato" data-etiqueta="Categoría" data-order="'.(int)$rows['CATEGORIA'].'">'
+							.$e($rows['CATEGORIA']).($edad !== null ? ' <span class="text-body-secondary">· '.$edad.' '.($edad === 1 ? 'año' : 'años').'</span>' : '').'</td>
+						<td class="ds-tabla-acciones ds-ficha__acciones"><div class="ds-ficha__botones">'.$botones.'</div></td>
 					</tr>';
 			}
 			return $tabla;			
@@ -1940,17 +1962,19 @@
 
 		/** Cabecera de la pantalla: nombre, sede, días y hora del horario activo, o null. */
 		public function resumenHorario(int $horarioId): ?array {
-			$fila = $this->ejecutarConsulta("SELECT H.horario_id, H.horario_nombre, H.horario_detalle, S.sede_nombre,
+			$fila = $this->ejecutarConsulta("SELECT H.horario_id, H.horario_nombre, H.horario_detalle, H.horario_sedeid, S.sede_nombre,
 						GROUP_CONCAT(DISTINCT D.detalle_dia ORDER BY D.detalle_dia) AS dias,
 						MIN(HR.hora_inicio) AS inicio, MAX(HR.hora_fin) AS fin,
-						GROUP_CONCAT(DISTINCT L.lugar_nombre ORDER BY L.lugar_nombre SEPARATOR ', ') AS lugares
+						GROUP_CONCAT(DISTINCT L.lugar_nombre ORDER BY L.lugar_nombre SEPARATOR ', ') AS lugares,
+						GROUP_CONCAT(DISTINCT E.empleado_nombre ORDER BY E.empleado_nombre SEPARATOR '|') AS profesores
 					FROM asistencia_horario H
 					LEFT JOIN general_sede S ON S.sede_id = H.horario_sedeid
 					LEFT JOIN asistencia_horario_detalle D ON D.detalle_horarioid = H.horario_id
 					LEFT JOIN asistencia_hora HR ON HR.hora_id = D.detalle_horaid
 					LEFT JOIN asistencia_lugar L ON L.lugar_id = D.detalle_lugarid
+					LEFT JOIN sujeto_empleado E ON E.empleado_id = D.detalle_profesorid
 					WHERE H.horario_id = :horario AND H.horario_estado = 'A'
-					GROUP BY H.horario_id, H.horario_nombre, H.horario_detalle, S.sede_nombre", [':horario' => $horarioId])->fetch();
+					GROUP BY H.horario_id, H.horario_nombre, H.horario_detalle, H.horario_sedeid, S.sede_nombre", [':horario' => $horarioId])->fetch();
 			return $fila ?: null;
 		}
 

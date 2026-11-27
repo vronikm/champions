@@ -1293,7 +1293,7 @@
 			$condiciones[] = $this->condicionSede('A.alumno_sedeid', $sede, $parametros);
 
 			$filas = $this->ejecutarConsulta("SELECT A.alumno_id, A.alumno_identificacion, A.alumno_primernombre, A.alumno_segundonombre,
-						A.alumno_apellidopaterno, A.alumno_apellidomaterno, A.alumno_estado,
+						A.alumno_apellidopaterno, A.alumno_apellidomaterno, A.alumno_estado, A.alumno_imagen,
 						A.alumno_fechanacimiento, A.alumno_fechaingreso, S.sede_nombre,
 						COALESCE(AS1.dias, 0) AS dias, COALESCE(AS1.asistidos, 0) AS asistidos,
 						COALESCE(AS1.justificados, 0) AS justificados, AS1.ultimo
@@ -1347,7 +1347,7 @@
 					<tr>
 						<td class="ds-ficha__principal" data-order="' . $h($orden) . '">
 							<div class="ds-ficha__con-imagen">
-								<span class="ds-ficha__imagen ds-alumnos__inicial" aria-hidden="true">' . $h($inicial) . '</span>
+								' . $this->avatarAlumno($al['alumno_imagen'], $inicial) . '
 								<div class="min-w-0">
 									<div class="ds-ficha__nombre">' . $h($nombre) . '</div>
 									<div class="ds-ficha__meta"><i class="fas fa-id-card" aria-hidden="true"></i> ' . $h($al['alumno_identificacion'])

@@ -63,6 +63,21 @@ class mainModel
     }
 
     /**
+     * La miniatura del alumno en una tabla (.ds-ficha__imagen): su foto si
+     * la tiene y el archivo existe; si no, sus iniciales. media_url()
+     * devuelve la genérica cuando falta el archivo: eso cuenta como sin foto.
+     * loading="lazy": en un listado de cientos sólo se piden las visibles.
+     */
+    protected function avatarAlumno($archivo, string $inicial): string
+    {
+        $url = trim((string)$archivo) !== '' ? media_url('alumno', (string)$archivo) : '';
+        if (strpos($url, 'media.php') !== false) {
+            return '<img class="ds-ficha__imagen" src="' . htmlspecialchars($url, ENT_QUOTES, 'UTF-8') . '" alt="" loading="lazy" decoding="async">';
+        }
+        return '<span class="ds-ficha__imagen ds-alumnos__inicial" aria-hidden="true">' . htmlspecialchars($inicial, ENT_QUOTES, 'UTF-8') . '</span>';
+    }
+
+    /**
      * Escapa una cadena para que sea INOFENSIVA EN HTML.
      *
      * QUE HACE Y QUE NO HACE

@@ -681,7 +681,7 @@
 			$condiciones[] = $this->condicionEstadoAlumno('A.alumno_estado', $estado);
 
 			$datos = $this->ejecutarConsulta("SELECT A.alumno_id, A.alumno_identificacion, A.alumno_primernombre, A.alumno_segundonombre,
-						A.alumno_apellidopaterno, A.alumno_apellidomaterno, A.alumno_fechanacimiento, A.alumno_estado,
+						A.alumno_apellidopaterno, A.alumno_apellidomaterno, A.alumno_fechanacimiento, A.alumno_estado, A.alumno_imagen,
 						A.alumno_posicionid, PJ.catalogo_descripcion AS posicion,
 						S.sede_nombre, TIMESTAMPDIFF(YEAR, A.alumno_fechanacimiento, CURDATE()) AS EDAD,
 						HA.horario_id, HA.horario_nombre, HA.horario_detalle
@@ -765,7 +765,7 @@
 					<tr>
 						<td class="ds-ficha__principal" data-order="'.$h($orden).'">
 							<div class="ds-ficha__con-imagen">
-								<span class="ds-ficha__imagen ds-alumnos__inicial" aria-hidden="true">'.$h($inicial).'</span>
+								'.$this->avatarAlumno($al['alumno_imagen'], $inicial).'
 								<div class="min-w-0">
 									<div class="ds-ficha__nombre">'.$h($nombre).'</div>
 									<div class="ds-ficha__meta"><i class="fas fa-id-card" aria-hidden="true"></i> '.$h($al['alumno_identificacion']).'</div>

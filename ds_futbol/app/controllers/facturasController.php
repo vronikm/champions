@@ -20,7 +20,7 @@
 			$parametros=[];
 
 			/* Las sedes de la sesión: sedes_de_la_sesion() (ds_core/inc/seguridad.php). */
-			$consulta_datos = "SELECT sede_id, sede_nombre FROM general_sede WHERE " . sql_sedes_de_la_sesion('sede_id') . " ORDER BY sede_nombre";
+			$consulta_datos = "SELECT sede_id, sede_nombre FROM general_sede WHERE " . sql_sedes_de_la_sesion('sede_id') . " AND " . sql_sede_activa('sede_id', (int)$sedeid) . " ORDER BY sede_nombre";
 			$parametros = [];
 
 			$datos = $this->ejecutarConsulta($consulta_datos, $parametros);
@@ -54,7 +54,7 @@
 		public function opcionesSedeFacturas($sedeid): string{
 			$permitidas = $this->sedesDeLaSesion();
 			$option = "";
-			foreach($this->ejecutarConsulta("SELECT sede_id, sede_nombre FROM general_sede ORDER BY sede_nombre")->fetchAll() as $s){
+			foreach($this->ejecutarConsulta("SELECT sede_id, sede_nombre FROM general_sede WHERE " . sql_sede_activa('sede_id', (int)$sedeid) . " ORDER BY sede_nombre")->fetchAll() as $s){
 				if($permitidas !== null && !in_array((int)$s['sede_id'], $permitidas, true)){ continue; }
 				$option .= '<option value="'.(int)$s['sede_id'].'"'.((int)$sedeid === (int)$s['sede_id'] ? ' selected' : '').'>'
 					.htmlspecialchars(html_entity_decode((string)$s['sede_nombre'], ENT_QUOTES | ENT_HTML5, 'UTF-8'), ENT_QUOTES, 'UTF-8').'</option>';

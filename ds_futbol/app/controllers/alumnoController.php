@@ -1612,8 +1612,8 @@
 			$option="";
 
 			/* Las sedes de la sesión: sedes_de_la_sesion() (ds_core/inc/seguridad.php).
-			   Búsqueda: todas, también las inactivas (lo suyo se sigue viendo). */
-			$consulta_datos = "SELECT sede_id, sede_nombre FROM general_sede WHERE " . sql_sedes_de_la_sesion('sede_id') . " ORDER BY sede_nombre";
+			   Búsqueda: sólo las activas (2026-11-27); la ya elegida se conserva. */
+			$consulta_datos = "SELECT sede_id, sede_nombre FROM general_sede WHERE " . sql_sedes_de_la_sesion('sede_id') . " AND " . sql_sede_activa('sede_id', (int)$sedeid) . " ORDER BY sede_nombre";
 			$parametros = [];						
 					
 			$datos = $this->ejecutarConsulta($consulta_datos, $parametros);

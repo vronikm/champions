@@ -89,8 +89,10 @@ class arenaController
     /**
      * general_sede es compartida con la escuela. Arena sólo administra las
      * sedes cuyo tipo incluye alquiler (catálogo sede_tipoingreso).
+     * Sólo las activas (2026-11-27); $actual, la sede que ya tiene la
+     * instalación que se edita, se sigue ofreciendo.
      */
-    public function sedesAlquiler(): array
+    public function sedesAlquiler(int $actual = 0): array
     {
         $codigos = ARENA_SEDES_ALQUILER;
         $marcas  = implode(',', array_fill(0, count($codigos), '?'));
@@ -98,7 +100,7 @@ class arenaController
         return $this->filas(
             "SELECT sede_id, sede_nombre, sede_tipoingreso
                FROM general_sede
-              WHERE sede_tipoingreso IN ($marcas)
+              WHERE sede_tipoingreso IN ($marcas) AND " . sql_sede_activa('sede_id', $actual) . "
               ORDER BY sede_nombre",
             $codigos
         );
@@ -4945,14 +4947,15 @@ class arenaController
               ORDER BY u.usuario_usuario");
     }
 
-    /** Sedes que tienen instalaciones: el filtro «Sede» (sólo si hay más de una). */
-    public function sedesConInstalaciones(): array
+    /** Sedes que tienen instalaciones: el filtro «Sede» (sólo si hay más de una).
+        Sólo las activas (2026-11-27) y la ya elegida. */
+    public function sedesConInstalaciones(int $actual = 0): array
     {
         return $this->filas(
             "SELECT DISTINCT s.sede_id, s.sede_nombre
                FROM dsa_instalacion i
                JOIN general_sede s ON s.sede_id = i.instalacion_sedeid
-              WHERE i.instalacion_estado <> 'E'
+              WHERE i.instalacion_estado <> 'E' AND " . sql_sede_activa('s.sede_id', $actual) . "
               ORDER BY s.sede_nombre");
     }
 

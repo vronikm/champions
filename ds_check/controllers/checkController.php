@@ -171,7 +171,7 @@ class checkController
     {
         return array_map(static fn($f) => ['id' => (int)$f['sede_id'], 'nombre' => self::texto($f['sede_nombre'])],
             $this->filas("SELECT sede_id, sede_nombre FROM general_sede
-                           WHERE " . sql_sedes_de_la_sesion('sede_id') . " ORDER BY sede_nombre"));
+                           WHERE " . sql_sedes_de_la_sesion('sede_id') . " AND " . sql_sede_activa('sede_id') . " ORDER BY sede_nombre"));
     }
 
     /*

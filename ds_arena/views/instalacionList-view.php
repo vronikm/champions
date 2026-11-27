@@ -8,7 +8,7 @@ $insArena = new arenaController();
 $tituloVista = 'Instalaciones';
 $vistaActual = 'instalacionList';
 
-$sedes = $insArena->sedesAlquiler();
+$sedes = $insArena->sedesAlquiler((int)($_GET['sede'] ?? 0));
 
 $sedeSel  = (int)($_GET['sede'] ?? 0);
 $claseSel = (string)($_GET['clase'] ?? '');

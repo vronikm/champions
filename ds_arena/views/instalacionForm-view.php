@@ -19,7 +19,7 @@ if (!$esAlta && !puede_editar('instalacionList')) {
 $tituloVista = $esAlta ? 'Nueva instalación' : 'Editar instalación';
 $vistaActual = 'instalacionList';
 
-$sedes = $insArena->sedesAlquiler();
+$sedes = $insArena->sedesAlquiler((int)($inst['instalacion_sedeid'] ?? 0));
 $pisos = $insArena->tiposPiso();
 
 require_once __DIR__ . "/inc/layout-top.php";

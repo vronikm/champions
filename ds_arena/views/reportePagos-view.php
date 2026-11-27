@@ -72,7 +72,7 @@ if (isset($_GET['csv'])) {
 }
 
 $cajeros = $insArena->cajerosPagos();
-$sedes   = $insArena->sedesConInstalaciones();
+$sedes   = $insArena->sedesConInstalaciones((int)$f['sede']);
 
 $e   = static fn ($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 $din = static fn ($v) => '$' . number_format((float)$v, 2);

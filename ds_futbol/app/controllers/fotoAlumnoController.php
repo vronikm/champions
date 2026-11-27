@@ -96,14 +96,15 @@
 		public function sedes(): array {
 			$permitidas = $this->sedesPermitidas();
 
-			/* general_sede NO tiene columna de estado: una sede se retira
-			   borrándola, no marcándola. Filtrar por sede_estado revienta la
-			   consulta, y sólo se nota en esta rama —la del usuario sin
-			   restricción—, que es la que menos se prueba. Pasó. */
+			/* Sólo las sedes activas (2026-11-27). Se filtra con
+			   sql_sede_activa(), que comprueba si existe sede_estado (migración
+			   078): filtrar por la columna a ciegas reventaba la consulta en una
+			   base sin ella. */
 			if ($permitidas === []) {
 				return $this->ejecutarConsulta(
 					"SELECT sede_id, sede_nombre FROM general_sede
-					  ORDER BY sede_nombre")->fetchAll();
+					 WHERE " . sql_sede_activa('sede_id') . "
+					 ORDER BY sede_nombre")->fetchAll();
 			}
 
 			/* Marcadores numerados y no una lista concatenada: los ids salen
@@ -113,7 +114,7 @@
 
 			return $this->ejecutarConsulta(
 				"SELECT sede_id, sede_nombre FROM general_sede
-				  WHERE sede_id IN ($marcas) ORDER BY sede_nombre",
+				  WHERE sede_id IN ($marcas) AND " . sql_sede_activa('sede_id') . " ORDER BY sede_nombre",
 				$permitidas)->fetchAll();
 		}
 

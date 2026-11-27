@@ -158,8 +158,8 @@ class inscripcionController extends mainModel
      * Lista las sedes que el usuario en sesión puede usar para generar enlaces.
      * Los roles administrativos (1 y 2) ven todas; el resto solo las asignadas.
      */
-    /* $soloActivas: el enlace de inscripción sólo para sedes activas
-       (migración 078); las inscripciones pendientes, de todas. */
+    /* Sólo sedes activas, para el enlace y para el filtro de pendientes
+       (2026-11-27). $soloActivas se conserva por compatibilidad. */
     public function listarSedesActivas(bool $soloActivas = true)
     {
         $rolid   = $_SESSION['rol'] ?? null;
@@ -167,7 +167,7 @@ class inscripcionController extends mainModel
 
         /* Las sedes de la sesión: sedes_de_la_sesion() (ds_core/inc/seguridad.php). */
         $consulta = $this->ejecutarConsulta(
-            "SELECT sede_id, sede_nombre FROM general_sede WHERE " . sql_sedes_de_la_sesion('sede_id') . ($soloActivas ? " AND " . sql_sede_activa('sede_id') : '') . " ORDER BY sede_nombre"
+            "SELECT sede_id, sede_nombre FROM general_sede WHERE " . sql_sedes_de_la_sesion('sede_id') . " AND " . sql_sede_activa('sede_id') . " ORDER BY sede_nombre"
         );
 
         return $consulta->fetchAll(\PDO::FETCH_ASSOC);

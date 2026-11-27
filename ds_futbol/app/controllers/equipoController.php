@@ -263,10 +263,15 @@
 					WHERE e.equipo_torneoid = :t AND e.equipo_estado IN ('A','I')", [':t' => $torneo])->fetchAll();
 			$dec = static fn($v) => html_entity_decode((string)$v, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 			$r = ['categorias' => [], 'sedes' => [], 'profesores' => []];
+			/* El filtro «Sede» sólo ofrece las activas (2026-11-27). */
+			$activas = array_map('intval', $this->ejecutarConsulta(
+				"SELECT sede_id FROM general_sede WHERE " . sql_sede_activa('sede_id'))->fetchAll(\PDO::FETCH_COLUMN));
 			foreach ($filas as $f) {
 				if (trim((string)$f['equipo_categoria']) !== '') { $r['categorias'][$dec($f['equipo_categoria'])] = true; }
-				$r['sedes'][(int)$f['equipo_sedeid'] === 0 ? self::TODAS_LAS_SEDES : (string)(int)$f['equipo_sedeid']] =
-					(int)$f['equipo_sedeid'] === 0 ? 'Todas las sedes' : $dec($f['sede_nombre']);
+				if ((int)$f['equipo_sedeid'] === 0 || in_array((int)$f['equipo_sedeid'], $activas, true)) {
+					$r['sedes'][(int)$f['equipo_sedeid'] === 0 ? self::TODAS_LAS_SEDES : (string)(int)$f['equipo_sedeid']] =
+						(int)$f['equipo_sedeid'] === 0 ? 'Todas las sedes' : $dec($f['sede_nombre']);
+				}
 				if ((int)$f['equipo_profesorid'] > 0 && $f['empleado_nombre'] !== null) { $r['profesores'][(int)$f['equipo_profesorid']] = $dec($f['empleado_nombre']); }
 			}
 			$r['categorias'] = array_keys($r['categorias']);

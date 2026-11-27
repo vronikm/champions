@@ -273,12 +273,11 @@
 			return $meses;
 		}
 
-		/** Sedes para el filtro: las activas y las que tienen ingresos. */
+		/** Sedes para el filtro: sólo las activas (2026-11-27). */
 		public function sedesIngreso(): array{
 			$lista = [];
 			foreach ($this->ejecutarConsulta("SELECT sede_id, sede_nombre FROM general_sede
 					WHERE " . sql_sede_activa('sede_id', 0) . "
-					   OR sede_id IN (SELECT DISTINCT ingreso_sedeid FROM balance_ingreso WHERE ingreso_estado = 'A')
 					ORDER BY sede_nombre")->fetchAll() as $f) {
 				$lista[(int)$f['sede_id']] = $f['sede_nombre'];
 			}
@@ -778,12 +777,11 @@
 			return $lista;
 		}
 
-		/** Sedes para el filtro: las activas y las que tienen egresos. */
+		/** Sedes para el filtro: sólo las activas (2026-11-27). */
 		public function sedesEgreso(): array{
 			$lista = [];
 			foreach ($this->ejecutarConsulta("SELECT sede_id, sede_nombre FROM general_sede
 					WHERE " . sql_sede_activa('sede_id', 0) . "
-					   OR sede_id IN (SELECT DISTINCT egreso_sedeid FROM balance_egreso WHERE egreso_estado = 'A')
 					ORDER BY sede_nombre")->fetchAll() as $f) {
 				$lista[(int)$f['sede_id']] = $f['sede_nombre'];
 			}

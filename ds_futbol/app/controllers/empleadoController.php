@@ -279,12 +279,11 @@
 			return $option;
 		}
 
-		/** Sedes para el filtro: las activas y las que tienen empleados. */
+		/** Sedes para el filtro: sólo las activas (2026-11-27). */
 		public function sedesFiltroEmpleado(): array{
 			$lista = [];
 			foreach ($this->ejecutarConsulta("SELECT sede_id, sede_nombre FROM general_sede
 					WHERE " . sql_sede_activa('sede_id', 0) . "
-					   OR sede_id IN (SELECT DISTINCT empleado_sedeid FROM sujeto_empleado WHERE empleado_estado IN ('A','I'))
 					ORDER BY sede_nombre")->fetchAll() as $f) {
 				$lista[(int)$f['sede_id']] = $f['sede_nombre'];
 			}

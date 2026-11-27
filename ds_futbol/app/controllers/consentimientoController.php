@@ -177,7 +177,7 @@
 		/** Las sedes que la sesión puede elegir en la búsqueda (id => nombre). */
 		public function sedesDeLaBusqueda() {
 			return $this->ejecutarConsulta(
-				"SELECT sede_id, sede_nombre FROM general_sede WHERE " . sql_sedes_de_la_sesion('sede_id') . " ORDER BY sede_nombre"
+				"SELECT sede_id, sede_nombre FROM general_sede WHERE " . sql_sedes_de_la_sesion('sede_id') . " AND " . sql_sede_activa('sede_id') . " ORDER BY sede_nombre"
 			)->fetchAll(PDO::FETCH_KEY_PAIR);
 		}
 

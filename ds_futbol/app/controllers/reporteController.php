@@ -517,7 +517,8 @@
 		}
 		public function listarSedebusqueda($sedeid){
 			$option ="0";
-			$consulta_datos="SELECT sede_id, sede_nombre FROM general_sede";	
+			/* Sólo las sedes activas y la ya elegida (2026-11-27). */
+			$consulta_datos="SELECT sede_id, sede_nombre FROM general_sede WHERE " . sql_sede_activa('sede_id', (int)$sedeid);	
 					
 			$datos = $this->ejecutarConsulta($consulta_datos);
 			$datos = $datos->fetchAll();
@@ -1369,7 +1370,7 @@
 		/** Sedes del filtro: las que el usuario puede ver (sedesDeLaSesion), no todas. */
 		public function opcionesSedeAsistencia($sedeid): string{
 			$permitidas = $this->sedesDeLaSesion();
-			$sedes = $this->ejecutarConsulta("SELECT sede_id, sede_nombre FROM general_sede ORDER BY sede_nombre")->fetchAll();
+			$sedes = $this->ejecutarConsulta("SELECT sede_id, sede_nombre FROM general_sede WHERE " . sql_sede_activa('sede_id', (int)$sedeid) . " ORDER BY sede_nombre")->fetchAll();
 			$option = "";
 			foreach ($sedes as $s) {
 				if ($permitidas !== null && !in_array((int)$s['sede_id'], $permitidas, true)) { continue; }

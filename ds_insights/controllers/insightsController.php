@@ -326,10 +326,25 @@ class insightsController
 
         /* El comparable es el periodo inmediatamente anterior de la MISMA
            duracion. Comparar un mes con un trimestre daria una variacion sin
-           sentido y con aspecto de dato. */
+           sentido y con aspecto de dato.
+
+           MESES COMPLETOS (2026-11-27): si el periodo va del dia 1 al ultimo
+           dia de un mes (uno o varios), se compara con los mismos meses
+           completos de antes. Antes se contaban dias: noviembre (30) se
+           comparaba con el 2 al 31 de octubre, se perdia el 1 —el dia en que
+           se fechan muchas pensiones— y el panel decia -0,2 % donde la caida
+           era del 23 %. */
         $dias = (int) $d->diff($h)->days + 1;
-        $hAnt = $d->modify('-1 day');
-        $dAnt = $hAnt->modify('-' . ($dias - 1) . ' days');
+        $mesesCompletos = $d->format('d') === '01' && $h->format('Y-m-d') === $h->format('Y-m-t');
+        if ($mesesCompletos) {
+            $nMeses = ((int) $h->format('Y') * 12 + (int) $h->format('n'))
+                    - ((int) $d->format('Y') * 12 + (int) $d->format('n')) + 1;
+            $dAnt = $d->modify('-' . $nMeses . ' months');
+            $hAnt = $d->modify('-1 day');
+        } else {
+            $hAnt = $d->modify('-1 day');
+            $dAnt = $hAnt->modify('-' . ($dias - 1) . ' days');
+        }
 
         return [
             'desde'    => $d->format('Y-m-d'),
@@ -337,8 +352,19 @@ class insightsController
             'antDesde' => $dAnt->format('Y-m-d'),
             'antHasta' => $hAnt->format('Y-m-d'),
             'dias'     => $dias,
+            'meses'    => $mesesCompletos ? $nMeses : 0,
             'etiqueta' => $d->format('d/m/Y') . ' — ' . $h->format('d/m/Y'),
+            /* El comparable para leer: «octubre 2026», «julio — septiembre 2026». */
+            'antNombre' => $mesesCompletos
+                ? self::nombreMes($dAnt) . ($nMeses > 1 ? ' — ' . self::nombreMes($hAnt) : '')
+                : $dAnt->format('d/m/Y') . ' — ' . $hAnt->format('d/m/Y'),
         ];
+    }
+
+    private static function nombreMes(\DateTimeImmutable $f): string
+    {
+        $m = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+        return $m[(int) $f->format('n') - 1] . ' ' . $f->format('Y');
     }
 
     /*==============  Ingresos cobrados  ==============*/
@@ -433,6 +459,109 @@ class insightsController
                    FROM dsl_obligacion o WHERE o.obligacion_estado <> 'ANULADA'"),
         ];
         $r['total'] = $r['basketball'] + $r['arena'] + $r['league'];
+        return $r;
+    }
+
+    /*==============  Lo que entro en caja  ==============*/
+    /*
+    | 2026-11-27. «Ingresos cobrados» cuenta las pensiones por el MES QUE SE
+    | PAGA (pago_fecha: en las pensiones es el mes pagado). Esto cuenta el
+    | dinero por el DIA EN QUE SE REGISTRO: un pago de septiembre hecho en
+    | noviembre entra en noviembre, y un adelanto de diciembre tambien.
+    |
+    | Futbol, con la misma regla que el reporte de pagos de Futbol filtrado
+    | por sede (reporteController::datosPagos): lo pagado de cada pago en su
+    | fecha de registro y cada abono en la suya. Arena y League ya fechan
+    | sus cobros el dia en que se cobran: es lo mismo que en ingresos().
+    */
+    public function entroEnCaja(array $p, bool $anterior = false): array
+    {
+        $d = $anterior ? $p['antDesde'] : $p['desde'];
+        $h = $anterior ? $p['antHasta'] : $p['hasta'];
+
+        $futbol = !insights_ve('basketball') ? 0.0 : (float) $this->escalar(
+            "SELECT IFNULL(SUM(x.v), 0) FROM (
+                SELECT (P.pago_saldo + P.pago_valor) - IFNULL(PT.transaccion_valorcalculado, P.pago_saldo) v
+                  FROM alumno_pago P
+                  LEFT JOIN (SELECT transaccion_pagoid, MIN(transaccion_id) idt
+                               FROM alumno_pago_transaccion WHERE transaccion_estado = 'C'
+                              GROUP BY transaccion_pagoid) T ON T.transaccion_pagoid = P.pago_id
+                  LEFT JOIN alumno_pago_transaccion PT ON PT.transaccion_id = T.idt
+                 WHERE P.pago_estado <> 'E' AND P.pago_fecharegistro BETWEEN :d1 AND :h1"
+                . $this->sede('P.pago_sedeid') . "
+                UNION ALL
+                SELECT T.transaccion_valor
+                  FROM alumno_pago P
+                  JOIN alumno_pago_transaccion T ON T.transaccion_pagoid = P.pago_id
+                 WHERE T.transaccion_estado <> 'E' AND T.transaccion_fecharegistro BETWEEN :d2 AND :h2"
+                . $this->sede('P.pago_sedeid') . "
+             ) x",
+            [':d1' => $d, ':h1' => $h, ':d2' => $d, ':h2' => $h]);
+
+        $ing = $this->ingresos($p, $anterior);
+        $r = ['basketball' => $futbol, 'arena' => $ing['arena'], 'league' => $ing['league']];
+        $r['total'] = $r['basketball'] + $r['arena'] + $r['league'];
+        return $r;
+    }
+
+    /*==============  Por cobrar del panel  ==============*/
+    /*
+    | 2026-11-27. Antes el panel sumaba solo los pagos que alguien registro
+    | como pendientes (21 pagos, $362,20 en adfpl) y no veia las pensiones
+    | que nadie ha registrado: en noviembre faltaban unos $9.700.
+    |
+    | Ahora, para Futbol, la cuenta de Becas y descuentos, mes a mes del
+    | periodo (sin pasar del mes en curso): por cada alumno ACTIVO ya
+    | ingresado, la pension que le toca ese mes —la de su sede, o lo que paga
+    | con su beneficio; la beca del 100 % no paga— menos lo que ya pago de
+    | ese mes. No debe nada quien tiene el mes justificado (J: no asiste).
+    | Arena y League, como siempre (porCobrar()).
+    |
+    | Devuelve tambien cuantos alumnos deben, para la tarjeta.
+    */
+    public function porCobrarPanel(array $p): array
+    {
+        $r = $this->porCobrar();
+        if (!insights_ve('basketball')) {
+            return $r + ['alumnos' => 0];
+        }
+
+        $pagado   = self::SQL_PAGADO;
+        $paga     = self::SQL_PAGA_BENEFICIO;
+        $mes      = new \DateTimeImmutable(substr($p['desde'], 0, 7) . '-01');
+        $ultimo   = min(new \DateTimeImmutable(substr($p['hasta'], 0, 7) . '-01'),
+                        new \DateTimeImmutable('first day of this month'));
+        $valor    = 0.0;
+        $alumnos  = [];
+        for (; $mes <= $ultimo; $mes = $mes->modify('+1 month')) {
+            $m     = $mes->format('Y-m-01');
+            $hasta = $mes->format('Y-m-t');
+            foreach ($this->filas(
+                "SELECT x.alumno, GREATEST(x.debe - x.pagado, 0) falta FROM (
+                    SELECT a.alumno_id alumno,
+                           IF(EXISTS (SELECT 1 FROM alumno_pago p
+                                       WHERE p.pago_alumnoid = a.alumno_id AND " . self::sqlJustificadaDelMes($m) . "),
+                              0,
+                              IFNULL((SELECT MIN($paga) FROM alumno_pago_descuento d
+                                       WHERE d.descuento_alumnoid = a.alumno_id AND d.descuento_estado = 'S'
+                                         AND (d.descuento_fecha IS NULL OR d.descuento_fecha <= '$hasta')),
+                                     s.sede_pension)) debe,
+                           IFNULL((SELECT SUM($pagado) FROM alumno_pago p
+                                    WHERE p.pago_alumnoid = a.alumno_id AND " . self::sqlPensionDelMes($m) . "), 0) pagado
+                      FROM sujeto_alumno a
+                      JOIN general_sede s ON s.sede_id = a.alumno_sedeid
+                     WHERE a.alumno_estado = 'A'
+                       AND (a.alumno_fechaingreso IS NULL OR a.alumno_fechaingreso < '1900-01-01' OR a.alumno_fechaingreso <= '$hasta')"
+                    . $this->sede('a.alumno_sedeid') . "
+                 ) x WHERE x.debe > x.pagado") as $f) {
+                $valor += (float) $f['falta'];
+                $alumnos[(int) $f['alumno']] = true;
+            }
+        }
+
+        $r['basketball'] = $valor;
+        $r['total']      = $r['basketball'] + $r['arena'] + $r['league'];
+        $r['alumnos']    = count($alumnos);
         return $r;
     }
 
@@ -541,21 +670,30 @@ class insightsController
     | representante avisara es otra cosa y tiene su propio indicador, porque
     | disuelto dentro del porcentaje no se veria.
     */
-    public function porcentajeAsistencia(): string
+    /*
+    | DEL PERIODO Y DE LOS ALUMNOS ACTIVOS (2026-11-27). Antes era toda la
+    | historia (desde 2025) e incluia a los alumnos que ya no estan: no
+    | cambiaba al elegir otro periodo. Ahora, como en Becas y descuentos.
+    | Sin periodo (otras llamadas), la historia de los activos.
+    */
+    private function asistenciaDelPeriodo(?array $p): string
     {
-        $r = $this->filas(
-            "SELECT COUNT(*) t, SUM(dia_marca IN ('P','A')) a FROM insights_v_asistencia_dia WHERE 1 = 1"
-            . $this->sedeAlumno('dia_alumnoid'));
+        $fechas = $p === null ? '' : " AND v.dia_fecha BETWEEN '" . $p['desde'] . "' AND '" . $p['hasta'] . "'";
+        return " FROM insights_v_asistencia_dia v
+                 JOIN sujeto_alumno a ON a.alumno_id = v.dia_alumnoid AND a.alumno_estado = 'A'
+                WHERE 1 = 1" . $fechas . $this->sede('a.alumno_sedeid');
+    }
+
+    public function porcentajeAsistencia(?array $p = null): string
+    {
+        $r = $this->filas("SELECT COUNT(*) t, SUM(v.dia_marca IN ('P','A')) a" . $this->asistenciaDelPeriodo($p));
         $t = (int) ($r[0]['t'] ?? 0);
         return $t > 0 ? number_format((int) $r[0]['a'] / $t * 100, 1) : '—';
     }
 
-    public function porcentajeAvisadas(): string
+    public function porcentajeAvisadas(?array $p = null): string
     {
-        $r = $this->filas(
-            "SELECT SUM(dia_marca IN ('F','J')) inas, SUM(dia_marca='J') avis
-               FROM insights_v_asistencia_dia WHERE 1 = 1"
-            . $this->sedeAlumno('dia_alumnoid'));
+        $r = $this->filas("SELECT SUM(v.dia_marca IN ('F','J')) inas, SUM(v.dia_marca = 'J') avis" . $this->asistenciaDelPeriodo($p));
         $i = (int) ($r[0]['inas'] ?? 0);
         return $i > 0 ? number_format((int) $r[0]['avis'] / $i * 100, 1) : '—';
     }
@@ -583,13 +721,13 @@ class insightsController
 
         /* Las tarjetas de los módulos del rol; las demás ni se calculan. */
         $r = [];
-        if (insights_ve('basketball')) { $r += $this->resumenFutbol($ing); }
+        if (insights_ve('basketball')) { $r += $this->resumenFutbol($ing, $p); }
         if (insights_ve('arena'))      { $r += $this->resumenArena($p, $ing); }
         if (insights_ve('league'))     { $r += $this->resumenLeague($ing); }
         return $r;
     }
 
-    private function resumenFutbol(array $ing): array
+    private function resumenFutbol(array $ing, array $p): array
     {
         return [
             'basketball' => [
@@ -601,8 +739,8 @@ class insightsController
                     ['alumnos activos', (string) (int) $this->escalar(
                         "SELECT COUNT(*) FROM sujeto_alumno WHERE alumno_estado='A'"
                             . $this->sede('alumno_sedeid'))],
-                    ['asistencia', $this->porcentajeAsistencia() . ' %'],
-                    ['inasistencias avisadas', $this->porcentajeAvisadas() . ' %'],
+                    ['asistencia del periodo', $this->porcentajeAsistencia($p) . ' %'],
+                    ['inasistencias avisadas', $this->porcentajeAvisadas($p) . ' %'],
                 ],
             ],
         ];
@@ -1058,16 +1196,36 @@ class insightsController
     */
     private static function sqlPensionDelMes(string $mes): string
     {
+        return "p.pago_rubroid = 'RPE' AND p.pago_estado IN ('C','P') AND p.pago_valor > 0
+                AND " . self::sqlMesDeLaPension() . " = '$mes'";
+    }
+
+    /** La pension de ese mes esta justificada (J: el alumno no asiste y no la paga). */
+    private static function sqlJustificadaDelMes(string $mes): string
+    {
+        return "p.pago_rubroid = 'RPE' AND p.pago_estado = 'J' AND " . self::sqlMesDeLaPension() . " = '$mes'";
+    }
+
+    /** El mes (aaaa-mm-01) al que corresponde una pension p. */
+    private static function sqlMesDeLaPension(): string
+    {
         $periodo = "STR_TO_DATE(CONCAT(TRIM(SUBSTRING_INDEX(p.pago_periodo, '/', -1)), '-',"
                  . " NULLIF(FIELD(LOWER(TRIM(SUBSTRING_INDEX(p.pago_periodo, '/', 1))), 'enero', 'febrero', 'marzo', 'abril', 'mayo',"
                  . " 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'), 0), '-01'), '%Y-%c-%d')";
         $mesPago = "DATE_FORMAT(p.pago_fecha, '%Y-%m-01')";
-        return "p.pago_rubroid = 'RPE' AND p.pago_estado IN ('C','P') AND p.pago_valor > 0
-                AND (CASE WHEN $periodo IS NOT NULL
-                               AND $periodo < $mesPago + INTERVAL 4 MONTH
-                               AND $periodo >= $mesPago - INTERVAL 12 MONTH
-                          THEN $periodo ELSE $mesPago END) = '$mes'";
+        return "(CASE WHEN $periodo IS NOT NULL
+                           AND $periodo < $mesPago + INTERVAL 4 MONTH
+                           AND $periodo >= $mesPago - INTERVAL 12 MONTH
+                      THEN $periodo ELSE $mesPago END)";
     }
+
+    /*
+    | Lo PAGADO de una pension p (2026-11-27): completa, su valor; pendiente
+    | con abonos, lo abonado (valor - saldo). Antes se sumaba el valor entero
+    | tambien de las pendientes: 19 pensiones de $396,20 con solo $104,00
+    | pagados contaban como cobradas enteras.
+    */
+    const SQL_PAGADO = "CASE WHEN p.pago_estado = 'P' THEN p.pago_valor - p.pago_saldo ELSE p.pago_valor END";
 
     public function beneficios(?array $p = null): array
     {
@@ -1080,17 +1238,21 @@ class insightsController
                    AND (a.alumno_fechaingreso IS NULL OR a.alumno_fechaingreso < '1900-01-01' OR a.alumno_fechaingreso <= '$hasta')
                    AND (d.descuento_fecha IS NULL OR d.descuento_fecha <= '$hasta')";
         $delMes = self::sqlPensionDelMes($mes);
+        $pagado = self::SQL_PAGADO;
+        /* Con el mes justificado (J) no se le cobra: fuera de lo que deberían pagar. */
+        $cobrable = "($enMes) AND NOT EXISTS (SELECT 1 FROM alumno_pago p WHERE p.pago_alumnoid = a.alumno_id AND "
+                  . self::sqlJustificadaDelMes($mes) . ")";
         $filas = $this->filas(
             "SELECT d.descuento_rubroid cod,
                     MAX(c.catalogo_descripcion) tipo,
                     SUM($enMes) activos,
                     SUM(a.alumno_estado <> 'A') inactivos,
-                    SUM(IF($enMes, s.sede_pension, 0)) pension,
-                    SUM(IF($enMes, $paga, 0)) paga,
+                    SUM(IF($cobrable, s.sede_pension, 0)) pension,
+                    SUM(IF($cobrable, $paga, 0)) paga,
                     MIN(IF($enMes, $paga, NULL)) paga_min,
                     MAX(IF($enMes, $paga, NULL)) paga_max,
                     SUM(($enMes) AND $paga >= s.sede_pension) sin_rebaja,
-                    IFNULL(SUM(IF($enMes, (SELECT SUM(p.pago_valor) FROM alumno_pago p
+                    IFNULL(SUM(IF($enMes, (SELECT SUM($pagado) FROM alumno_pago p
                                  WHERE p.pago_alumnoid = a.alumno_id AND $delMes), 0)), 0) pagado,
                     IFNULL(SUM(IF($enMes, (SELECT COUNT(*) FROM alumno_pago p
                                  WHERE p.pago_alumnoid = a.alumno_id AND $delMes), 0)), 0) cuotas
@@ -1178,9 +1340,13 @@ class insightsController
                                      AND (d.descuento_fecha IS NULL OR d.descuento_fecha <= '$hasta'))"
                . $this->sede('a.alumno_sedeid');
 
+        /* Quien tiene el mes justificado (J) no lo paga: no suma a «debería». */
+        $justificado = "EXISTS (SELECT 1 FROM alumno_pago p WHERE p.pago_alumnoid = a.alumno_id AND "
+                     . self::sqlJustificadaDelMes($mes) . ")";
         $dinero = $this->filas(
-            "SELECT COUNT(*) alumnos, IFNULL(SUM(s.sede_pension), 0) deberian,
-                    IFNULL(SUM((SELECT SUM(p.pago_valor) FROM alumno_pago p
+            "SELECT COUNT(*) alumnos, IFNULL(SUM(IF($justificado, 0, s.sede_pension)), 0) deberian,
+                    IFNULL(SUM($justificado), 0) justificados,
+                    IFNULL(SUM((SELECT SUM(" . self::SQL_PAGADO . ") FROM alumno_pago p
                                  WHERE p.pago_alumnoid = a.alumno_id AND " . self::sqlPensionDelMes($mes) . ")), 0) pagado
                FROM sujeto_alumno a
                JOIN general_sede s ON s.sede_id = a.alumno_sedeid
@@ -1200,6 +1366,7 @@ class insightsController
 
         return [
             'alumnos'    => (int) ($dinero['alumnos'] ?? 0),
+            'justificados' => (int) ($dinero['justificados'] ?? 0), /* con el mes justificado: no deben */
             'deberian'   => (float) ($dinero['deberian'] ?? 0),   /* pension de su sede, en el mes */
             'pagado'     => (float) ($dinero['pagado'] ?? 0),     /* pensiones de ese mes cobradas */
             'marcas'     => $marcas,

@@ -86,10 +86,37 @@ function insights_modulos(): array
     if ($visibles === null) {
         $visibles = [];
         foreach (['basketball' => 'Fútbol', 'arena' => 'Arena', 'league' => 'League'] as $m => $n) {
-            if (PHP_SAPI === 'cli' || usuario_tiene_modulo($m)) { $visibles[$m] = $n; }
+            if (PHP_SAPI === 'cli' || (usuario_tiene_modulo($m) && insights_modulo_en_uso($m))) { $visibles[$m] = $n; }
         }
     }
     return $visibles;
+}
+
+/*
+| ¿El sistema usa ese módulo? (2026-11-27) Un club que no alquila canchas ni
+| organiza ligas (adfpl, cdjg, sendero) veía en Insights, como Super
+| Administrador, las tarjetas de Arena y League en cero y «Ocupación de
+| Arena 0,0 %». Arena cuenta como en uso si tiene alguna reserva o cobro;
+| League, algún torneo o abono. El día que se registre el primero, aparece
+| solo. Fútbol siempre.
+*/
+function insights_modulo_en_uso(string $modulo): bool
+{
+    static $uso = [];
+    if ($modulo === 'basketball') { return true; }
+    if (!array_key_exists($modulo, $uso)) {
+        $sql = [
+            'arena'  => "SELECT EXISTS (SELECT 1 FROM dsa_reserva) OR EXISTS (SELECT 1 FROM dsa_pago)",
+            'league' => "SELECT EXISTS (SELECT 1 FROM dsl_torneo) OR EXISTS (SELECT 1 FROM dsl_abono)",
+        ][$modulo] ?? null;
+        try {
+            $con = seguridad_conexion();
+            $uso[$modulo] = $sql !== null && $con !== null && (int) $con->query($sql)->fetchColumn() === 1;
+        } catch (\Throwable $e) {
+            $uso[$modulo] = false;   /* sin sus tablas, no está en uso */
+        }
+    }
+    return $uso[$modulo];
 }
 
 /** ¿El rol ve los datos de ese módulo? */

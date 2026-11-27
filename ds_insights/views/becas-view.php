@@ -275,7 +275,7 @@ require_once __DIR__ . "/inc/layout-top.php";
             <div class="inner">
                 <h3 class="text-truncate"><?php echo $bfDinero($control['deberian']); ?></h3>
                 <p class="mb-0">Debería ingresar sin beneficio</p>
-                <p class="mb-0 small opacity-75"><?php echo number_format($control['alumnos']); ?> alumnos sin beca ni descuento</p>
+                <p class="mb-0 small opacity-75"><?php echo number_format($control['alumnos']); ?> alumnos sin beca ni descuento<?php if ($control['justificados'] > 0): ?> <span class="text-nowrap">(<?php echo number_format($control['justificados']); ?> con el mes justificado, no pagan)</span><?php endif; ?></p>
                 <div class="ds-kpi__cobrado">
                     <p class="mb-0 small fw-semibold"><span class="text-nowrap">cobrado <?php echo $bfDinero($control['pagado']); ?></span><?php if ($control['deberian'] > 0): ?> <span class="text-nowrap">(<?php echo $bfPct($control['pagado'] / $control['deberian'] * 100); ?>)</span><?php endif; ?></p>
                     <?php $kpiPct = $control['deberian'] > 0 ? $control['pagado'] / $control['deberian'] * 100 : null; ?>

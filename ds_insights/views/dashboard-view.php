@@ -37,12 +37,18 @@ $trx    = $insInsights->transacciones($p);
 $trxAnt = $insInsights->transacciones($p, true);
 $ocu    = $insInsights->ocupacion($p);
 $ocuAnt = $insInsights->ocupacion($p, true);
-$deuda  = $insInsights->porCobrar();
+/* Por cobrar: las pensiones del periodo que faltan (como Becas y
+   descuentos), más lo de Arena y League. Ver porCobrarPanel(). */
+$deuda  = $insInsights->porCobrarPanel($p);
+/* Lo que entró en caja: por el día en que se registró el pago. */
+$caja    = $insInsights->entroEnCaja($p);
+$cajaAnt = $insInsights->entroEnCaja($p, true);
 $serie  = $insInsights->serieMensual(8);
 $modulos = $insInsights->resumenModulos($p);
 $avisos  = $insInsights->requiereAtencion($p);
 
 $varIngresos = $insInsights->variacion($ing['total'], $ingAnt['total']);
+$varCaja     = $insInsights->variacion($caja['total'], $cajaAnt['total']);
 $varTrx      = $insInsights->variacion((float) $trx, (float) $trxAnt);
 /*
 | La ocupación se compara en PUNTOS, no en porcentaje sobre el porcentaje:
@@ -62,7 +68,8 @@ $varOcupacion = $ocuAnt['reservadas'] > 0 ? $ocu['pct'] - $ocuAnt['pct'] : null;
    con los que tiene. */
 $visibles = insights_modulos();
 $conArena = isset($visibles['arena']);
-$colCifra = $conArena ? 'col-lg-3' : 'col-lg-4';
+$colCifra = 'col-lg';   /* cuatro o cinco cifras, a partes iguales */
+$conFutbol = isset($visibles['basketball']);
 $colorModulo = ['basketball' => '#3b82f6', 'arena' => '#22d3ee', 'league' => '#a78bfa'];
 
 $tituloVista = 'Panel';
@@ -92,8 +99,8 @@ require_once __DIR__ . "/inc/layout-top.php";
             </div>
             <div class="col-auto ms-auto text-muted small">
                 Comparado con
-                <strong><?php echo htmlspecialchars($p['antDesde'] . ' — ' . $p['antHasta'], ENT_QUOTES, 'UTF-8'); ?></strong>
-                <span class="ms-2"><?php echo (int) $p['dias']; ?> días</span>
+                <strong><?php echo htmlspecialchars($p['antNombre'], ENT_QUOTES, 'UTF-8'); ?></strong>
+                <?php if ($p['meses'] === 0): ?><span class="ms-2"><?php echo (int) $p['dias']; ?> días</span><?php endif; ?>
             </div>
         </form>
     </div>
@@ -105,10 +112,23 @@ require_once __DIR__ . "/inc/layout-top.php";
         <div class="small-box text-bg-success h-100">
             <div class="inner">
                 <h3 class="text-truncate">$<?php echo number_format($ing['total'], 2); ?></h3>
-                <p class="mb-0">Ingresos cobrados</p>
-                <p class="mb-0 small opacity-75"><?php echo ds_variacion_sobre_color($varIngresos); ?></p>
+                <p class="mb-0">Cobrado del periodo</p>
+                <p class="mb-0 small opacity-75"><span title="Las pensiones cuentan en el mes que pagan: la de septiembre pagada en noviembre suma a septiembre.">por el mes que se paga</span> · <?php echo ds_variacion_sobre_color($varIngresos); ?></p>
             </div>
             <i class="fas fa-dollar-sign small-box-icon" aria-hidden="true"></i>
+        </div>
+    </div>
+
+    <?php /* Lo mismo contado por el día en que entró el dinero: la cifra que
+             cuadra con la caja y con el reporte de pagos de Fútbol por sede. */ ?>
+    <div class="col-12 col-sm-6 <?php echo $colCifra; ?>">
+        <div class="small-box h-100" style="background-color:#0f766e;color:#fff;">
+            <div class="inner">
+                <h3 class="text-truncate">$<?php echo number_format($caja['total'], 2); ?></h3>
+                <p class="mb-0">Entró en caja</p>
+                <p class="mb-0 small opacity-75"><span title="Por el día en que se registró cada pago o abono, sea del mes que sea: un pago atrasado o un adelanto entran el día en que se cobran.">por el día en que se cobró</span> · <?php echo ds_variacion_sobre_color($varCaja); ?></p>
+            </div>
+            <i class="fas fa-cash-register small-box-icon" aria-hidden="true"></i>
         </div>
     </div>
 
@@ -117,9 +137,13 @@ require_once __DIR__ . "/inc/layout-top.php";
             <div class="inner">
                 <h3 class="text-truncate">$<?php echo number_format($deuda['total'], 2); ?></h3>
                 <p class="mb-0">Por cobrar</p>
-                <p class="mb-0 small opacity-75"><span class="opacity-75"
-                          title="La cartera de Fútbol se proyecta desde hoy: compararla entre periodos no mediría nada. Para eso están las fotos mensuales.">
-                        <i class="fas fa-info-circle"></i> sin comparar
+                <p class="mb-0 small opacity-75"><span
+                          title="Fútbol: las pensiones del periodo que faltan (la de su sede o la que paga con su beneficio, menos lo pagado; sin becas del 100 % ni meses justificados), como en Becas y descuentos.">
+                        <?php if ($conFutbol && $deuda['alumnos'] > 0): ?>
+                            <?php echo number_format($deuda['alumnos']); ?> <?php echo $deuda['alumnos'] === 1 ? 'alumno debe' : 'alumnos deben'; ?> pensiones del periodo
+                        <?php else: ?>
+                            <i class="fas fa-info-circle"></i> pensiones del periodo
+                        <?php endif; ?>
                     </span></p>
             </div>
             <i class="fas fa-hand-holding-usd small-box-icon" aria-hidden="true"></i>

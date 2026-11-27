@@ -128,9 +128,31 @@
             }
         }
 
+        /*
+        | UNA SESIÓN POR SISTEMA (2026-11-26)
+        |
+        | Varios sistemas DigiSports comparten nombre de cookie
+        | (DS_SESSION_NAME) y, en desarrollo, también el servidor
+        | (localhost/adfpedrolarrea_new, localhost/champions_cf_new…). Con la
+        | cookie en "/", la sesión de uno viajaba al otro y éste la daba por
+        | buena: se entraba a adfpl sin iniciar sesión, con un usuario de
+        | champions que no existe en su base. Dos barreras:
+        |
+        |   1. La cookie vive sólo en la carpeta del sistema (la ruta de
+        |      DS_HUB_URL; en producción es "/", como antes).
+        |   2. La sesión lleva la huella del sistema que la creó (dirección y
+        |      base de datos). Si llega una ajena, no se usa: se empieza una
+        |      sesión nueva y vacía, sin tocar la del otro sistema.
+        |
+        | El nombre de la cookie NO se cambia: APP_SESSION_NAME entra en la
+        | clave con la que facturasController cifra datos guardados.
+        */
+        $rutaSesion = (string)(parse_url(DS_HUB_URL, PHP_URL_PATH) ?: '/');
+        $rutaSesion = rtrim($rutaSesion, '/') . '/';
+
         session_set_cookie_params([
             'lifetime' => 0,
-            'path'     => '/',
+            'path'     => $rutaSesion,
             'domain'   => '',
             'secure'   => $https,
             'httponly' => true,
@@ -139,6 +161,23 @@
 
         session_name(APP_SESSION_NAME);
         session_start();
+
+        $huellaSistema = hash('sha256', DS_HUB_URL . '|' . DB_SERVER . '|' . DB_NAME);
+        if (!empty($_SESSION) && ($_SESSION['ds_sistema'] ?? '') !== $huellaSistema) {
+            // Es de otro sistema (o anterior a esta comprobación): id nuevo
+            // sin borrar el anterior, que puede ser la sesión viva del otro.
+            session_regenerate_id(false);
+            $_SESSION = [];
+        }
+        $_SESSION['ds_sistema'] = $huellaSistema;
+        // El login rehace $_SESSION entero (loginController: $_SESSION = [...])
+        // y se llevaría la huella: se vuelve a poner al terminar la petición,
+        // antes de que PHP guarde la sesión.
+        register_shutdown_function(static function () use ($huellaSistema) {
+            if (session_status() === PHP_SESSION_ACTIVE) {
+                $_SESSION['ds_sistema'] = $huellaSistema;
+            }
+        });
     }
 
     require_once __DIR__ . "/seguridad.php";

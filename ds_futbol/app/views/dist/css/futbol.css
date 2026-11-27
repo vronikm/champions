@@ -1838,6 +1838,24 @@ body.layout-fixed .app-main:has(.ds-reporte__tabla),
     /* Acciones en dos filas: arriba las de uso diario, debajo los iconos. */
     #horarios-resultado .ds-horarios__acciones { flex-wrap: wrap; max-width: 12.5rem; margin-left: auto; }
 }
+/* «Mostrar N» a la izquierda también en el teléfono: en la misma fila que
+   el filtro, que se queda con el resto del ancho (en los demás listados va
+   centrado encima). */
+/* Con Bootstrap 5, DataTables arma esa fila con .row y columnas .col-12
+   (no con .dt-layout-row / .dt-layout-cell). */
+@media (max-width: 991.98px) {
+    #horarios-resultado .row:has(> * > .dt-length) { flex-wrap: nowrap; align-items: center; --bs-gutter-x: .5rem; }
+    #horarios-resultado .row:has(> * > .dt-length) > :has(> .dt-length) { flex: 0 0 auto; width: auto; max-width: none; justify-content: flex-start; }
+    #horarios-resultado .row:has(> * > .dt-length) > :has(> .dt-search) { flex: 1 1 0; width: auto; min-width: 0; }
+    #horarios-resultado .dt-length { justify-content: flex-start; }
+    #horarios-resultado .dt-length select,
+    #horarios-resultado .dt-search input { min-height: 2.75rem; }
+}
+@media (max-width: 359.98px) {
+    /* Muy estrecho: «Mostrar» sobra, el número se entiende solo. */
+    #horarios-resultado .dt-length label { display: none; }
+}
+
 /* Días y hora bajo el nombre: sólo donde su columna se oculta (portátil con
    el menú abierto, .ds-col-opcional); en la ficha y en pantalla grande van
    en su sitio. */

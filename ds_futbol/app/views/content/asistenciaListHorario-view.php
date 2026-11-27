@@ -229,17 +229,23 @@
 			}
 
 			if (!document.getElementById('example1')) { return; }
-			new DataTable("#example1", {
+
+			/* «Mostrar N» a la izquierda (2026-11-27). Lo elegido se recuerda
+			   en este navegador, como en la toma de asistencia. */
+			var CLAVE = 'ds-horarios-lista-por-pagina', LARGOS = [10, 25, 50, 100, -1], largo = 25;
+			try { var g = parseInt(localStorage.getItem(CLAVE), 10); if (LARGOS.indexOf(g) !== -1) { largo = g; } } catch (e) {}
+
+			var tabla = new DataTable("#example1", {
 				autoWidth: false,
-				lengthChange: false,
-				pageLength: 25,
+				pageLength: largo,
+				lengthMenu: [LARGOS, [10, 25, 50, 100, 'Todos']],
 				order: [[0, 'asc']],
 				columnDefs: [
 					{ targets: 3, type: 'num' },
 					{ targets: 5, orderable: false, searchable: false }   /* acciones */
 				],
 				layout: {
-					topStart: null,
+					topStart: 'pageLength',
 					topEnd: 'search',
 					bottomStart: 'info',
 					bottomEnd: { paging: { firstLast: false } }
@@ -249,6 +255,7 @@
 					info: "_START_ a _END_ de _TOTAL_ horarios",
 					infoEmpty: "Sin horarios",
 					infoFiltered: "(de _MAX_)",
+					lengthMenu: "Mostrar _MENU_",
 					search: "",
 					searchPlaceholder: "Filtrar la lista…",
 					zeroRecords: "Ningún horario coincide con el filtro",
@@ -258,6 +265,9 @@
 						sortDescending: ": ordenar de forma descendente"
 					}
 				}
+			});
+			tabla.on('length', function (e, s, nuevo) {
+				try { localStorage.setItem(CLAVE, String(nuevo)); } catch (err) {}
 			});
 		});
 	</script>

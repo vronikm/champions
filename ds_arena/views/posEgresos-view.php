@@ -27,13 +27,14 @@ $puedeCrear   = puede_crear('posEgresos') && $listo;
 $puedeAnular  = puede_eliminar('posEgresos');
 $categorias   = $pos->categoriasEgreso('B');
 $sedes        = $pos->sedesCaja();
+$egFormasPago = $pos->formasEgresoBar();   /* Banco de Loja o Banco Pichincha (103) */
 
 require_once __DIR__ . "/inc/layout-top.php";
 require_once __DIR__ . "/inc/pos-comun.php";
 
 $egAmbito = 'B';
 $egVista  = 'posEgresos';
-$egIntro  = 'Registre los <strong>gastos del bar</strong>: el detalle y el valor pagado.'
+$egIntro  = 'Registre los <strong>gastos del bar</strong>: el detalle, el valor y desde qué banco se transfirió.'
           . ' Abajo, lo vendido frente a lo gastado en el período. Los de las canchas van en «Egresos Instalaciones».';
 $egConcepto = 'Ej.: 2 fundas de hielo, cilindro de gas';
 $nSalidas = count(array_filter($salidas, static fn ($s) => !$s['anulado']));
@@ -51,6 +52,10 @@ $egCuadro = [
     ['Total ingresos', $r['ingresos'], 'eg-total', 'pos-pos'],
     ['Egresos del bar', -$r['egresos'], '', ''],
 ];
+/* De qué banco salieron los egresos del bar. */
+if (count($r['porForma']) > 1 || !isset($r['porForma']['Sin indicar'])) {
+    foreach ($r['porForma'] as $n => $v) { $egCuadro[] = [$posH($n), -$v, 'eg-sub', '']; }
+}
 array_push($egCuadro,
     ['Egresos anotados en la caja', -$r['egresosCaja'], '', ''],
     ['Pagos de compras', -$r['compras'], '', ''],

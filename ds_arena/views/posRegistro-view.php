@@ -4,7 +4,8 @@
 |
 | Lo que ya se vendió y no pasó por «Vender»: se ingresa con su fecha (hoy o
 | días anteriores), producto por producto, con el precio de ese día. Un
-| producto que no está en el catálogo se escribe por su nombre y se crea.
+| producto que no está en el catálogo se escribe con su descripción y queda
+| sólo como línea de esa venta: no se crea en Productos (2026-11-26, 104).
 | Las de HOY entran en la caja abierta de quien registra (sin caja abierta
 | no se registran); las de días anteriores no tocan ninguna caja: quedan
 | como constancia. Salen en Reportes › Ventas del día elegido y en Egresos
@@ -66,7 +67,12 @@ require_once __DIR__ . "/inc/pos-comun.php";
     .rv-sug li small { grid-column: 1; color: var(--bs-secondary-color); }
     .rv-sug li b { grid-row: 1 / span 2; grid-column: 2; font-variant-numeric: tabular-nums; }
     .rv-sug li[aria-selected="true"], .rv-sug li:hover { background: var(--bs-primary-bg-subtle); }
-    .rv-sug .rv-sug__nuevo { color: var(--bs-success-text-emphasis); font-weight: 600; grid-template-columns: 1fr; }
+    /* «Sin producto» queda fijo al pie de la lista: con muchas coincidencias no se
+       pierde debajo de las demás (2026-11-26). */
+    .rv-sug .rv-sug__nuevo { color: var(--bs-success-text-emphasis); font-weight: 600; grid-template-columns: 1fr;
+                             position: sticky; bottom: -.25rem; background: var(--bs-body-bg); border-top: 1px solid var(--bs-border-color); border-radius: 0 0 .45rem .45rem; }
+    .rv-sug .rv-sug__nuevo:hover, .rv-sug .rv-sug__nuevo[aria-selected="true"] { background: var(--bs-success-bg-subtle); }
+    .rv-sug .rv-sug__nuevo small { font-weight: 400; }
     .rv-ayuda { font-size: .8rem; margin-top: .2rem; }
     .rv-ayuda--nuevo { color: var(--bs-success-text-emphasis); }
 
@@ -187,7 +193,7 @@ require_once __DIR__ . "/inc/pos-comun.php";
                         <div><label class="form-label small" for="rvProd">Producto</label>
                             <div class="rv-combo">
                                 <input type="text" class="form-control" id="rvProd" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="rvSug"
-                                       maxlength="100" placeholder="Escriba para buscar o el nombre de uno nuevo" aria-describedby="rvProdAyuda">
+                                       maxlength="100" placeholder="Busque un producto o escriba una descripción" aria-describedby="rvProdAyuda">
                                 <ul class="rv-sug" id="rvSug" role="listbox" hidden></ul>
                             </div>
                             <div class="rv-ayuda text-body-secondary" id="rvProdAyuda">Busque por nombre o código.</div></div>
@@ -276,14 +282,14 @@ document.addEventListener('DOMContentLoaded', function () {
             return '<li role="option" id="rvOp' + i + '" data-i="' + i + '"><span>' + esc(p.nombre) + '</span><small>' + esc(p.codigo) + (p.tipo === 'P' ? ' · con stock' : '') + '</small><b>' + posDinero(p.precio) + '</b></li>';
         }).join('');
         if (!exacto && texto.length >= 2) {
-            html += '<li role="option" id="rvOp' + opciones.length + '" data-i="nuevo" class="rv-sug__nuevo"><span><i class="fas fa-plus me-1" aria-hidden="true"></i>Producto nuevo: «' + esc(texto) + '»</span></li>';
+            html += '<li role="option" id="rvOp' + opciones.length + '" data-i="nuevo" class="rv-sug__nuevo"><span><i class="fas fa-pen me-1" aria-hidden="true"></i>Usar «' + esc(texto) + '» sin producto</span><small>Sólo en esta venta: no se crea en Productos</small></li>';
         }
         sug.innerHTML = html; sug.hidden = !html; prod.setAttribute('aria-expanded', html ? 'true' : 'false'); activa = -1;
     }
     function ayudaTexto() {
         ayuda.className = 'rv-ayuda ' + (elegido && !elegido.id ? 'rv-ayuda--nuevo' : 'text-body-secondary');
         ayuda.textContent = !elegido ? 'Busque por nombre o código.' : (elegido.id ? elegido.codigo + ' · precio de venta ' + posDinero(elegido.precio)
-                          : 'Producto nuevo: se creará en Productos al registrar. Escriba su precio.');
+                          : 'Sin producto del catálogo: queda sólo como línea de esta venta (no se crea en Productos). Escriba su precio.');
     }
     function elegir(i) {
         if (i === 'nuevo') { elegido = { id: 0, nombre: prod.value.trim(), precio: 0, tipo: 'S' }; precio.value = ''; }
@@ -324,7 +330,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function limpiarAgregar() { prod.value = ''; cant.value = ''; precio.value = ''; elegido = null; cerrarSug(); ayudaTexto(); calcular(); }
 
     function agregar() {
-        /* Escribió un nombre y no eligió: si coincide exacto con uno del catálogo, ése; si no, uno nuevo. */
+        /* Escribió un nombre y no eligió: si coincide exacto con uno del catálogo, ése; si no, una línea sin producto. */
         if (!elegido && prod.value.trim().length >= 2) {
             var q = norm(prod.value), igual = PRODUCTOS.filter(function (p) { return norm(p.nombre) === q || norm(p.codigo) === q; })[0];
             elegido = igual || { id: 0, nombre: prod.value.trim(), precio: 0, tipo: 'S' };
@@ -350,7 +356,7 @@ document.addEventListener('DOMContentLoaded', function () {
             $('rvLineas').innerHTML = '<div class="rv-cab"><span>Producto</span><span class="text-end">Cantidad</span><span class="text-end">Precio c/u</span><span class="text-end">Subtotal</span><span></span></div>'
               + lineas.map(function (l, i) {
                 return '<div class="rv-linea" data-i="' + i + '"><div class="rv-linea__nombre">' + esc(l.nombre)
-                     + (l.producto_id ? '<small>' + esc(l.codigo) + (l.tipo === 'P' ? ' · con stock' : '') + '</small>' : '<small class="text-success">Nuevo: se creará en Productos</small>') + '</div>'
+                     + (l.producto_id ? '<small>' + esc(l.codigo) + (l.tipo === 'P' ? ' · con stock' : '') + '</small>' : '<small class="text-body-secondary">Sin producto · sólo en esta venta</small>') + '</div>'
                      + '<input type="text" inputmode="decimal" class="form-control" data-campo="cantidad" value="' + l.cantidad + '" aria-label="Cantidad de ' + esc(l.nombre) + '">'
                      + '<input type="text" inputmode="decimal" class="form-control" data-campo="precio" value="' + l.precio.toFixed(2) + '" aria-label="Precio de ' + esc(l.nombre) + '">'
                      + '<span class="rv-linea__sub">' + posDinero(Math.round(l.cantidad * l.precio * 100) / 100) + '</span>'
@@ -376,7 +382,9 @@ document.addEventListener('DOMContentLoaded', function () {
     /* ---------- registrar ---------- */
     $('rvForm').addEventListener('submit', function (e) {
         e.preventDefault();
-        if (prod.value.trim() && !lineas.length) { agregar(); if (!lineas.length) { return; } }
+        /* Lo que quedó escrito en «Producto» sin pulsar «Agregar» también se registra
+           (antes se perdía si ya había otras líneas). Si falta su precio, se avisa. */
+        if (prod.value.trim()) { agregar(); if (prod.value.trim()) { return; } }
         if (!lineas.length) { aviso('Agregue al menos un producto'); prod.focus(); return; }
         var f = $('rvFecha').value;
         if (!f || f > HOY || f < $('rvFecha').min) { $('rvFecha').focus(); aviso('Elija una fecha válida: hoy o un día anterior'); return; }
@@ -384,7 +392,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var forma = document.querySelector('input[name="rvForma"]:checked'), nuevos = lineas.filter(function (l) { return !l.producto_id; }).length;
         Swal.fire({ icon: 'question', title: 'Registrar ' + posDinero(total()),
                     html: lineas.length + ' producto(s) con fecha <strong>' + f.split('-').reverse().join('/') + '</strong>, en ' + esc(forma.nextElementSibling.textContent.trim().toLowerCase()) + '.'
-                        + (nuevos ? '<br>Se crearán ' + nuevos + ' producto(s) nuevo(s) en Productos.' : '')
+                        + (nuevos ? '<br>' + nuevos + ' línea(s) sin producto del catálogo: no se crean en Productos.' : '')
                         + '<br><small>' + (f === HOY ? 'Entra en su caja #' + CAJA.id + '.' : 'No entra en ninguna caja: queda como constancia.') + '</small>',
                     showCancelButton: true, confirmButtonText: 'Registrar', cancelButtonText: 'Revisar', confirmButtonColor: '#0e7490', reverseButtons: true })
             .then(function (r) {

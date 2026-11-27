@@ -74,6 +74,11 @@ $esBar = $egAmbito === 'B';
 
     /* Formulario */
     .eg-chips { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .4rem; }
+    /* El banco desde el que se pagó (bar) */
+    .eg-formas { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .5rem; }
+    .eg-formas .btn { min-height: var(--pos-toque); --bs-btn-color: var(--bs-body-color); --bs-btn-border-color: var(--bs-border-color);
+                      font-weight: 600; font-size: .875rem; line-height: 1.25; display: flex; align-items: center; justify-content: center; padding: .5rem .5rem; }
+    .eg-formas .btn-check:checked + .btn { background: #0e7490; border-color: #0e7490; color: #fff; }
     .eg-chips .btn { --bs-btn-padding-y: .15rem; --bs-btn-padding-x: .55rem; --bs-btn-font-size: .8rem; border-radius: 1rem; }
 </style>
 
@@ -246,6 +251,15 @@ $esBar = $egAmbito === 'B';
                             </div></div>
                     </div>
 
+                    <?php if (!empty($egFormasPago)): /* Forma de pago (2026-11-26): bar, transferencia; instalaciones, también efectivo. */ ?>
+                        <h3 class="h6 fw-bold mt-3"><?php echo $esBar ? 'Pagado por transferencia' : 'Forma de pago'; ?> <span class="text-danger">*</span></h3>
+                        <div class="eg-formas mb-1" role="radiogroup" aria-label="<?php echo $esBar ? 'Banco desde el que se pagó' : 'Forma de pago'; ?>">
+                            <?php foreach ($egFormasPago as $i => $fo): ?>
+                                <input type="radio" class="btn-check" name="egForma" id="egForma<?php echo (int)$fo['forma_id']; ?>" value="<?php echo (int)$fo['forma_id']; ?>"<?php echo $i === 0 ? ' checked' : ''; ?>>
+                                <label class="btn btn-outline-secondary" for="egForma<?php echo (int)$fo['forma_id']; ?>"><i class="fas <?php echo $fo['forma_codigo'] === 'EFE' ? 'fa-money-bill-wave' : 'fa-building-columns'; ?> me-1" aria-hidden="true"></i><?php echo $posH($fo['forma_nombre']); ?></label>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
                     <div class="mt-2"><label class="form-label small fw-semibold" for="egRef">Factura o comprobante <span class="text-body-secondary fw-normal">(opcional)</span></label>
                         <input type="text" class="form-control" id="egRef" maxlength="60"></div>
                 </div>
@@ -309,7 +323,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 
         $('egNuevo').addEventListener('click', function () {
-            $('egForm').reset(); $('egFecha').value = HOY; modal.show();
+            $('egForm').reset(); $('egFecha').value = HOY; modal.show();   /* reset deja marcado el primer banco */
         });
         $('egModal').addEventListener('shown.bs.modal', function () { if (window.matchMedia('(min-width: 576px)').matches) { $('egValor').focus(); } });
 
@@ -320,9 +334,11 @@ document.addEventListener('DOMContentLoaded', function () {
             if (valor <= 0) { $('egValor').focus(); aviso('Escriba el valor'); return; }
             if ($('egConcepto').value.trim().length < 3) { $('egConcepto').focus(); aviso('Escriba en qué se gastó'); return; }
             if ($('egCategoria').value.trim().length < 2) { $('egCategoria').focus(); aviso('Elija o escriba la categoría'); return; }
+            var forma = document.querySelector('input[name="egForma"]:checked');
+            if (document.querySelector('input[name="egForma"]') && !forma) { aviso(AMBITO === 'B' ? 'Elija desde qué banco se pagó' : 'Elija la forma de pago'); return; }
             var b = $('egGuardar'); b.disabled = true;
             posEnviar({ modulo_arena: 'posGuardarEgreso', ambito: AMBITO, fecha: f, valor: valor, concepto: $('egConcepto').value, categoria: $('egCategoria').value,
-                        referencia: $('egRef').value, sede: $('egSede') ? $('egSede').value : '', instalacion_id: $('egInstalacion') ? $('egInstalacion').value : '' })
+                        forma_id: forma ? forma.value : '', referencia: $('egRef').value, sede: $('egSede') ? $('egSede').value : '', instalacion_id: $('egInstalacion') ? $('egInstalacion').value : '' })
                 .then(function (j) { b.disabled = false; if (j.ok) { modal.hide(); } posAviso(j); });
         });
     }

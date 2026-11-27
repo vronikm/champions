@@ -280,10 +280,14 @@ require_once __DIR__ . "/inc/pos-comun.php";
                     <label class="form-label fw-semibold" for="cajaMovValor">Valor</label>
                     <div class="input-group input-group-lg mb-3"><span class="input-group-text">$</span>
                         <input type="text" inputmode="decimal" class="form-control text-end fw-bold" id="cajaMovValor" name="valor" required placeholder="0.00"></div>
-                    <label class="form-label fw-semibold" for="cajaMovForma">Forma</label>
-                    <select class="form-select mb-3" id="cajaMovForma" name="forma">
-                        <?php foreach ($formas as $f): ?><option value="<?php echo $posH($f['forma_codigo']); ?>"><?php echo $posH($f['forma_nombre']); ?></option><?php endforeach; ?>
-                    </select>
+                    <div id="cajaMovFormaGrupo">
+                        <label class="form-label fw-semibold" for="cajaMovForma">Forma</label>
+                        <select class="form-select mb-3" id="cajaMovForma" name="forma">
+                            <?php foreach ($formas as $f): ?><option value="<?php echo $posH($f['forma_codigo']); ?>"><?php echo $posH($f['forma_nombre']); ?></option><?php endforeach; ?>
+                        </select>
+                    </div>
+                    <?php /* Un egreso de la caja sale del cajón: siempre en efectivo (2026-11-26). */ ?>
+                    <p class="mb-3 small" id="cajaMovFormaFija" hidden><i class="fas fa-money-bill-wave me-1 text-success" aria-hidden="true"></i><strong>Efectivo</strong>: sale del dinero del cajón.</p>
                     <label class="form-label" for="cajaMovDetalle">Detalle <small class="text-body-secondary">(opcional)</small></label>
                     <input type="text" class="form-control" id="cajaMovDetalle" name="detalle" maxlength="200" placeholder="Ej.: factura 001-002-345">
                 </div>
@@ -339,6 +343,10 @@ document.addEventListener('DOMContentLoaded', function () {
             $('cajaMovConcepto').value = ''; $('cajaMovValor').value = ''; $('cajaMovDetalle').value = '';
             $('cajaMovChips').innerHTML = atajos[t].map(function (a) { return '<button type="button" class="btn btn-sm btn-outline-secondary">' + a + '</button>'; }).join('');
             $('cajaMovGuardar').className = 'btn pos-btn ' + (t === 'I' ? 'btn-success' : 'btn-danger');
+            /* Egreso: sólo efectivo. Ingreso: la forma que corresponda (efectivo por omisión). */
+            $('cajaMovFormaGrupo').hidden = t === 'E';
+            $('cajaMovFormaFija').hidden = t !== 'E';
+            $('cajaMovForma').value = 'EFE';
             modalMov.show();
         });
     });
@@ -348,7 +356,7 @@ document.addEventListener('DOMContentLoaded', function () {
             e.preventDefault();
             var b = $('cajaMovGuardar'); b.disabled = true;
             posEnviar({ modulo_arena: 'posMovimientoCaja', tipo: $('cajaMovTipo').value, concepto: $('cajaMovConcepto').value,
-                        valor: $('cajaMovValor').value, forma: $('cajaMovForma').value, detalle: $('cajaMovDetalle').value })
+                        valor: $('cajaMovValor').value, forma: $('cajaMovTipo').value === 'E' ? 'EFE' : $('cajaMovForma').value, detalle: $('cajaMovDetalle').value })
                 .then(function (j) { b.disabled = false; if (j.ok) { modalMov.hide(); } posAviso(j); });
         });
     }

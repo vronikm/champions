@@ -228,6 +228,19 @@ en desarrollo y llevar el resultado a producción con un volcado (ver más abajo
     con el descuento) y `dsa_reserva_fija.fija_promocionid`. Menú
     «Promociones» después de «Reservas» (los del orden 7 en adelante bajan
     uno), con los permisos de «Horarios». Sin Arena no hace nada. Repetible.
+44. `103_arena_formas_pago.sql` (de `ds_core/database/`, común; sólo
+    Champions usa Arena): formas de pago. Nuevas «Transferencia Banco de
+    Loja» (TBL) y «Transferencia Banco Pichincha» (TBP), con comprobante.
+    «Transferencia» (TRA) y «Tarjeta de crédito» (TAR) quedan inactivas: no
+    se ofrecen, pero los pagos antiguos las conservan (las transferencias de
+    antes NO se asignan a ningún banco: se eligen con «Ajustar» en el detalle
+    de la reserva). Sin `dsa_forma_ingreso` no hace nada. Repetible.
+45. `104_arena_venta_linea_libre.sql` (de `ds_core/database/`, común; sólo
+    Champions usa Arena): en «Registrar ventas», lo que no está en el
+    catálogo («Ventas del 26/11») queda sólo como línea de esa venta, sin
+    crear un producto: `dsa_venta_detalle.detalle_productoid` admite NULL.
+    No borra productos ya creados así. Sin el punto de venta no hace nada.
+    Repetible.
 
 ```bash
 mysql -u USUARIO -p --default-character-set=utf8mb4 BASE < ARCHIVO.sql

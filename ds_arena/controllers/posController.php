@@ -391,6 +391,11 @@ class posController extends arenaController
         if ($concepto === '') { return $this->error('Escriba el concepto: en qué se gastó o de dónde vino el dinero.'); }
         if ($valor <= 0 || $valor > 100000) { return $this->error('El valor debe ser mayor que cero.'); }
         if (!in_array($forma, $formas, true)) { $forma = 'EFE'; }
+        /* Un egreso de la caja sale del cajón: sólo en efectivo (2026-11-26). Lo pagado por
+           transferencia se registra en Egresos, con su banco. */
+        if ($tipo === 'E' && $forma !== 'EFE') {
+            return $this->error('Un egreso de la caja es en efectivo: sale del cajón. Si se pagó por transferencia, regístrelo en Punto de Venta y Caja › Egresos.');
+        }
 
         if ($tipo === 'E' && $forma === 'EFE') {
             $r = $this->resumenCaja($caja);
@@ -713,6 +718,33 @@ class posController extends arenaController
         $ok = $png ? imagepng($lienzo, $dir . $nombre, 6) : imagejpeg($lienzo, $dir . $nombre, 82);
         /* Sin imagedestroy(): desde PHP 8 la imagen se libera sola (y en 8.5 está obsoleta). */
         return $ok ? [$nombre, null] : [null, 'No se pudo guardar la imagen.'];
+    }
+
+    /**
+     * AJAX posEliminarProducto (2026-11-26). No se borra la fila: queda en
+     * estado E (eliminado), así las ventas, compras y el kardex de antes
+     * conservan su historia (cada línea guarda su propio nombre). Deja de
+     * verse en Productos, Vender, Registrar ventas y Compras, y su código
+     * queda libre para otro producto. Con stock no se elimina: primero se
+     * ajusta a 0, para no perder inventario sin registro.
+     */
+    public function eliminarProducto(): string
+    {
+        if (!puede_eliminar('posProductos')) { return $this->error('Su rol no puede eliminar productos.', 'Acceso denegado'); }
+        $p = $this->producto((int)($_POST['producto_id'] ?? 0));
+        if (!$p || $p['producto_estado'] === 'E') { return $this->error('El producto no existe o ya se eliminó.'); }
+        if ($p['producto_tipo'] === 'P' && (float)$p['producto_stock'] > 0.0001) {
+            return $this->error('«' . $p['producto_nombre'] . '» tiene ' . rtrim(rtrim(number_format((float)$p['producto_stock'], 2), '0'), '.')
+                . ' en stock. Ajuste su stock a 0 («Ajustar» › salida, con el motivo) antes de eliminarlo, o desactívelo desde «Editar».', 'Tiene stock');
+        }
+        /* El código queda libre: se le agrega la marca del eliminado (cabe en los 30 caracteres). */
+        $codigo = mb_substr($p['producto_codigo'], 0, 20) . '~E' . (int)$p['producto_id'];
+        $n = $this->escribir("UPDATE dsa_producto SET producto_estado = 'E', producto_codigo = :c WHERE producto_id = :id AND producto_estado <> 'E'",
+                             [':c' => $codigo, ':id' => $p['producto_id']]);
+        if ($n !== 1) { return $this->error('No fue posible eliminar el producto.'); }
+        return $this->json(['ok' => true, 'tipo' => 'recargar', 'icono' => 'success', 'titulo' => 'Producto eliminado',
+                            'texto' => $p['producto_nombre'] . ' (' . $p['producto_codigo'] . ') ya no aparece en Productos ni al vender. '
+                                     . 'Las ventas y compras anteriores conservan su historia.']);
     }
 
     /** AJAX posAjustarStock: entrada, salida o baja por vencimiento. */
@@ -1063,8 +1095,11 @@ class posController extends arenaController
           el dinero de ese día ya se contó y no debe descuadrar el de hoy;
         · el precio de cada línea es el que se escribe (el de ese día), no el
           del catálogo;
-        · un producto que no existe se escribe por su nombre y se crea en
-          Productos como servicio (sin stock), para no inventar existencias;
+        · lo que no está en el catálogo se escribe con su descripción («Ventas
+          del 26/11», «Hielo suelto») y queda SÓLO como línea de esa venta,
+          sin producto (detalle_productoid NULL, migración 104): no se crea nada
+          en Productos ni se mueve inventario (2026-11-26; antes se creaba un
+          «servicio» por cada nombre nuevo);
         · descontar del inventario es opcional: las ventas anteriores al
           conteo del stock no deben volver a descontarse.
       Aparece en Reportes › Ventas del día elegido, con su comprobante, y se
@@ -1079,6 +1114,19 @@ class posController extends arenaController
             try {
                 $hay = (int)$this->escalar("SELECT COUNT(*) FROM information_schema.COLUMNS
                         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dsa_venta' AND COLUMN_NAME = 'venta_origen'") === 1;
+            } catch (\Throwable $e) { $hay = false; }
+        }
+        return $hay;
+    }
+
+    /** ¿Está aplicada la 104 (líneas de venta sin producto)? Una vez por petición. */
+    public function ventaConLineaLibre(): bool
+    {
+        static $hay = null;
+        if ($hay === null) {
+            try {
+                $hay = (string)$this->escalar("SELECT IS_NULLABLE FROM information_schema.COLUMNS
+                        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dsa_venta_detalle' AND COLUMN_NAME = 'detalle_productoid'") === 'YES';
             } catch (\Throwable $e) { $hay = false; }
         }
         return $hay;
@@ -1153,8 +1201,12 @@ class posController extends arenaController
                 if (!$p || $p['producto_estado'] === 'E') { return $this->error('Un producto de la lista ya no existe. Quítelo y vuelva a agregarlo.'); }
             } else {
                 if (mb_strlen($nombre) < 2) { return $this->error('Escriba el nombre del producto nuevo.'); }
-                $p = $this->filas("SELECT * FROM dsa_producto WHERE producto_nombre = :n AND producto_estado <> 'E' ORDER BY producto_estado, producto_id LIMIT 1",
+                /* Si es exactamente el nombre de un producto activo, ése; si no, línea sin producto. */
+                $p = $this->filas("SELECT * FROM dsa_producto WHERE producto_nombre = :n AND producto_estado = 'A' ORDER BY producto_id LIMIT 1",
                                   [':n' => $nombre])[0] ?? null;
+                if (!$p && !$this->ventaConLineaLibre()) {
+                    return $this->error('«' . $nombre . '» no está en Productos. Aplique la migración 104 para registrar líneas sin producto, o créelo antes en Productos.', 'Falta una actualización');
+                }
             }
             $etq = $p['producto_nombre'] ?? $nombre;
             if ($cant <= 0 || $cant > 10000) { return $this->error('La cantidad de «' . $etq . '» debe ser mayor que cero.'); }
@@ -1185,28 +1237,8 @@ class posController extends arenaController
 
         $con = $this->con();
         if ($con === null) { return $this->error('Sin conexión con la base de datos.'); }
-        $nuevos = [];
         try {
             $con->beginTransaction();
-
-            /* 1. Los productos que no existen: como servicio (sin stock), con el precio escrito. */
-            $creados = [];
-            foreach ($lineas as $i => $l) {
-                if ($l['p'] !== null) { continue; }
-                $clave = mb_strtolower($l['nombre']);
-                if (!isset($creados[$clave])) {
-                    $codigo = $this->codigoProductoSugerido();
-                    $con->prepare(
-                        "INSERT INTO dsa_producto (producto_codigo, producto_nombre, producto_categoriaid, producto_tipo, producto_preciocompra,
-                                                   producto_precioventa, producto_stock, producto_stockminimo, producto_vence, producto_estado, producto_usuarioid)
-                         VALUES (:co, :n, NULL, 'S', 0, :pv, 0, 0, 'N', 'A', :u)"
-                    )->execute([':co' => $codigo, ':n' => $l['nombre'], ':pv' => $l['precio'], ':u' => $this->uid() ?: null]);
-                    $creados[$clave] = ['producto_id' => (int)$con->lastInsertId(), 'producto_nombre' => $l['nombre'],
-                                        'producto_tipo' => 'S', 'producto_preciocompra' => 0];
-                    $nuevos[] = $l['nombre'];
-                }
-                $lineas[$i]['p'] = $creados[$clave];
-            }
 
             /* 2. La venta: con la fecha elegida y la hora del registro; en la
                   caja abierta si es de hoy, sin caja si es de otro día. */
@@ -1230,10 +1262,10 @@ class posController extends arenaController
                 "INSERT INTO dsa_venta_detalle (detalle_ventaid, detalle_productoid, detalle_nombre, detalle_cantidad, detalle_precio, detalle_costo, detalle_subtotal)
                  VALUES (:v, :p, :n, :c, :pr, :co, :s)");
             foreach ($lineas as $l) {
-                $costo = (float)$l['p']['producto_preciocompra'];
-                $insDet->execute([':v' => $ventaId, ':p' => $l['p']['producto_id'], ':n' => $l['p']['producto_nombre'], ':c' => $l['cant'],
+                $costo = $l['p'] ? (float)$l['p']['producto_preciocompra'] : 0.0;   /* sin producto: sin costo */
+                $insDet->execute([':v' => $ventaId, ':p' => $l['p']['producto_id'] ?? null, ':n' => $l['p']['producto_nombre'] ?? $l['nombre'], ':c' => $l['cant'],
                                   ':pr' => $l['precio'], ':co' => $costo, ':s' => $l['sub']]);
-                if ($descontar && $l['p']['producto_tipo'] === 'P') {
+                if ($descontar && $l['p'] && $l['p']['producto_tipo'] === 'P') {
                     try {
                         $this->moverStock($con, (int)$l['p']['producto_id'], 'S', 'VEN', $l['cant'], $costo,
                                           ['venta' => $ventaId, 'detalle' => 'Registro ' . $numero . ' del ' . date('d/m/Y', strtotime($fecha))]);
@@ -1257,7 +1289,8 @@ class posController extends arenaController
         $texto = $numero . ': ' . count($lineas) . ' producto(s) por $' . number_format($total, 2) . ' en ' . mb_strtolower($forma['forma_nombre'])
                . ', con fecha ' . date('d/m/Y', strtotime($fecha)) . '.'
                . ($caja ? ' Entró en su caja.' : ' No entra en ninguna caja: queda como constancia.');
-        if ($nuevos) { $texto .= ' Se crearon en Productos: ' . implode(', ', $nuevos) . '.'; }
+        $libres = array_column(array_filter($lineas, static fn ($l) => $l['p'] === null), 'nombre');
+        if ($libres) { $texto .= ' Sin producto del catálogo (no se creó nada en Productos): ' . implode(', ', $libres) . '.'; }
         return $this->json(['ok' => true, 'tipo' => 'recargar', 'icono' => 'success', 'titulo' => 'Ventas registradas', 'texto' => $texto,
                             'venta' => $ventaId, 'numero' => $numero]);
     }
@@ -1487,6 +1520,27 @@ class posController extends arenaController
     /** Ámbito de un egreso → la vista cuyos permisos lo gobiernan. */
     public const EGRESO_AMBITOS = ['B' => 'posEgresos', 'I' => 'egresoInstalaciones'];
 
+    /**
+     * Cómo se pagan los egresos (2026-11-26, formas de la 103): el bar sólo por
+     * transferencia, de uno de los dos bancos; las instalaciones, también en efectivo.
+     */
+    public const EGRESO_FORMAS = ['B' => ['TBL', 'TBP'], 'I' => ['EFE', 'TBL', 'TBP']];
+
+    /** Las formas de pago activas para los egresos de un ámbito, en ese orden. */
+    public function formasEgreso(string $ambito = 'B'): array
+    {
+        $codigos = self::EGRESO_FORMAS[$ambito === 'I' ? 'I' : 'B'];
+        $f = array_values(array_filter($this->formasIngreso(), static fn ($x) => in_array($x['forma_codigo'], $codigos, true)));
+        usort($f, static fn ($a, $b) => array_search($a['forma_codigo'], $codigos, true) <=> array_search($b['forma_codigo'], $codigos, true));
+        return $f;
+    }
+
+    /** Las del bar (Banco de Loja o Banco Pichincha). */
+    public function formasEgresoBar(): array
+    {
+        return $this->formasEgreso('B');
+    }
+
     /** Categorías sugeridas; se suman las que ya se usaron. */
     public const EGRESO_CATEGORIAS = ['Insumos del bar', 'Hielo y agua', 'Gas', 'Limpieza', 'Transporte',
                                       'Ayudantes y sueldos', 'Mantenimiento', 'Servicios básicos', 'Otros'];
@@ -1555,7 +1609,8 @@ class posController extends arenaController
     public function salidasPeriodo(string $desde, string $hasta, string $ambito = 'B'): array
     {
         [$d, $h] = self::rango($desde, $hasta);
-        $formas = array_column($this->formasIngreso(), 'forma_nombre', 'forma_codigo');
+        /* Todas las formas, también las inactivas: un egreso antiguo conserva el nombre de la suya. */
+        $formas = array_column($this->filas("SELECT forma_codigo, forma_nombre FROM dsa_forma_ingreso"), 'forma_nombre', 'forma_codigo');
         $conAmbito = $this->egresosConAmbito();
         $out = [];
         if ($this->egresosListos()) {
@@ -1628,7 +1683,7 @@ class posController extends arenaController
     {
         [$d, $h] = self::rango($desde, $hasta);
         $r = ['ventasPos' => 0.0, 'nPos' => 0, 'ventasReg' => 0.0, 'nReg' => 0, 'otrosIngresos' => 0.0,
-              'egresos' => 0.0, 'egresosCaja' => 0.0, 'compras' => 0.0, 'porOrigen' => ['C' => 0.0, 'P' => 0.0, 'O' => 0.0],
+              'egresos' => 0.0, 'egresosCaja' => 0.0, 'compras' => 0.0, 'porOrigen' => ['C' => 0.0, 'P' => 0.0, 'O' => 0.0], 'porForma' => [],
               'porCategoria' => [], 'porPersona' => [], 'porDia' => [], 'costoVendido' => 0.0];
         $dia = static function (array &$r, string $f, string $k, float $v) {
             $r['porDia'][$f] ??= ['ventas' => 0.0, 'ingresos' => 0.0, 'egresos' => 0.0];
@@ -1662,6 +1717,9 @@ class posController extends arenaController
             if ($s['tipo'] === 'egreso') {
                 $r['egresos'] += $v;
                 $r['porOrigen'][$s['codigoOrigen']] = ($r['porOrigen'][$s['codigoOrigen']] ?? 0) + $v;
+                /* De qué banco salió (las de antes, sin forma: «Sin indicar»). */
+                $fk = $s['codigoOrigen'] === 'O' ? $s['origen'] : 'Sin indicar';
+                $r['porForma'][$fk] = ($r['porForma'][$fk] ?? 0) + $v;
                 if ($s['codigoOrigen'] === 'P') {
                     $quien = $s['pagadoPor'] ?: 'Sin nombre';
                     $r['porPersona'][$quien] = ($r['porPersona'][$quien] ?? 0) + $v;
@@ -1696,7 +1754,7 @@ class posController extends arenaController
     {
         $rp = $this->reportePagos($this->filtroReportePagos(['desde' => $desde, 'hasta' => $hasta]));
         $r = ['cobros' => 0.0, 'nCobros' => 0, 'monederoAplicado' => 0.0, 'nMonedero' => 0, 'devReservas' => 0.0,
-              'egresos' => 0.0, 'porOrigen' => ['C' => 0.0, 'P' => 0.0, 'O' => 0.0],
+              'egresos' => 0.0, 'porOrigen' => ['C' => 0.0, 'P' => 0.0, 'O' => 0.0], 'porForma' => [],
               'porCategoria' => [], 'porPersona' => [], 'porInstalacion' => [], 'porDia' => []];
         $dia = static function (array &$r, string $f, string $k, float $v) {
             $r['porDia'][$f] ??= ['ingresos' => 0.0, 'egresos' => 0.0];
@@ -1721,6 +1779,8 @@ class posController extends arenaController
             $v = $s['valor'];
             $r['egresos'] += $v;
             $r['porOrigen'][$s['codigoOrigen']] = ($r['porOrigen'][$s['codigoOrigen']] ?? 0) + $v;
+            $fk = $s['codigoOrigen'] === 'O' ? $s['origen'] : 'Sin indicar';      /* forma de pago (2026-11-26) */
+            $r['porForma'][$fk] = ($r['porForma'][$fk] ?? 0) + $v;
             if ($s['codigoOrigen'] === 'P') { $q = $s['pagadoPor'] ?: 'Sin nombre'; $r['porPersona'][$q] = ($r['porPersona'][$q] ?? 0) + $v; }
             $r['porCategoria'][$s['categoria']] = ($r['porCategoria'][$s['categoria']] ?? 0) + $v;
             $inst = $s['instalacion'] !== '' ? $s['instalacion'] : 'General (todas)';
@@ -1798,6 +1858,18 @@ class posController extends arenaController
         if ($valor <= 0 || $valor > 100000) { return $this->error('El valor debe ser mayor que cero.'); }
         /* Sólo el detalle y el valor: no se pregunta de dónde salió el dinero ni sale de ninguna caja (2026-11-26). */
         $origen = 'N'; $forma = null; $pagadoPor = null; $caja = null;
+        /* La forma de pago (si la 103 está aplicada): el bar, por transferencia desde Banco de
+           Loja o Banco Pichincha; las instalaciones, además en efectivo. */
+        if ($formasAmb = $this->formasEgreso($ambito)) {
+            $f = (int)($_POST['forma_id'] ?? 0);
+            $elegida = array_values(array_filter($formasAmb, static fn ($x) => (int)$x['forma_id'] === $f))[0] ?? null;
+            if (!$elegida) {
+                return $this->error($ambito === 'B'
+                    ? 'Elija desde qué banco se pagó: ' . implode(' o ', array_column($formasAmb, 'forma_nombre')) . '.'
+                    : 'Elija la forma de pago: ' . implode(', ', array_column($formasAmb, 'forma_nombre')) . '.');
+            }
+            $origen = 'O'; $forma = $elegida['forma_codigo'];
+        }
 
         $sedes = $this->sedesCaja();
         $sede  = (int)($_POST['sede'] ?? 0);

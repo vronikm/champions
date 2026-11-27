@@ -4333,8 +4333,16 @@ class arenaController
     |
     | Un cobro de ayer registrado hoy con la fecha de hoy: sólo cambia
     | pago_fecha, que es el día en que cuenta en el reporte de pagos, la caja
-    | e Insights. El valor, la forma y lo demás no se tocan (para eso se anula
-    | y se registra de nuevo).
+    | e Insights. El valor no se toca (para eso se anula y se registra de
+    | nuevo).
+    |
+    | AJUSTAR TAMBIÉN LA FORMA DE PAGO (2026-11-26): «Transferencia Banco de
+    | Loja» que en realidad llegó al Pichincha, efectivo que fue transferencia…
+    | Se cambia pago_formaid y el comprobante, entre formas que no son el
+    | monedero: un abono con monedero movió el saldo del cliente y uno nuevo
+    | con monedero tendría que descontarlo; en esos casos se anula y se
+    | registra de nuevo. El cambio de forma queda anotado en la observación
+    | del abono (de cuál a cuál, quién y cuándo).
     |
     | Hasta el día en que se registró, no después: el reporte cuenta cada cobro
     | en el menor entre su fecha y el día de su registro, así que una fecha
@@ -4369,16 +4377,62 @@ class arenaController
             return $this->alerta('simple', 'Fecha no válida',
                 'Elija el día en que el cliente pagó: hasta el ' . date('d/m/Y', strtotime($maxima)) . ', el día en que se registró el abono.', 'error');
         }
-        if ($fecha === (string)$p['pago_fecha']) {
-            return $this->alerta('simple', 'Sin cambios', 'El abono ya tiene esa fecha.', 'info');
+
+        /* La forma de pago y el comprobante (opcionales: sin ellos, sólo la fecha). */
+        $formaActual = $this->filas("SELECT * FROM dsa_forma_ingreso WHERE forma_id = :f", [':f' => (int)$p['pago_formaid']])[0] ?? null;
+        $formaId     = isset($_POST['pago_formaid']) ? (int)$_POST['pago_formaid'] : (int)$p['pago_formaid'];
+        $referencia  = isset($_POST['pago_referencia'])
+            ? mb_substr(trim(preg_replace('/\s+/u', ' ', (string)$_POST['pago_referencia']) ?? ''), 0, 60)
+            : (string)$p['pago_referencia'];
+        $forma = $formaActual;
+        if ($formaId !== (int)$p['pago_formaid']) {
+            if ($formaActual && $formaActual['forma_esmonedero'] === 'S') {
+                return $this->alerta('simple', 'Pagado con monedero',
+                    'Un abono pagado con monedero no cambia de forma: anúlelo (el saldo vuelve al monedero) y regístrelo de nuevo con la forma correcta.', 'warning');
+            }
+            $forma = $this->filas("SELECT * FROM dsa_forma_ingreso WHERE forma_id = :f AND forma_estado = 'A'", [':f' => $formaId])[0] ?? null;
+            if ($forma === null) {
+                return $this->alerta('simple', 'Forma no válida', 'Elija una forma de pago disponible.', 'error');
+            }
+            if ($forma['forma_esmonedero'] === 'S') {
+                return $this->alerta('simple', 'Monedero',
+                    'Para que el abono salga del monedero del cliente, anúlelo y regístrelo de nuevo con «Monedero»: así se descuenta su saldo.', 'warning');
+            }
+        }
+        /* El comprobante se exige al cambiar de forma o si se borra el que tenía:
+           un abono antiguo sin él puede seguir corrigiendo sólo su fecha. */
+        $exigeRef = $formaId !== (int)$p['pago_formaid'] || (string)$p['pago_referencia'] !== '';
+        if ($forma && $forma['forma_requiereref'] === 'S' && $referencia === '' && $exigeRef) {
+            return $this->alerta('simple', 'Falta el comprobante',
+                'Indique el número de comprobante de ' . mb_strtolower($forma['forma_nombre']) . '.', 'warning');
         }
 
-        $this->escribir("UPDATE dsa_pago SET pago_fecha = :f WHERE pago_id = :i AND pago_estado = 'A'", [':f' => $fecha, ':i' => $id]);
+        $cambiaFecha = $fecha !== (string)$p['pago_fecha'];
+        $cambiaForma = $formaId !== (int)$p['pago_formaid'];
+        $cambiaRef   = $referencia !== (string)$p['pago_referencia'];
+        if (!$cambiaFecha && !$cambiaForma && !$cambiaRef) {
+            return $this->alerta('simple', 'Sin cambios', 'El abono ya tiene esa fecha, forma de pago y comprobante.', 'info');
+        }
 
-        return $this->alerta('recargar', 'Fecha corregida',
-            'El abono ' . $this->reciboNumero($id) . ' de $' . number_format((float)$p['pago_valor'], 2) . ' pasó del '
-            . date('d/m/Y', strtotime((string)$p['pago_fecha'])) . ' al ' . date('d/m/Y', strtotime($fecha))
-            . '. Ahora cuenta en el reporte de pagos y en la caja de ese día.');
+        /* El cambio de forma queda escrito en la observación del abono. */
+        $obs = (string)$p['pago_observacion'];
+        if ($cambiaForma) {
+            $nota = 'Forma corregida: ' . ($formaActual['forma_nombre'] ?? '?') . ' → ' . $forma['forma_nombre']
+                  . ' (' . trim((string)($_SESSION['usuario'] ?? '')) . ', ' . date('d/m/Y H:i') . ')';
+            $obs = mb_substr(trim($obs !== '' ? $obs . ' · ' . $nota : $nota), -200);
+        }
+        $this->escribir(
+            "UPDATE dsa_pago SET pago_fecha = :f, pago_formaid = :fo, pago_referencia = :r, pago_observacion = :o
+              WHERE pago_id = :i AND pago_estado = 'A'",
+            [':f' => $fecha, ':fo' => $formaId, ':r' => $referencia !== '' ? $referencia : null, ':o' => $obs !== '' ? $obs : null, ':i' => $id]);
+
+        $partes = [];
+        if ($cambiaFecha) { $partes[] = 'la fecha pasó del ' . date('d/m/Y', strtotime((string)$p['pago_fecha'])) . ' al ' . date('d/m/Y', strtotime($fecha)); }
+        if ($cambiaForma) { $partes[] = 'la forma pasó de ' . ($formaActual['forma_nombre'] ?? '?') . ' a ' . $forma['forma_nombre']; }
+        if ($cambiaRef && !$cambiaForma) { $partes[] = 'el comprobante es ' . ($referencia !== '' ? $referencia : '—'); }
+        return $this->alerta('recargar', 'Abono ajustado',
+            'Abono ' . $this->reciboNumero($id) . ' de $' . number_format((float)$p['pago_valor'], 2) . ': ' . implode('; ', $partes)
+            . '. El reporte de pagos y el recibo ya lo muestran así.');
     }
 
     /** ¿Está aplicada la 098 (columna pago_anulamotivo)? Una vez por petición. */
@@ -5052,7 +5106,8 @@ class arenaController
             $entra   = $esMon ? 0.0 : $valor + $vuelto;
             $ts      = (int)$p['ts'];
 
-            $formas[$p['forma_nombre']] = $formas[$p['forma_nombre']] ?? ['n' => 0, 'total' => 0.0, 'monedero' => $esMon];
+            $formas[$p['forma_nombre']] = $formas[$p['forma_nombre']] ?? ['n' => 0, 'total' => 0.0, 'monedero' => $esMon,
+                                                                    'sinBanco' => $p['forma_codigo'] === 'TRA'];   /* transferencia de antes de separar por banco (103) */
             $formas[$p['forma_nombre']]['n']++;
             $formas[$p['forma_nombre']]['total'] += $valor;
 

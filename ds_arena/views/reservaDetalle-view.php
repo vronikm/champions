@@ -251,6 +251,14 @@ require_once __DIR__ . "/inc/layout-top.php";
                                 <td><?php echo $p['pago_fecha']; ?></td>
                                 <td>
                                     <?php echo htmlspecialchars($p['forma_nombre'], ENT_QUOTES, 'UTF-8'); ?>
+                                    <?php if ($p['forma_codigo'] === 'TRA'): /* transferencia sin banco (103): se elige con «Ajustar» */ ?>
+                                        <?php if ($puedeFechaPago): ?>
+                                            <button type="button" class="badge text-bg-warning border-0 ar-pago__sinbanco" data-ajustar="<?php echo (int)$p['pago_id']; ?>"
+                                                    title="Elegir el banco de esta transferencia"><i class="fas fa-building-columns me-1" aria-hidden="true"></i>Elija el banco</button>
+                                        <?php else: ?>
+                                            <span class="badge text-bg-warning">Sin banco</span>
+                                        <?php endif; ?>
+                                    <?php endif; ?>
                                     <?php if ($p['pago_observacion']): ?>
                                         <small class="d-block text-muted"><?php echo htmlspecialchars($p['pago_observacion'], ENT_QUOTES, 'UTF-8'); ?></small>
                                     <?php endif; ?>
@@ -283,8 +291,12 @@ require_once __DIR__ . "/inc/layout-top.php";
                                                 data-registro="<?php echo date('d/m/Y H:i', strtotime((string)$p['pago_fecharegistro'])); ?>"
                                                 data-valor="<?php echo number_format((float)$p['pago_valor'], 2, '.', ''); ?>"
                                                 data-forma="<?php echo $h($p['forma_nombre']); ?>"
-                                                title="Corregir la fecha del cobro" aria-label="Corregir la fecha del abono <?php echo $insArena->reciboNumero((int)$p['pago_id']); ?>">
-                                            <i class="fas fa-calendar-day" aria-hidden="true"></i><span class="ar-pago__anular-txt">Fecha</span>
+                                                data-formaid="<?php echo (int)$p['pago_formaid']; ?>"
+                                                data-ref="<?php echo $h($p['pago_referencia']); ?>"
+                                                data-monedero="<?php echo $p['forma_codigo'] === 'MON' ? 'S' : 'N'; ?>"
+                                                data-sinbanco="<?php echo $p['forma_codigo'] === 'TRA' ? 'S' : 'N'; ?>"
+                                                title="Ajustar la fecha o la forma de pago" aria-label="Ajustar el abono <?php echo $insArena->reciboNumero((int)$p['pago_id']); ?>">
+                                            <i class="fas fa-pen-to-square" aria-hidden="true"></i><span class="ar-pago__anular-txt">Ajustar</span>
                                         </button>
                                     <?php endif; ?>
                                     <?php if ($puedeAnularPago): ?>
@@ -538,7 +550,7 @@ require_once __DIR__ . "/inc/layout-top.php";
 <?php endif; ?>
 
 <?php if ($puedeFechaPago && $pagos): ?>
-<?php /* Corregir sólo la fecha del cobro de un abono. */ ?>
+<?php /* Ajustar un abono: la fecha del cobro, la forma de pago y el comprobante (no el valor). */ ?>
 <div class="modal fade" id="modalFechaPago" tabindex="-1" aria-labelledby="modalFechaPagoTitulo">
     <div class="modal-dialog modal-dialog-centered modal-fullscreen-sm-down">
         <div class="modal-content">
@@ -547,14 +559,13 @@ require_once __DIR__ . "/inc/layout-top.php";
                 <input type="hidden" name="pago_id" id="afp_id" value="">
 
                 <div class="modal-header">
-                    <h5 class="modal-title" id="modalFechaPagoTitulo"><i class="fas fa-calendar-day me-2" aria-hidden="true"></i>Fecha del abono <span id="afp_recibo"></span></h5>
+                    <h5 class="modal-title" id="modalFechaPagoTitulo"><i class="fas fa-pen-to-square me-2" aria-hidden="true"></i>Ajustar abono <span id="afp_recibo"></span></h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
 
                 <div class="modal-body">
                     <dl class="ar-anp__resumen mb-3">
                         <div><dt>Valor</dt><dd id="afp_valor"></dd></div>
-                        <div><dt>Forma</dt><dd id="afp_forma"></dd></div>
                         <div><dt>Registrado</dt><dd id="afp_registro"></dd></div>
                     </dl>
                     <label for="afp_fecha" class="form-label fw-semibold">Fecha del cobro <span class="text-danger">*</span></label>
@@ -565,12 +576,27 @@ require_once __DIR__ . "/inc/layout-top.php";
                         <button type="button" class="btn btn-sm btn-outline-secondary" data-afp-dias="1">Ayer</button>
                         <button type="button" class="btn btn-sm btn-outline-secondary" data-afp-reserva>Día de la reserva (<?php echo date('d/m/Y', strtotime($reserva['reserva_fecha'])); ?>)</button>
                     </div>
-                    <small class="text-muted d-block mt-2" id="afp_ayuda">El día en que el cliente pagó. Cuenta en el reporte de pagos y en la caja de ese día. Sólo cambia la fecha: el valor y la forma de pago quedan igual.</small>
+                    <small class="text-muted d-block mt-2" id="afp_ayuda">El día en que el cliente pagó. Cuenta en el reporte de pagos de ese día.</small>
+
+                    <?php /* La forma de pago (2026-11-26): entre las que no son el monedero. */ ?>
+                    <label for="afp_forma_sel" class="form-label fw-semibold mt-3">Forma de pago <span class="text-danger">*</span></label>
+                    <select class="form-select" id="afp_forma_sel" name="pago_formaid">
+                        <?php foreach ($formas as $f): if ($f['forma_esmonedero'] === 'S') { continue; } ?>
+                            <option value="<?php echo (int)$f['forma_id']; ?>" data-ref="<?php echo $h($f['forma_requiereref']); ?>"><?php echo $h($f['forma_nombre']); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <small class="text-muted d-block mt-1" id="afp_forma_ayuda">Si se registró con la forma equivocada (por ejemplo, otro banco).</small>
+                    <div class="mt-3" id="afp_ref_grupo">
+                        <label for="afp_ref" class="form-label fw-semibold">Comprobante <span class="text-danger" id="afp_ref_req">*</span></label>
+                        <input type="text" class="form-control" id="afp_ref" name="pago_referencia" maxlength="60" autocomplete="off" placeholder="Número de la transferencia">
+                        <div class="invalid-feedback" id="afp_ref_error">Indique el número de comprobante.</div>
+                    </div>
+                    <small class="text-muted d-block mt-2">El valor no cambia: si está mal, anule el abono y regístrelo de nuevo.</small>
                 </div>
 
                 <div class="modal-footer ar-anp__pie">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-primary"><i class="fas fa-check me-1" aria-hidden="true"></i>Guardar fecha</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-check me-1" aria-hidden="true"></i>Guardar</button>
                 </div>
             </form>
         </div>
@@ -581,31 +607,84 @@ require_once __DIR__ . "/inc/layout-top.php";
 (function () {
     var $ = function (id) { return document.getElementById(id); };
     var fecha = $('afp_fecha'), original = '', FECHA_RESERVA = '<?php echo $h($reserva['reserva_fecha']); ?>';
+    var sel = $('afp_forma_sel'), ref = $('afp_ref'), orig = { forma: '', ref: '' }, monedero = false;
     var dmy = function (d) { return d.split('-').reverse().join('/'); };
     var menos = function (n) { var d = new Date('<?php echo date('Y-m-d'); ?>T12:00:00'); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
+    /* El comprobante: obligatorio si la forma lo pide. */
+    function formaRef() {
+        var op = sel.options[sel.selectedIndex], pide = !!op && op.dataset.ref === 'S';
+        $('afp_ref_req').hidden = !pide;
+        ref.placeholder = pide ? 'Número de la transferencia' : 'Opcional';
+        ref.classList.remove('is-invalid');
+    }
     $('modalFechaPago').addEventListener('show.bs.modal', function (e) {
         var b = e.relatedTarget; if (!b) { return; }
         $('afp_id').value = b.dataset.id;
         $('afp_recibo').textContent = b.dataset.recibo;
         $('afp_valor').textContent = '$' + (+b.dataset.valor).toFixed(2);
-        $('afp_forma').textContent = b.dataset.forma;
         $('afp_registro').textContent = b.dataset.registro;
         fecha.max = b.dataset.maxima; fecha.value = original = b.dataset.fecha;
         fecha.classList.remove('is-invalid');
+        /* La forma: la del abono. Un abono con monedero no cambia de forma. */
+        monedero = b.dataset.monedero === 'S';
+        orig.forma = b.dataset.formaid; orig.ref = b.dataset.ref || '';
+        ref.value = orig.ref;
+        if (monedero) {
+            sel.disabled = true;
+            sel.querySelectorAll('option[data-inactiva]').forEach(function (o) { o.remove(); });
+            if (!sel.querySelector('option[data-monedero]')) { sel.insertAdjacentHTML('afterbegin', '<option value="' + orig.forma + '" data-monedero="S"></option>'); }
+            var om = sel.querySelector('option[data-monedero]'); om.value = orig.forma; om.textContent = b.dataset.forma;
+            sel.value = orig.forma;
+            $('afp_forma_ayuda').textContent = 'Pagado con monedero: para cambiar la forma, anule el abono (el saldo vuelve al monedero) y regístrelo de nuevo.';
+            $('afp_ref_grupo').hidden = true;
+        } else {
+            sel.disabled = false;
+            sel.querySelectorAll('option[data-monedero], option[data-inactiva]').forEach(function (o) { o.remove(); });
+            /* Una forma ya desactivada (p. ej. Tarjeta): se muestra para este abono, para no cambiarla sin querer. */
+            if (!sel.querySelector('option[value="' + orig.forma + '"]')) {
+                sel.insertAdjacentHTML('afterbegin', '<option data-inactiva="S"></option>');
+                var oi = sel.querySelector('option[data-inactiva]'); oi.value = orig.forma;
+                oi.textContent = b.dataset.sinbanco === 'S' ? b.dataset.forma + ' (sin banco: elija cuál)' : b.dataset.forma + ' (ya no disponible)';
+                oi.dataset.ref = 'N';
+            }
+            sel.value = orig.forma;
+            $('afp_forma_ayuda').textContent = b.dataset.sinbanco === 'S'
+                ? 'Transferencia registrada antes de separar por banco: elija a qué banco llegó.'
+                : 'Si se registró con la forma equivocada (por ejemplo, otro banco).';
+            $('afp_ref_grupo').hidden = false;
+        }
+        formaRef();
         /* Los atajos sólo si caen en el rango (hasta el día en que se registró). */
         var fuera = function (d) { return d > fecha.max || d < fecha.min || d === original; };
         document.querySelector('[data-afp-reserva]').hidden = fuera(FECHA_RESERVA);
         document.querySelectorAll('[data-afp-dias]').forEach(function (x) { x.hidden = fuera(menos(+x.dataset.afpDias)); });
     });
+    sel.addEventListener('change', formaRef);
+    /* «Elija el banco» abre el mismo «Ajustar» de ese abono, con la lista de formas a la vista. */
+    document.querySelectorAll('[data-ajustar]').forEach(function (x) {
+        x.addEventListener('click', function () {
+            var btn = document.querySelector('.ar-pago__fecha[data-id="' + x.dataset.ajustar + '"]');
+            if (!btn) { return; }
+            btn.click();
+            $('modalFechaPago').addEventListener('shown.bs.modal', function () { sel.focus(); }, { once: true });
+        });
+    });
+    ref.addEventListener('input', function () { ref.classList.remove('is-invalid'); });
     document.querySelectorAll('[data-afp-dias]').forEach(function (b) { b.addEventListener('click', function () { fecha.value = menos(+b.dataset.afpDias); fecha.classList.remove('is-invalid'); }); });
     document.querySelector('[data-afp-reserva]').addEventListener('click', function () { fecha.value = FECHA_RESERVA; fecha.classList.remove('is-invalid'); });
     fecha.addEventListener('input', function () { fecha.classList.remove('is-invalid'); });
-    /* Antes del envío de ajax.js: una fecha dentro del rango y distinta de la actual. */
+    /* Antes del envío de ajax.js: fecha en rango, comprobante si hace falta y algún cambio. */
     $('formFechaPago').addEventListener('submit', function (e) {
-        var v = fecha.value, msg = '';
+        var v = fecha.value, msg = '', campo = fecha;
+        var op = sel.options[sel.selectedIndex], pide = !monedero && !!op && op.dataset.ref === 'S';
         if (!v || v < fecha.min || v > fecha.max) { msg = 'Elija una fecha entre el ' + dmy(fecha.min) + ' y el ' + dmy(fecha.max) + ' (el día en que se registró).'; }
-        else if (v === original) { msg = 'El abono ya tiene esa fecha.'; }
-        if (msg) { e.preventDefault(); e.stopImmediatePropagation(); $('afp_error').textContent = msg; fecha.classList.add('is-invalid'); fecha.focus(); }
+        else if (pide && !ref.value.trim()) { campo = ref; msg = 'Indique el número de comprobante.'; }
+        else if (v === original && sel.value === orig.forma && ref.value.trim() === orig.ref) { msg = 'No cambió nada: el abono ya tiene esa fecha, forma y comprobante.'; }
+        if (msg) {
+            e.preventDefault(); e.stopImmediatePropagation();
+            if (campo === ref) { $('afp_ref_error').textContent = msg; } else { $('afp_error').textContent = msg; }
+            campo.classList.add('is-invalid'); campo.focus();
+        }
     }, true);
 })();
 </script>

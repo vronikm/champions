@@ -98,7 +98,7 @@ require_once __DIR__ . "/inc/pos-comun.php";
         'id' => (int)$f['forma_id'], 'codigo' => $f['forma_codigo'], 'nombre' => $f['forma_nombre'],
         'monedero' => $f['forma_esmonedero'] === 'S', 'ref' => $f['forma_requiereref'] === 'S',
     ], $formas);
-    $iconoForma = ['EFE' => 'fa-money-bill-wave', 'TRA' => 'fa-building-columns', 'TAR' => 'fa-credit-card', 'MON' => 'fa-wallet'];
+    $iconoForma = ['EFE' => 'fa-money-bill-wave', 'TRA' => 'fa-building-columns', 'TBL' => 'fa-building-columns', 'TBP' => 'fa-building-columns', 'TAR' => 'fa-credit-card', 'MON' => 'fa-wallet'];
 ?>
     <style>
         .pos-barra { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; margin-bottom: .75rem; }

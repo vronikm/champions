@@ -93,7 +93,7 @@ if (!isset($_POST['modulo_arena'])) {
 $operacionesPos = [
     'posAbrirCaja' => 'abrirCaja', 'posCerrarCaja' => 'cerrarCaja', 'posMovimientoCaja' => 'movimientoCaja',
     'posVender' => 'vender', 'posRegistrarVentas' => 'registrarVentas', 'posAnularVenta' => 'anularVenta', 'posBuscarClientes' => 'buscarClientesPos',
-    'posGuardarProducto' => 'guardarProducto', 'posAjustarStock' => 'ajustarStock',
+    'posGuardarProducto' => 'guardarProducto', 'posAjustarStock' => 'ajustarStock', 'posEliminarProducto' => 'eliminarProducto',
     'posGuardarCompra' => 'guardarCompra', 'posPagarCompra' => 'pagarCompra', 'posAnularCompra' => 'anularCompra',
     'posGuardarEgreso' => 'guardarEgreso', 'posAnularEgreso' => 'anularEgreso',
 ];

@@ -316,7 +316,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                         <label class="form-label fw-medium mb-1">Forma de pago</label>
                         <div class="ar-cobro__formas" role="radiogroup" aria-label="Forma de pago">
                             <?php foreach ($formasCobro as $k => $f):
-                                $icono = ['EFE' => 'fa-money-bill-wave', 'TRA' => 'fa-building-columns', 'TAR' => 'fa-credit-card', 'MON' => 'fa-wallet'][$f['forma_codigo']] ?? 'fa-cash-register'; ?>
+                                $icono = ['EFE' => 'fa-money-bill-wave', 'TRA' => 'fa-building-columns', 'TBL' => 'fa-building-columns', 'TBP' => 'fa-building-columns', 'TAR' => 'fa-credit-card', 'MON' => 'fa-wallet'][$f['forma_codigo']] ?? 'fa-cash-register'; ?>
                                 <input type="radio" class="btn-check disable-adminlte-validations" name="pago_formaid" id="cobroForma<?php echo (int)$f['forma_id']; ?>"
                                        value="<?php echo (int)$f['forma_id']; ?>" data-codigo="<?php echo $h($f['forma_codigo']); ?>"
                                        data-ref="<?php echo $h($f['forma_requiereref']); ?>" data-monedero="<?php echo $h($f['forma_esmonedero']); ?>"<?php echo $k === 0 ? ' checked' : ''; ?>>
@@ -1119,8 +1119,10 @@ require_once __DIR__ . "/inc/layout-top.php";
                                                      --bs-btn-color: var(--bs-body-color); --bs-btn-border-color: var(--bs-border-color); }
     .ar-cobro__modos .btn-check:checked + .btn, .ar-cobro__formas .btn-check:checked + .btn { background: var(--ds-acento, #0e7490); border-color: var(--ds-acento, #0e7490); color: #fff; }
     .ar-cobro__formas { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: .5rem; }
-    .ar-cobro__formas .btn { flex-wrap: wrap; font-size: .9rem; }
-    .ar-cobro__saldo { flex-basis: 100%; font-weight: 400; font-size: .72rem; opacity: .85; margin-top: -.15rem; }
+    /* Icono arriba y nombre debajo en todas: con nombres largos («Transferencia
+       Banco Pichincha», 103) quedan parejas. */
+    .ar-cobro__formas .btn { flex-direction: column; gap: .2rem; font-size: .9rem; line-height: 1.2; padding-block: .5rem; }
+    .ar-cobro__saldo { font-weight: 400; font-size: .72rem; opacity: .85; }
     .ar-cobro__formas .btn-check:disabled + .btn { opacity: .5; }
     .ar-cobro__campos { border: 0; padding: 0; margin: 0; min-width: 0; }
     .ar-cobro__campos[hidden] { display: none; }

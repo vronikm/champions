@@ -27,6 +27,7 @@ $puedeCrear   = puede_crear('egresoInstalaciones') && $listo;
 $puedeAnular  = puede_eliminar('egresoInstalaciones');
 $categorias   = $pos->categoriasEgreso('I');
 $sedes        = [];
+$egFormasPago = $pos->formasEgreso('I');   /* Efectivo, Banco de Loja o Banco Pichincha (103) */
 $egInstalaciones = $pos->instalaciones();
 
 require_once __DIR__ . "/inc/layout-top.php";
@@ -35,6 +36,7 @@ require_once __DIR__ . "/inc/pos-comun.php";
 $egAmbito = 'I';
 $egVista  = 'egresoInstalaciones';
 $egIntro  = 'Registre los <strong>gastos de las instalaciones</strong>: luz, agua, mantenimiento de la cancha, arreglo del césped…'
+          . ' Con su forma de pago: efectivo o transferencia (Banco de Loja o Banco Pichincha).'
           . ' Abajo, lo que entró por reservas frente a lo gastado: la <strong>ganancia</strong> del período.'
           . ' El total con el bar está en <a href="' . APP_URL . 'reporteGanancias/?desde=' . $desde . '&amp;hasta=' . $hasta . '">Reportes › Ganancias</a>.';
 $egConcepto = 'Ej.: planilla de luz de noviembre, resiembra del césped';
@@ -52,6 +54,11 @@ $egCuadro = [
 ];
 if ($r['devReservas'] > 0) { $egCuadro[] = ['Devoluciones de reservas', -$r['devReservas'], '', '']; }
 $egCuadro[] = ['Total ingresos', $r['ingresos'], 'eg-total', 'pos-pos'];
+/* Cómo se pagaron los egresos (las de antes, sin forma: «Sin indicar»). */
+if ($r['egresos'] > 0) { $egCuadro[] = ['Egresos de instalaciones', -$r['egresos'], '', '']; }
+if (count($r['porForma']) > 1 || !isset($r['porForma']['Sin indicar'])) {
+    foreach ($r['porForma'] as $n => $v) { $egCuadro[] = [$posH($n), -$v, 'eg-sub', '']; }
+}
 array_push($egCuadro,
     ['Total egresos', -$r['egresos'], 'eg-total', 'pos-neg'],
     ['Ganancia', $r['ganancia'], 'eg-resultado', $r['ganancia'] < 0 ? 'pos-neg' : 'pos-pos']);

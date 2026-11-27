@@ -309,6 +309,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                             <span class="ar-rp__forma-nombre"><?php echo $e($nombre); ?>
                                 <small><?php echo $fm['n']; ?> movimiento<?php echo $fm['n'] === 1 ? '' : 's'; ?><?php
                                     echo $fm['monedero'] ? ' · el cliente usó su ahorro' : ''; ?><?php
+                                    echo ($fm['sinBanco'] ?? false) ? ' · sin banco: elija el banco en el detalle de cada reserva («Ajustar»)' : ''; ?><?php
                                     echo $sale ? ' · ' . ($fm['nota'] ?? 'salida') : ''; ?></small></span>
                             <strong><?php echo $sale ? '−' : ''; ?><?php echo $din($fm['total']); ?></strong>
                         </li>
@@ -459,6 +460,7 @@ require_once __DIR__ . "/inc/layout-top.php";
                             <td class="ar-rp__c-valor text-end">
                                 <strong><?php echo in_array($m['tipo'], ['devolucion', 'devreserva'], true) ? '−' : ''; ?><?php echo $din($m['valor']); ?></strong>
                                 <?php if ($m['esMonedero']): ?><small class="d-block text-body-secondary">con su monedero</small><?php endif; ?>
+                                <?php if ($m['tipo'] === 'pago' && $m['codigoForma'] === 'TRA'): ?><small class="d-block text-warning-emphasis">sin banco</small><?php endif; ?>
                                 <?php if (in_array($m['tipo'], ['deposito', 'devolucion'], true)): ?><small class="d-block text-body-secondary">ahorro del cliente · no es ingreso</small><?php endif; ?>
                                 <?php if ($m['recibo'] !== ''): ?>
                                     <a class="ar-rp__recibo d-print-none" href="<?php echo APP_URL; ?>reciboPago/?id=<?php echo $m['id']; ?>"

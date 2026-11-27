@@ -20,6 +20,7 @@ $categorias = $pos->categorias(true);
 $alertas    = $pos->alertasInventario();
 $puedeCrear = puede_crear('posProductos');
 $puedeEditar = puede_editar('posProductos');
+$puedeEliminar = puede_eliminar('posProductos');
 $kardexId   = (int)($_GET['kardex'] ?? 0);
 $kardexProd = $kardexId ? $pos->producto($kardexId) : null;
 $kardex     = $kardexProd ? $pos->kardex($kardexId) : [];
@@ -166,6 +167,9 @@ require_once __DIR__ . "/inc/pos-comun.php";
                     </div>
                     <div class="pr-acciones">
                         <?php if ($puedeEditar): ?><button type="button" class="btn btn-sm btn-outline-secondary pr-editar" data-p='<?php echo $posH(json_encode($datos, JSON_UNESCAPED_UNICODE)); ?>'><i class="fas fa-pen me-1" aria-hidden="true"></i>Editar</button><?php endif; ?>
+                        <?php if ($puedeEliminar): ?><button type="button" class="btn btn-sm btn-outline-danger pr-eliminar" data-id="<?php echo (int)$p['producto_id']; ?>"
+                                data-nombre="<?php echo $posH($p['producto_nombre']); ?>" data-codigo="<?php echo $posH($p['producto_codigo']); ?>"
+                                data-stock="<?php echo $esP ? $posCant($s) : '0'; ?>" aria-label="Eliminar <?php echo $posH($p['producto_nombre']); ?>"><i class="fas fa-trash-can me-1" aria-hidden="true"></i>Eliminar</button><?php endif; ?>
                         <?php if ($esP && $puedeEditar): ?><button type="button" class="btn btn-sm btn-outline-secondary pr-ajustar" data-id="<?php echo (int)$p['producto_id']; ?>" data-nombre="<?php echo $posH($p['producto_nombre']); ?>" data-stock="<?php echo $posCant($s); ?>"><i class="fas fa-right-left me-1" aria-hidden="true"></i>Ajustar</button><?php endif; ?>
                         <?php if ($esP): ?><a class="btn btn-sm btn-outline-secondary" href="?kardex=<?php echo (int)$p['producto_id']; ?>"><i class="fas fa-list me-1" aria-hidden="true"></i>Kardex</a><?php endif; ?>
                     </div>
@@ -334,6 +338,30 @@ document.addEventListener('DOMContentLoaded', function () {
                 .then(function (j) { if (j.ok) { mAj.hide(); } posAviso(j); });
         });
     }
+});
+</script>
+<?php endif; ?>
+
+<?php if ($puedeEliminar): ?>
+<script>
+/* Eliminar un producto (2026-11-26): confirma, y el servidor lo deja en estado E. */
+document.addEventListener('click', function (e) {
+    var b = e.target.closest('.pr-eliminar'); if (!b) { return; }
+    var stock = parseFloat(b.dataset.stock) || 0;
+    var esc = function (s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; };
+    if (stock > 0) {
+        Swal.fire({ icon: 'warning', title: 'Tiene stock', confirmButtonText: 'Aceptar', confirmButtonColor: '#0e7490',
+                    html: '«' + esc(b.dataset.nombre) + '» tiene <strong>' + esc(b.dataset.stock) + '</strong> en stock. Ajuste su stock a 0 («Ajustar» › salida) antes de eliminarlo, o desactívelo desde «Editar».' });
+        return;
+    }
+    Swal.fire({ icon: 'warning', title: 'Eliminar producto',
+                html: '<strong>' + esc(b.dataset.nombre) + '</strong> (' + esc(b.dataset.codigo) + ') dejará de aparecer en Productos y al vender.<br><small>Las ventas y compras anteriores conservan su historia.</small>',
+                showCancelButton: true, confirmButtonText: 'Eliminar', cancelButtonText: 'Volver', confirmButtonColor: '#dc3545', reverseButtons: true, focusCancel: true })
+        .then(function (r) {
+            if (!r.isConfirmed) { return; }
+            b.disabled = true;
+            posEnviar({ modulo_arena: 'posEliminarProducto', producto_id: b.dataset.id }).then(function (j) { b.disabled = false; posAviso(j); });
+        });
 });
 </script>
 <?php endif; ?>

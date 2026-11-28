@@ -244,7 +244,7 @@
 					<?php foreach($filasSede as $sede): ?>
 						<div class="card card-default mb-4 ds-dash__sede">
 							<div class="card-header">
-								<h3 class="card-title"><?php echo strtoupper(htmlspecialchars($sede["nombre"])); ?></h3>
+								<h3 class="card-title"><?php echo htmlspecialchars(mb_strtoupper(html_entity_decode((string)$sede["nombre"], ENT_QUOTES, "UTF-8"), "UTF-8"), ENT_QUOTES, "UTF-8"); ?></h3>
 								<div class="card-tools">
 									<button type="button" class="btn btn-tool" data-lte-toggle="card-collapse" title="Plegar o desplegar" aria-label="Plegar o desplegar"><i data-lte-icon="expand" class="fas fa-plus"></i><i data-lte-icon="collapse" class="fas fa-minus"></i></button>
 								</div>

@@ -93,11 +93,13 @@
 					</div>
 					<div class="card-body pb-2">
 						<div class="row g-2 g-md-3">
-							<div class="col-12 col-md-4 col-xl">
+							<?php /* Celular: la cédula y «Buscar» en la misma línea; los demás
+							         criterios, plegados debajo (order-last). */ ?>
+							<div class="col col-md-4 col-xl">
 								<label for="alumno_identificacion" class="form-label">Identificación</label>
 								<input type="search" class="form-control" id="alumno_identificacion" name="alumno_identificacion" inputmode="numeric" placeholder="Cédula o código" value="<?php echo $h($alumno_identificacion); ?>">
 							</div>
-							<div class="collapse pg-filtros__extra<?php echo $filtrosExtra ? ' show' : ''; ?>" id="pgFiltrosCuerpo">
+							<div class="collapse pg-filtros__extra order-last order-md-0<?php echo $filtrosExtra ? ' show' : ''; ?>" id="pgFiltrosCuerpo">
 							<div class="row g-2 g-md-3 mt-0 pg-filtros__extra">
 								<div class="col-6 col-md-4 col-xl">
 									<label for="alumno_apellido1" class="form-label">Apellido paterno</label>
@@ -126,7 +128,7 @@
 								</div>
 							</div>
 							</div>
-							<div class="col-12 col-md-4 col-xl-auto d-flex align-items-end gap-2">
+							<div class="col-auto col-md-4 col-xl-auto d-flex align-items-end gap-2 pg-filtros__acciones">
 								<div class="flex-grow-1"><?php echo ds_boton_buscar(); ?></div>
 								<?php if ($hayCriterio): ?>
 									<a href="<?php echo APP_URL; ?>pagosList/" class="btn btn-outline-secondary" title="Quitar los criterios">
@@ -295,10 +297,57 @@
 		@media (min-width: 992px) and (max-width: 1399.98px) {
 			#pagos-resultado .ds-col-opcional { display: none; }
 		}
-		@media (max-width: 991.98px) { .pg-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+		/*
+		| Celular (2026-11-28). Antes el primer alumno aparecía a ~800 px:
+		| el resumen ocupaba cuatro cajas en dos filas y cada ficha tenía
+		| seis renglones con rótulo delante.
+		|  · Criterios: cédula y «Buscar» en una línea; «Filtros» despliega el resto.
+		|  · Resumen: tres cifras en una fila y el total adeudado en otra.
+		|  · Ficha: nombre y lo que debe arriba; sede, ingreso, último pago y
+		|    asistencia en dos columnas con el rótulo encima; los botones.
+		| Respaldo: etiqueta respaldo/pagosList-antes-ux-2026-11-28.
+		*/
 		@media (max-width: 767.98px) {
-			.pg-kpi { padding: .65rem .8rem; }
-			.pg-kpi__val { font-size: 1.2rem; }
+			.pg-filtros > .card-header { padding: .7rem 1rem; }
+			.pg-filtros > .card-body { padding: .75rem 1rem; }
+			.pg-filtros__acciones .btn { min-height: 2.75rem; }
+			.pg-filtros input.form-control { min-height: 2.75rem; }
+
+			.pg-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; margin-bottom: .75rem !important; }
+			.pg-kpi { padding: .5rem .65rem; }
+			.pg-kpi__et { font-size: .68rem; }
+			.pg-kpi__val { font-size: 1.15rem; }
+			.pg-kpi__nota { font-size: .72rem; }
+			.pg-kpi--deuda { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; align-items: baseline; column-gap: .6rem; }
+			.pg-kpi--deuda .pg-kpi__val { margin-left: auto; order: 2; }
+			.pg-kpi--deuda .pg-kpi__nota { order: 1; }
+		}
+		@media (max-width: 991.98px) {
+			#pagos-resultado #example1 > tbody > tr { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem .75rem; }
+			#pagos-resultado #example1 > tbody > tr > td.ds-ficha__principal { grid-column: 1 / -1; grid-row: 1; }
+			/* Lo que debe, en su línea bajo el nombre: «$140.00 · 4 pensiones». */
+			#pagos-resultado #example1 > tbody > tr > td[data-etiqueta="Valor adeudado"] {
+				grid-column: 1 / -1; grid-row: 2;
+				display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .6rem;
+				padding: .45rem .65rem;
+				border-radius: var(--bs-border-radius);
+				background: var(--bs-tertiary-bg) !important;
+			}
+			#pagos-resultado #example1 > tbody > tr > td[data-etiqueta="Valor adeudado"]::before {
+				content: "Debe"; font-size: .68rem; font-weight: 600; letter-spacing: .03em; text-transform: uppercase;
+			}
+			#pagos-resultado #example1 > tbody > tr > td[data-etiqueta="Valor adeudado"]:has(.text-bg-success)::before { content: "Pagos"; }
+			#pagos-resultado #example1 td[data-etiqueta="Valor adeudado"] .badge { font-size: .95rem; }
+			#pagos-resultado #example1 td[data-etiqueta="Valor adeudado"] .small { display: inline !important; font-size: .8rem; }
+			#pagos-resultado #example1 > tbody > tr > td.ds-ficha__dato:not([data-etiqueta="Valor adeudado"]) {
+				grid-column: auto; font-size: .85rem;
+			}
+			#pagos-resultado #example1 > tbody > tr > td.ds-ficha__dato[data-etiqueta]:not([data-etiqueta="Valor adeudado"])::before {
+				content: attr(data-etiqueta); display: block; margin-bottom: .1rem;
+				font-size: .68rem; font-weight: 600; letter-spacing: .03em; text-transform: uppercase;
+			}
+			#pagos-resultado #example1 > tbody > tr > td.ds-ficha__acciones { grid-column: 1 / -1; }
 		}
 	</style>
   </body>

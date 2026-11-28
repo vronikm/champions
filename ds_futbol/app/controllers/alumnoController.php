@@ -772,11 +772,11 @@
 								</div>
 							</div>
 						</td>
-						<td class="ds-ficha__dato ds-ficha__nowrap" data-etiqueta="Nacimiento" data-order="'.$h($fnac).'">'
+						<td class="ds-ficha__dato ds-ficha__nowrap ds-alumnos__nac" data-etiqueta="Nacimiento" data-order="'.$h($fnac).'">'
 							.($nacio !== '' ? $nacio.' · <strong>'.(int)$al['EDAD'].' años</strong>' : '<span class="text-body-secondary">—</span>').'</td>
-						<td class="ds-ficha__dato ds-col-opcional" data-etiqueta="Sede">'.$h($al['sede_nombre'] ?? '').'</td>
-						<td class="ds-ficha__dato" data-etiqueta="Posición">'.$posCelda.'</td>
-						<td class="ds-ficha__dato" data-etiqueta="Horario" data-order="'.($conHorario ? '1 '.$h($al['horario_nombre']) : '0').'" data-search="'.($conHorario ? $h($al['horario_nombre']) : 'Sin horario').'">'.$horCelda.'</td>
+						<td class="ds-ficha__dato ds-col-opcional ds-alumnos__sede" data-etiqueta="Sede">'.$h($al['sede_nombre'] ?? '').'</td>
+						<td class="ds-ficha__dato ds-alumnos__pos'.($posCodigo === self::POSICION_NO_DEFINIDA ? ' ds-alumnos__pos--nd' : '').'" data-etiqueta="Posición">'.$posCelda.'</td>
+						<td class="ds-ficha__dato ds-alumnos__hor" data-etiqueta="Horario" data-order="'.($conHorario ? '1 '.$h($al['horario_nombre']) : '0').'" data-search="'.($conHorario ? $h($al['horario_nombre']) : 'Sin horario').'">'.$horCelda.'</td>
 						<td class="ds-ficha__estado" data-order="'.($activo ? 'A' : 'I').'"><span class="badge '.($activo ? 'text-bg-success' : 'text-bg-secondary').'">'.($activo ? 'Activo' : 'Inactivo').'</span></td>
 						<td class="ds-tabla-acciones ds-ficha__acciones"><div class="ds-ficha__botones">'.$botones.'</div></td>
 					</tr>';

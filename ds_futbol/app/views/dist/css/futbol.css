@@ -1157,7 +1157,79 @@
     .ds-alumnos__herramientas { width: 100%; }
     .ds-alumnos__herramientas .btn:not(.btn-tool) { flex: 1 1 auto; min-height: 2.75rem; display: inline-flex; align-items: center; justify-content: center; }
 }
+/*
+| Celular y tableta (2026-11-27). Antes el primer alumno aparecía a casi
+| 1000 px de alto: el formulario abierto, dos grupos de resumen y fichas
+| de cinco renglones con rótulos.
+|
+|  · Criterios de búsqueda plegados: la cabecera es un botón que dice lo
+|    que se está buscando («JIPIRO · Activos · 2014»).
+|  · «Mostrar N» y «Sin horario» en una sola línea.
+|  · Cada alumno: foto, nombre, cédula y estado; debajo, sus datos como
+|    etiquetas con icono (nacimiento y edad, sede, posición si la tiene,
+|    horario) y los botones.
+*/
+.ds-alumnos__filtros-toggle {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: .15rem .75rem;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    text-align: left;
+}
+.ds-alumnos__filtros-titulo { display: inline-flex; align-items: center; gap: .5rem; font-weight: 600; font-size: 1rem; }
+.ds-alumnos__filtros-titulo > .badge { font-size: .7rem; }
+.ds-alumnos__filtros-resumen { grid-column: 1; font-size: .825rem; color: var(--bs-secondary-color); overflow-wrap: anywhere; }
+.ds-alumnos__filtros-flecha { grid-column: 2; grid-row: 1 / span 2; color: var(--bs-secondary-color); transition: transform .2s; }
+.ds-alumnos__filtros.is-abierto .ds-alumnos__filtros-flecha { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .ds-alumnos__filtros-flecha { transition: none; } }
+
 @media (max-width: 991.98px) {
+    .ds-alumnos__filtros:not(.is-abierto) > .card-body { display: none; }
+    .ds-alumnos__filtros:not(.is-abierto) > .card-header { border-bottom: 0; }
+    .ds-alumnos__filtros > .card-header { padding: .8rem 1rem; }
+    .ds-alumnos__filtros { margin-bottom: .75rem; }
+
+    /* «Mostrar N» y «Sin horario», lado a lado. */
+    .ds-crud__lista .dt-layout-start:has(.ds-alumnos__barra) { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: .5rem .75rem; }
+    .ds-alumnos__barra { flex-direction: row; width: auto; }
+    .ds-alumnos__grupo { width: auto; padding: 0; border-top: 0; }
+    .ds-alumnos__grupo .btn { min-height: 2.25rem; display: inline-flex; align-items: center; }
+
+    /* La ficha: los datos se acomodan uno tras otro y envuelven. */
+    #example1.ds-crud__tabla > tbody > tr { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem .4rem; }
+    #example1 > tbody > tr > td.ds-ficha__principal { order: 1; flex: 1 1 calc(100% - 6.5rem); min-width: 0; }
+    #example1 > tbody > tr > td.ds-ficha__estado { order: 2; flex: 0 0 auto; align-self: flex-start; }
+    #example1 > tbody > tr > td.ds-ficha__dato {
+        order: 3;
+        flex: 0 1 auto;
+        max-width: 100%;
+        padding: .2rem .6rem;
+        font-size: .8rem;
+        border-radius: 1rem;
+        border: 1px solid var(--bs-border-color-translucent) !important;
+        background: var(--bs-tertiary-bg) !important;
+    }
+    #example1 > tbody > tr > td.ds-ficha__dato[data-etiqueta]::before {
+        content: var(--ds-icono, none);
+        font: var(--fa-font-solid);
+        margin-right: .35rem;
+        color: var(--bs-secondary-color);
+    }
+    #example1 > tbody > tr > td.ds-alumnos__nac  { --ds-icono: "\f1fd"; }
+    #example1 > tbody > tr > td.ds-alumnos__sede { --ds-icono: "\f3c5"; }
+    #example1 > tbody > tr > td.ds-alumnos__pos  { --ds-icono: "\f1e3"; }
+    #example1 > tbody > tr > td.ds-alumnos__pos--nd { display: none; }
+    /* Horario: su enlace ya lleva el reloj; «Sin horario» ya es una insignia. */
+    #example1 > tbody > tr > td.ds-alumnos__hor:has(.ds-alumnos__sin-horario) { padding: 0; border: 0 !important; background: none !important; }
+    #example1 > tbody > tr > td.ds-alumnos__hor .ds-alumnos__sin-horario { font-size: .75rem; }
+    #example1 > tbody > tr > td.ds-ficha__acciones { order: 9; flex: 1 1 100%; margin-top: .3rem; }
+    #example1 > tbody > tr > td.dt-empty { flex: 1 1 100%; }
+
     /* «Mostrar N» y el filtro, uno debajo del otro y a todo lo ancho. */
     .ds-crud__lista .dt-length { display: flex; align-items: center; justify-content: center; gap: .5rem; }
 }

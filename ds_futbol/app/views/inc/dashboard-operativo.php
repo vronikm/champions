@@ -11,6 +11,11 @@
 |   · Si el empleado tiene horarios asignados, ve los suyos.
 |   · Si no tiene ninguno, ve los de las sedes que le hayan asignado. Es el
 |     caso de quien acompaña la operación de una sede sin dar clase.
+|   · Salvo que su ficha sea de PROFESOR (tipo de personal TPP): entonces
+|     no tener horarios significa que aún no le asignaron, y se le dice
+|     así. Antes caía en el caso anterior y veía todos los horarios de su
+|     sede (2026-11-28). Es la misma regla de «Registrar asistencia»: un
+|     profesor sólo ve lo que dicta.
 |
 | Espera recibir $insDashboard ya instanciado.
 |
@@ -27,8 +32,9 @@ $usuarioSesion  = usuario_actual_id();
 $horarios     = $empleadoSesion > 0 ? $insDashboard->horariosDelEmpleado($empleadoSesion) : [];
 $vistaPropia  = !empty($horarios);
 $sedesUsuario = [];
+$esProfesor   = $insDashboard->esProfesor($empleadoSesion);
 
-if (!$vistaPropia) {
+if (!$vistaPropia && !$esProfesor) {
     $sedesUsuario = $insDashboard->sedesDelUsuario($usuarioSesion);
     $ids = array_map('intval', array_column($sedesUsuario, 'sede_id'));
     $horarios = $ids ? $insDashboard->horariosDeSedes($ids) : [];
@@ -103,7 +109,7 @@ $h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES
     <div class="card-header d-flex flex-wrap align-items-center gap-2">
         <h3 class="card-title me-auto">
             <i class="fas fa-clipboard-list me-2" aria-hidden="true"></i>
-            <?php echo $vistaPropia ? 'Mis horarios y asistencia' : 'Horarios de mis sedes'; ?>
+            <?php echo ($vistaPropia || $esProfesor) ? 'Mis horarios y asistencia' : 'Horarios de mis sedes'; ?>
         </h3>
         <span class="text-body-secondary small"><?php echo ucfirst($nombreMes[$mesActual]) . ' ' . $anioActual; ?></span>
     </div>
@@ -117,6 +123,9 @@ $h = static fn($v) => htmlspecialchars(html_entity_decode((string)$v, ENT_QUOTES
                 <?php if ($empleadoSesion === 0): ?>
                     Su usuario no está vinculado a una ficha de empleado, así que no se pueden
                     determinar sus horarios. Solicite al administrador que haga la vinculación.
+                <?php elseif ($esProfesor): ?>
+                    Todavía no tiene horarios asignados. Cuando el administrador le asigne
+                    uno, aparecerá aquí con sus alumnos y la asistencia del mes.
                 <?php elseif (!$sedesUsuario): ?>
                     Todavía no tiene horarios asignados ni sedes a su cargo.
                 <?php else: ?>

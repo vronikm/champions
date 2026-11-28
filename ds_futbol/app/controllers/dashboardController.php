@@ -377,11 +377,33 @@
 		}
 
 		/**
+		 * ¿La ficha de empleado es la de un profesor?
+		 *
+		 * Sale del tipo de personal de la ficha (catálogo: TPP Profesor, TPS
+		 * Secretaria, TPE Empleado), no del rol del usuario: hay roles de
+		 * profesor por sede («Profesor Catamayo») y se pueden crear más.
+		 *
+		 * Hace falta para el panel operativo. Sin esta pregunta, un profesor
+		 * al que todavía no le asignaron horario caía en el alcance del
+		 * asistente de sede y veía TODOS los horarios de su sede, con sus
+		 * alumnos y profesores (2026-11-28).
+		 */
+		public function esProfesor(int $empleadoid){
+			if ($empleadoid <= 0) { return false; }
+			$tipo = $this->ejecutarConsulta(
+				"SELECT empleado_tipopersonalid FROM sujeto_empleado WHERE empleado_id = :emp",
+				[':emp' => $empleadoid]
+			)->fetchColumn();
+			return $tipo === 'TPP';
+		}
+
+		/**
 		 * Horarios de un conjunto de sedes.
 		 *
 		 * Es el alcance de quien no da clase pero acompaña la operación —un
 		 * asistente de sede—: no tiene horarios propios, pero sí necesita
-		 * ver los de las sedes que atiende.
+		 * ver los de las sedes que atiende. Nunca el de un profesor sin
+		 * horarios (ver esProfesor).
 		 */
 		public function horariosDeSedes(array $sedes){
 			if (!$sedes) { return []; }

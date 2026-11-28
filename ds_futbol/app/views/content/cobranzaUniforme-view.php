@@ -100,7 +100,7 @@
 			autoWidth: false,
 			pageLength: largo,
 			lengthMenu: [LARGOS, [10, 25, 50, 100, 'Todos']],
-			order: [[0, 'asc']],
+			order: [[6, 'desc'], [0, 'asc']],   /* lo que más debe primero (también en el celular) */
 			columnDefs: [
 				{ targets: [0, 1, 2, 3, 4, 5], type: 'string' },   /* data-order: nombres y fechas ISO (ingreso, último pago, última asistencia) */
 				{ targets: 6, type: 'num' },                       /* data-order: importe */

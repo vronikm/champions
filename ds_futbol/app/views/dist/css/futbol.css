@@ -1185,14 +1185,14 @@
 .ds-alumnos__filtros-titulo > .badge { font-size: .7rem; }
 .ds-alumnos__filtros-resumen { grid-column: 1; font-size: .825rem; color: var(--bs-secondary-color); overflow-wrap: anywhere; }
 .ds-alumnos__filtros-flecha { grid-column: 2; grid-row: 1 / span 2; color: var(--bs-secondary-color); transition: transform .2s; }
-.ds-alumnos__filtros.is-abierto .ds-alumnos__filtros-flecha { transform: rotate(180deg); }
+.ds-filtros--plegable.is-abierto .ds-alumnos__filtros-flecha { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) { .ds-alumnos__filtros-flecha { transition: none; } }
 
 @media (max-width: 991.98px) {
-    .ds-alumnos__filtros:not(.is-abierto) > .card-body { display: none; }
-    .ds-alumnos__filtros:not(.is-abierto) > .card-header { border-bottom: 0; }
-    .ds-alumnos__filtros > .card-header { padding: .8rem 1rem; }
-    .ds-alumnos__filtros { margin-bottom: .75rem; }
+    .ds-filtros--plegable:not(.is-abierto) > .card-body { display: none; }
+    .ds-filtros--plegable:not(.is-abierto) > .card-header { border-bottom: 0; }
+    .ds-filtros--plegable > .card-header { padding: .8rem 1rem; }
+    .ds-filtros--plegable { margin-bottom: .75rem; }
 
     /* «Mostrar N» y «Sin horario», lado a lado. */
     .ds-crud__lista .dt-layout-start:has(.ds-alumnos__barra) { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: .5rem .75rem; }
@@ -1201,10 +1201,10 @@
     .ds-alumnos__grupo .btn { min-height: 2.25rem; display: inline-flex; align-items: center; }
 
     /* La ficha: los datos se acomodan uno tras otro y envuelven. */
-    #example1.ds-crud__tabla > tbody > tr { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem .4rem; }
-    #example1 > tbody > tr > td.ds-ficha__principal { order: 1; flex: 1 1 calc(100% - 6.5rem); min-width: 0; }
-    #example1 > tbody > tr > td.ds-ficha__estado { order: 2; flex: 0 0 auto; align-self: flex-start; }
-    #example1 > tbody > tr > td.ds-ficha__dato {
+    #alumnos-resultado #example1.ds-crud__tabla > tbody > tr { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem .4rem; }
+    #alumnos-resultado #example1 > tbody > tr > td.ds-ficha__principal { order: 1; flex: 1 1 calc(100% - 6.5rem); min-width: 0; }
+    #alumnos-resultado #example1 > tbody > tr > td.ds-ficha__estado { order: 2; flex: 0 0 auto; align-self: flex-start; }
+    #alumnos-resultado #example1 > tbody > tr > td.ds-ficha__dato {
         order: 3;
         flex: 0 1 auto;
         max-width: 100%;
@@ -1214,21 +1214,21 @@
         border: 1px solid var(--bs-border-color-translucent) !important;
         background: var(--bs-tertiary-bg) !important;
     }
-    #example1 > tbody > tr > td.ds-ficha__dato[data-etiqueta]::before {
+    #alumnos-resultado #example1 > tbody > tr > td.ds-ficha__dato[data-etiqueta]::before {
         content: var(--ds-icono, none);
         font: var(--fa-font-solid);
         margin-right: .35rem;
         color: var(--bs-secondary-color);
     }
-    #example1 > tbody > tr > td.ds-alumnos__nac  { --ds-icono: "\f1fd"; }
-    #example1 > tbody > tr > td.ds-alumnos__sede { --ds-icono: "\f3c5"; }
-    #example1 > tbody > tr > td.ds-alumnos__pos  { --ds-icono: "\f1e3"; }
-    #example1 > tbody > tr > td.ds-alumnos__pos--nd { display: none; }
+    #alumnos-resultado #example1 > tbody > tr > td.ds-alumnos__nac  { --ds-icono: "\f1fd"; }
+    #alumnos-resultado #example1 > tbody > tr > td.ds-alumnos__sede { --ds-icono: "\f3c5"; }
+    #alumnos-resultado #example1 > tbody > tr > td.ds-alumnos__pos  { --ds-icono: "\f1e3"; }
+    #alumnos-resultado #example1 > tbody > tr > td.ds-alumnos__pos--nd { display: none; }
     /* Horario: su enlace ya lleva el reloj; «Sin horario» ya es una insignia. */
-    #example1 > tbody > tr > td.ds-alumnos__hor:has(.ds-alumnos__sin-horario) { padding: 0; border: 0 !important; background: none !important; }
-    #example1 > tbody > tr > td.ds-alumnos__hor .ds-alumnos__sin-horario { font-size: .75rem; }
-    #example1 > tbody > tr > td.ds-ficha__acciones { order: 9; flex: 1 1 100%; margin-top: .3rem; }
-    #example1 > tbody > tr > td.dt-empty { flex: 1 1 100%; }
+    #alumnos-resultado #example1 > tbody > tr > td.ds-alumnos__hor:has(.ds-alumnos__sin-horario) { padding: 0; border: 0 !important; background: none !important; }
+    #alumnos-resultado #example1 > tbody > tr > td.ds-alumnos__hor .ds-alumnos__sin-horario { font-size: .75rem; }
+    #alumnos-resultado #example1 > tbody > tr > td.ds-ficha__acciones { order: 9; flex: 1 1 100%; margin-top: .3rem; }
+    #alumnos-resultado #example1 > tbody > tr > td.dt-empty { flex: 1 1 100%; }
 
     /* «Mostrar N» y el filtro, uno debajo del otro y a todo lo ancho. */
     .ds-crud__lista .dt-length { display: flex; align-items: center; justify-content: center; gap: .5rem; }

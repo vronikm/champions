@@ -100,7 +100,7 @@
 			<div class="container-fluid ds-crud">
 
 				<!-- =================== Criterios de búsqueda =================== -->
-				<form action="<?php echo APP_URL."alumnoList/" ?>" method="GET" autocomplete="off" class="card ds-alumnos__filtros" id="alumnosFiltros">
+				<form action="<?php echo APP_URL."alumnoList/" ?>" method="GET" autocomplete="off" class="card ds-alumnos__filtros ds-filtros--plegable" id="alumnosFiltros">
 					<div class="card-header">
 						<?php /* Celular y tableta: la cabecera es un botón que despliega los
 						         criterios y, plegada, dice qué se está buscando. */ ?>

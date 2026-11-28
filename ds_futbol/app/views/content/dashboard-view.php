@@ -174,80 +174,6 @@
 						<div class="alert alert-info">No hay sedes registradas. Registre una sede para ver sus indicadores.</div>
 					<?php endif; ?>
 
-					<?php
-					/*
-					| LO QUE REQUIERE ACCION, ARRIBA DEL TODO
-					|
-					| Debajo hay treinta y dos tarjetas del mismo peso visual y
-					| ninguna dice que hacer. Esta franja recoge lo accionable y
-					| lleva a donde se resuelve, con un solo clic.
-					|
-					| Lo que esta a cero NO se pinta: una franja de ceros vuelve a
-					| ser ruido, y el que este vacia es en si misma la buena noticia.
-					*/
-					if ($verGerencial):
-						$at = $insDashboard->requiereAtencion();
-
-						$avisos = [];
-						if (($alumnosConMora ?? 0) > 0) {
-							$avisos[] = ['n' => (int)$alumnosConMora, 'texto' => 'con pagos en mora',
-										 'accion' => 'Ver pendientes', 'icono' => 'fa-file-invoice-dollar',
-										 'color' => 'danger', 'url' => APP_URL . 'reportePendientes/'];
-						}
-						if ((int)($at['sinConsentimiento'] ?? 0) > 0) {
-							$avisos[] = ['n' => (int)$at['sinConsentimiento'], 'texto' => 'sin consentimiento LOPDP',
-										 'accion' => 'Registrar', 'icono' => 'fa-file-signature',
-										 'color' => 'warning', 'url' => APP_URL . 'consentimientoList/?autorizacion=P'];
-						}
-						if ((int)($at['sinFoto'] ?? 0) > 0) {
-							$avisos[] = ['n' => (int)$at['sinFoto'], 'texto' => 'sin fotografía',
-										 'accion' => 'Subir fotos', 'icono' => 'fa-camera',
-										 'color' => 'secondary', 'url' => APP_URL . 'alumnoFotos/'];
-						}
-					?>
-						<?php if ($avisos): ?>
-							<?php /* Las tres cifras cuentan sólo alumnos ACTIVOS (2026-10-30):
-									 la mora, el consentimiento y la foto de quien ya no viene
-									 no son tarea de hoy. */ ?>
-							<div class="card card-default mb-4 ds-dash__atencion">
-								<div class="card-header">
-									<h3 class="card-title">
-										<i class="fas fa-triangle-exclamation text-danger me-1"></i>
-										REQUIERE ATENCIÓN
-									</h3>
-									<span class="ds-dash__ambito">
-										<i class="fas fa-user-check me-1" aria-hidden="true"></i>Alumnos activos
-									</span>
-								</div>
-								<div class="card-body">
-									<div class="row g-2 g-md-3">
-									<?php foreach ($avisos as $a): ?>
-										<div class="col-12 col-md-4">
-											<a href="<?php echo $a['url']; ?>"
-											   class="ds-dash__aviso text-decoration-none rounded border h-100">
-												<i class="fas <?php echo $a['icono']; ?> ds-dash__aviso-icono text-<?php echo $a['color']; ?>"
-												   aria-hidden="true"></i>
-												<span class="ds-dash__aviso-cuerpo">
-													<span class="ds-dash__aviso-n text-body">
-														<?php echo number_format($a['n'], 0, ',', '.'); ?>
-													</span>
-													<span class="ds-dash__aviso-texto text-body-secondary">
-														alumnos <?php echo $a['texto']; ?>
-													</span>
-													<span class="ds-dash__aviso-accion fw-semibold text-<?php echo $a['color']; ?>">
-														<?php echo $a['accion']; ?>
-														<i class="fas fa-arrow-right ms-1" aria-hidden="true"></i>
-													</span>
-												</span>
-											</a>
-										</div>
-									<?php endforeach; ?>
-									</div>
-								</div>
-							</div>
-						<?php endif; ?>
-					<?php endif; ?>
-
 					<?php if($verGerencial && $filasSede): ?>
 						<?php
 							/* El resumen va antes que el detalle. Cada metrica lleva el
@@ -350,6 +276,80 @@
 							</div>
 						</div>
 					<?php endforeach; ?>
+
+					<?php
+					/*
+					| LO QUE REQUIERE ACCION, AL FINAL (2026-11-27, a pedido: antes
+					| iba arriba del todo; ahora primero el consolidado y las sedes)
+					|
+					| Recoge lo accionable de las tarjetas de arriba y lleva a donde
+					| se resuelve, con un solo clic.
+					|
+					| Lo que esta a cero NO se pinta: una franja de ceros vuelve a
+					| ser ruido, y el que este vacia es en si misma la buena noticia.
+					*/
+					if ($verGerencial):
+						$at = $insDashboard->requiereAtencion();
+
+						$avisos = [];
+						if (($alumnosConMora ?? 0) > 0) {
+							$avisos[] = ['n' => (int)$alumnosConMora, 'texto' => 'con pagos en mora',
+										 'accion' => 'Ver pendientes', 'icono' => 'fa-file-invoice-dollar',
+										 'color' => 'danger', 'url' => APP_URL . 'reportePendientes/'];
+						}
+						if ((int)($at['sinConsentimiento'] ?? 0) > 0) {
+							$avisos[] = ['n' => (int)$at['sinConsentimiento'], 'texto' => 'sin consentimiento LOPDP',
+										 'accion' => 'Registrar', 'icono' => 'fa-file-signature',
+										 'color' => 'warning', 'url' => APP_URL . 'consentimientoList/?autorizacion=P'];
+						}
+						if ((int)($at['sinFoto'] ?? 0) > 0) {
+							$avisos[] = ['n' => (int)$at['sinFoto'], 'texto' => 'sin fotografía',
+										 'accion' => 'Subir fotos', 'icono' => 'fa-camera',
+										 'color' => 'secondary', 'url' => APP_URL . 'alumnoFotos/'];
+						}
+					?>
+						<?php if ($avisos): ?>
+							<?php /* Las tres cifras cuentan sólo alumnos ACTIVOS (2026-10-30):
+									 la mora, el consentimiento y la foto de quien ya no viene
+									 no son tarea de hoy. */ ?>
+							<div class="card card-default mb-4 ds-dash__atencion">
+								<div class="card-header">
+									<h3 class="card-title">
+										<i class="fas fa-triangle-exclamation text-danger me-1"></i>
+										REQUIERE ATENCIÓN
+									</h3>
+									<span class="ds-dash__ambito">
+										<i class="fas fa-user-check me-1" aria-hidden="true"></i>Alumnos activos
+									</span>
+								</div>
+								<div class="card-body">
+									<div class="row g-2 g-md-3">
+									<?php foreach ($avisos as $a): ?>
+										<div class="col-12 col-md-4">
+											<a href="<?php echo $a['url']; ?>"
+											   class="ds-dash__aviso text-decoration-none rounded border h-100">
+												<i class="fas <?php echo $a['icono']; ?> ds-dash__aviso-icono text-<?php echo $a['color']; ?>"
+												   aria-hidden="true"></i>
+												<span class="ds-dash__aviso-cuerpo">
+													<span class="ds-dash__aviso-n text-body">
+														<?php echo number_format($a['n'], 0, ',', '.'); ?>
+													</span>
+													<span class="ds-dash__aviso-texto text-body-secondary">
+														alumnos <?php echo $a['texto']; ?>
+													</span>
+													<span class="ds-dash__aviso-accion fw-semibold text-<?php echo $a['color']; ?>">
+														<?php echo $a['accion']; ?>
+														<i class="fas fa-arrow-right ms-1" aria-hidden="true"></i>
+													</span>
+												</span>
+											</a>
+										</div>
+									<?php endforeach; ?>
+									</div>
+								</div>
+							</div>
+						<?php endif; ?>
+					<?php endif; ?>
 
 					<!-- /.row -->
 					</div><!-- /.container-fluid -->

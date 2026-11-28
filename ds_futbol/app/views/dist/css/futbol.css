@@ -1635,13 +1635,70 @@
     .ds-cobranza__tabla .ds-ficha__botones { flex-direction: column; align-items: stretch; gap: .35rem; }
 }
 @media (max-width: 991.98px) {
-    .ds-cobranza__tabla td.ds-ficha__estado .badge { font-size: .95rem; }
-    /* De qué se compone la mora, en un ancho fijo: «1 pensión asistida sin
-       pagar (Junio 2025)» en una línea apretaba al representante. */
-    .ds-cobranza__tabla td.ds-cobranza__mora .small { max-width: 9.5rem; margin-left: auto; }
     /* En la ficha, las compras pendientes seguidas en la misma línea. */
     .ds-cobranza__conceptos { display: inline; }
     .ds-cobranza__conceptos > span + span::before { content: " · "; }
+
+    /*
+    | La ficha, reorganizada para leerse entera (2026-11-27). Antes el
+    | importe compartía la primera fila con el representante: el nombre
+    | quedaba en ~200 px y se partía, y el correo se cortaba a media palabra.
+    |
+    |   1. Lo que debe: el importe y de qué se compone, a todo el ancho.
+    |   2. El representante a todo el ancho; cédula y celular en una línea,
+    |      el correo en la suya.
+    |   3. El alumno, en un recuadro.
+    |   4. Ingreso y último pago, lado a lado (dense los empareja también en
+    |      uniformes, donde «Uniforme pendiente» va en medio).
+    |   5. La asistencia y los botones.
+    | Los rótulos van encima del dato, no delante.
+    */
+    .ds-cobranza__tabla > tbody > tr {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-auto-flow: row dense;
+        gap: .65rem .75rem;
+    }
+    .ds-cobranza__tabla > tbody > tr > td.ds-cobranza__mora {
+        grid-column: 1 / -1;
+        grid-row: 1;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: .25rem .75rem;
+        text-align: left;
+        padding-bottom: .65rem;
+        border-bottom: 1px solid var(--bs-border-color-translucent) !important;
+    }
+    .ds-cobranza__tabla > tbody > tr > td.ds-cobranza__mora .badge { font-size: 1.05rem; }
+    .ds-cobranza__tabla > tbody > tr > td.ds-cobranza__mora .small {
+        flex: 1 1 9rem; margin: 0; text-align: right; font-size: .825rem;
+    }
+    .ds-cobranza__tabla > tbody > tr > td.ds-ficha__principal { grid-column: 1 / -1; grid-row: 2; }
+    .ds-cobranza__tabla .ds-ficha__nombre { font-size: 1.05rem; overflow-wrap: anywhere; }
+    .ds-cobranza__tabla .ds-cobranza__contacto { gap: .2rem 1rem; margin-top: .3rem; font-size: .875rem; }
+    .ds-cobranza__tabla .ds-cobranza__contacto > .ds-cobranza__correo { flex-basis: 100%; }
+
+    .ds-cobranza__tabla > tbody > tr > td.ds-ficha__dato { grid-column: 1 / -1; }
+    .ds-cobranza__tabla > tbody > tr > td.ds-ficha__dato[data-etiqueta="Fecha de ingreso"],
+    .ds-cobranza__tabla > tbody > tr > td.ds-ficha__dato[data-etiqueta^="Último pago"] { grid-column: auto; }
+    .ds-cobranza__tabla > tbody > tr > td.ds-ficha__dato[data-etiqueta]::before {
+        content: attr(data-etiqueta);
+        display: block;
+        margin-bottom: .1rem;
+        font-size: .7rem;
+        font-weight: 600;
+        letter-spacing: .03em;
+        text-transform: uppercase;
+    }
+    .ds-cobranza__tabla > tbody > tr > td.ds-ficha__dato[data-etiqueta="Alumno"] {
+        padding: .55rem .7rem;
+        border-radius: var(--bs-border-radius);
+        background: var(--bs-tertiary-bg) !important;
+    }
+    .ds-cobranza__tabla .ds-cobranza__alumno { display: block; font-size: .95rem; }
+    /* Asistencia: «26/06/2026 hace 154 días» en una línea y la barra debajo. */
+    .ds-cobranza__tabla td[data-etiqueta="Asistencia"] > .d-block.small { display: inline !important; margin-left: .4rem; }
+    .ds-cobranza__tabla > tbody > tr > td.ds-ficha__acciones { margin-top: .1rem; }
 }
 
 /* =========================================================================

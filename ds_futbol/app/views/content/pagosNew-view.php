@@ -114,15 +114,13 @@
 		   sin pagar y se le cobran (como en Pagos y en Cobranza › Pensiones
 		   Inactivos). Lo registrado con saldo (pagosPendintes) se muestra
 		   igual. */
-		$ultimaAsistencia = $insAlumno->ultimaAsistencia((int)$alumno);
-		if($beca != "S" && ($datos['alumno_estado'] === 'A' || ($datos['alumno_estado'] === 'I' && $ultimaAsistencia))){
-			$pension = $insAlumno->pensionesPendientes($alumno, $datos['alumno_estado'] === 'I' ? $ultimaAsistencia : null);
-			if($pension != ""){
-				$pendiente = "Pendiente";
-				$clase = '<a class="float-end text-danger">';
-			}
-		}else{
-			$pension = "";
+		/* La regla vive en pagosController::resumenDeuda(), compartida con
+		   la ficha de asistencia (buscarAsistencia). */
+		$deuda = $insAlumno->resumenDeuda((int)$alumno);
+		$ultimaAsistencia = $deuda['ultimaAsistencia'];
+		if($deuda['pendiente']){
+			$pendiente = "Pendiente";
+			$clase = '<a class="float-end text-danger">';
 		}
 
 	} else {
@@ -149,15 +147,10 @@
 	$sinPago     = ds_recurso('ds_futbol/app/views/dist/img/sinpago.jpg');
 	$fechaCorta  = static fn($f) => $f ? date('d/m/Y', strtotime($f)) : '';
 
-	/* Lo que debe: pensiones sin pagar + rubros con saldo. Las filas las
-	   arma el controlador; aquí sólo se cuentan y se suma el valor. */
-	$filasDeuda = $pension . $insAlumno->pagosPendintes($alumno);
-	$totalDeuda = 0.0;
-	$nDeuda     = 0;
-	if (preg_match_all('#<tr[^>]*>\s*<td>[^<]*</td>\s*<td>[^<]*</td>\s*<td>([^<]*)</td>#', $filasDeuda, $pgM)) {
-		$nDeuda = count($pgM[1]);
-		foreach ($pgM[1] as $v) { $totalDeuda += (float)$v; }
-	}
+	/* Lo que debe: pensiones sin pagar + rubros con saldo. */
+	$filasDeuda = $deuda['filas'];
+	$totalDeuda = $deuda['total'];
+	$nDeuda     = $deuda['n'];
 
 	/* El comprobante: miniatura pequeña y un botón; el <input type=file>
 	   nativo queda encima del botón, invisible. foto.js entiende este
@@ -239,29 +232,6 @@
 		}
 		.ds-pg-alumno__datos dt { font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--bs-secondary-color); }
 		.ds-pg-alumno__datos dd { margin: 0; font-variant-numeric: tabular-nums; }
-
-		/* ---------- Lo que debe ---------- */
-		.ds-pg-deuda { margin-top: 1rem; border-radius: var(--bs-border-radius-lg); border: 1px solid; }
-		.ds-pg-deuda--pendiente { border-color: var(--bs-danger-border-subtle); background: var(--bs-danger-bg-subtle); }
-		.ds-pg-deuda--aldia { border-color: var(--bs-success-border-subtle); background: var(--bs-success-bg-subtle); }
-		.ds-pg-deuda summary, .ds-pg-deuda__cabeza {
-			display: grid; grid-template-columns: 1fr auto; align-items: center;
-			gap: 0 .75rem; padding: .7rem .9rem; list-style: none;
-		}
-		.ds-pg-deuda summary { cursor: pointer; }
-		.ds-pg-deuda summary::-webkit-details-marker { display: none; }
-		.ds-pg-deuda__rotulo { font-weight: 600; }
-		.ds-pg-deuda--pendiente .ds-pg-deuda__rotulo { color: var(--bs-danger-text-emphasis); }
-		.ds-pg-deuda--aldia .ds-pg-deuda__rotulo { color: var(--bs-success-text-emphasis); }
-		.ds-pg-deuda__total { font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--bs-danger-text-emphasis); grid-row: span 2; }
-		.ds-pg-deuda__n { font-size: .8rem; color: var(--bs-secondary-color); }
-		.ds-pg-deuda__ver::after { content: " \25BE"; }
-		.ds-pg-deuda details[open] .ds-pg-deuda__ver::after { content: " \25B4"; }
-		.ds-pg-deuda__lista { padding: 0 .9rem .6rem; }
-		.ds-pg-deuda__lista table { margin: 0; --bs-table-bg: transparent; }
-		.ds-pg-deuda__lista td { font-size: .85rem !important; padding: .3rem .25rem; color: var(--bs-body-color) !important; border-color: var(--bs-danger-border-subtle); }
-		.ds-pg-deuda__lista td:nth-child(2) { white-space: nowrap; }
-		.ds-pg-deuda__lista td:nth-child(3) { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 		/* ---------- Pestañas: una sola línea que se desliza en el celular ---------- */
 		.ds-pg-tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: .25rem; -webkit-overflow-scrolling: touch; }

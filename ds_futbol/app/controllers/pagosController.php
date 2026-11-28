@@ -379,6 +379,53 @@
 			}
 			return $tabla;
 		}
+
+		/*
+		| Lo que debe un alumno: pensiones sin pagar + rubros con saldo.
+		| Una sola regla para Pagos (pagosNew) y la ficha de asistencia
+		| (buscarAsistencia), así las dos dicen lo mismo:
+		|  - beca del 100 % (DBC): no se le cuentan pensiones;
+		|  - ACTIVO: pensiones hasta el mes en curso;
+		|  - INACTIVO: sólo si vino después de su último pago, hasta el mes
+		|    de su última asistencia;
+		|  - los rubros registrados con saldo (pagosPendintes), siempre.
+		| Devuelve las filas (las mismas de la tabla de Pagos), cuántas son,
+		| el total y la última asistencia.
+		*/
+		public function resumenDeuda(int $alumnoid): array{
+			$estado = (string)$this->ejecutarConsulta(
+				"SELECT alumno_estado FROM sujeto_alumno WHERE alumno_id = :alumno",
+				[':alumno' => $alumnoid])->fetchColumn();
+
+			$becaTotal = false;
+			$descuento = $this->AlumnoDescuento($alumnoid);
+			if ($descuento->rowCount() == 1) {
+				$becaTotal = $descuento->fetch()['descuento_rubroid'] === 'DBC';
+			}
+
+			$ultimaAsistencia = $this->ultimaAsistencia($alumnoid);
+			$pension = '';
+			if (!$becaTotal && ($estado === 'A' || ($estado === 'I' && $ultimaAsistencia))) {
+				$pension = $this->pensionesPendientes($alumnoid, $estado === 'I' ? $ultimaAsistencia : null);
+			}
+
+			$filas = $pension . $this->pagosPendintes($alumnoid);
+			$total = 0.0;
+			$n     = 0;
+			if (preg_match_all('#<tr[^>]*>\s*<td>[^<]*</td>\s*<td>[^<]*</td>\s*<td>([^<]*)</td>#', $filas, $m)) {
+				$n = count($m[1]);
+				foreach ($m[1] as $v) { $total += (float)$v; }
+			}
+
+			return [
+				'pendiente'        => $filas !== '',
+				'filas'            => $filas,
+				'n'                => $n,
+				'total'            => $total,
+				'ultimaAsistencia' => $ultimaAsistencia,
+			];
+		}
+
 		public function listarOptionPago(){
 			$option="";
 

@@ -1,5 +1,6 @@
 <?php
 	use app\controllers\asistenciaController;
+	use app\controllers\pagosController;
 	$insAsistencia = new asistenciaController();
 
 	$alumno = ds_id_de_url($url, 1, APP_URL . 'reporteAsistencia/');
@@ -27,7 +28,11 @@
 	if (str_contains($foto, '/dist/img/foto.jpg')) { $foto = ''; }
 	$iniciales = mb_strtoupper(mb_substr((string)$datos['alumno_primernombre'], 0, 1) . mb_substr((string)$datos['alumno_apellidopaterno'], 0, 1));
 
-	$alDia   = (int)$datos['pendiente'] !== 1;
+	/* Al día o en mora con la misma regla que Pagos (pagosNew): pensiones
+	   sin pagar desde la última pagada —o desde el ingreso si nunca pagó—
+	   más los rubros con saldo. Antes sólo miraba los pagos registrados
+	   con saldo, y un alumno que nunca había pagado salía «Al día». */
+	$deuda   = (new pagosController())->resumenDeuda((int)$alumno);
 	$activo  = $datos['estado'] === 'Activo';
 	$ingreso = ($datos['alumno_fechaingreso'] && $datos['alumno_fechaingreso'] !== '0000-00-00')
 		? date('d/m/Y', strtotime($datos['alumno_fechaingreso'])) : '—';
@@ -101,14 +106,38 @@
 									<div><dt>Sede</dt><dd><?php echo $h($datos['sede_nombre'] ?? '—'); ?></dd></div>
 									<div><dt>Categoría</dt><dd><?php echo $h($datos['anio']); ?></dd></div>
 									<div><dt>Estado</dt><dd><span class="badge <?php echo $activo ? 'text-bg-success' : 'text-bg-secondary'; ?>"><?php echo $h($datos['estado']); ?></span></dd></div>
-									<div><dt>Pagos</dt><dd><span class="badge <?php echo $alDia ? 'text-bg-success' : 'text-bg-danger'; ?>"><?php echo $alDia ? 'Al día' : 'Pendiente'; ?></span></dd></div>
 									<div><dt>Ingreso</dt><dd><?php echo $h($ingreso); ?></dd></div>
 									<div><dt>ID</dt><dd><?php echo (int)$alumno; ?></dd></div>
 								</dl>
 
+								<?php if ($deuda['pendiente']): ?>
+								<div class="ds-pg-deuda ds-pg-deuda--pendiente">
+									<details id="ds-pg-deuda">
+										<summary>
+											<span class="ds-pg-deuda__rotulo"><i class="fas fa-exclamation-circle me-1" aria-hidden="true"></i>Pendiente</span>
+											<span class="ds-pg-deuda__total">$<?php echo number_format($deuda['total'], 2, '.', ','); ?></span>
+											<span class="ds-pg-deuda__n"><?php echo $deuda['n']; ?> <?php echo $deuda['n'] === 1 ? 'rubro' : 'rubros'; ?> · <span class="ds-pg-deuda__ver">detalle</span></span>
+										</summary>
+										<div class="ds-pg-deuda__lista">
+											<table class="table table-sm"><tbody><?php echo $deuda['filas']; ?></tbody></table>
+										</div>
+									</details>
+								</div>
+								<?php else: ?>
+								<div class="ds-pg-deuda ds-pg-deuda--aldia">
+									<div class="ds-pg-deuda__cabeza">
+										<span class="ds-pg-deuda__rotulo"><i class="fas fa-check-circle me-1" aria-hidden="true"></i>Al día</span>
+										<span class="ds-pg-deuda__n">Sin rubros pendientes</span>
+									</div>
+								</div>
+								<?php endif; ?>
+
 								<div class="ds-asist__acciones">
 									<?php if (function_exists('usuario_tiene_permiso') && usuario_tiene_permiso('alumnoProfile')): ?>
 										<a href="<?php echo APP_URL; ?>alumnoProfile/<?php echo (int)$alumno; ?>/" class="btn btn-sm btn-primary"><i class="fas fa-id-card me-1" aria-hidden="true"></i>Ver ficha</a>
+									<?php endif; ?>
+									<?php if (function_exists('usuario_tiene_permiso') && usuario_tiene_permiso('pagosNew')): ?>
+										<a href="<?php echo APP_URL; ?>pagosNew/<?php echo (int)$alumno; ?>/" class="btn btn-sm btn-outline-primary"><i class="fas fa-dollar-sign me-1" aria-hidden="true"></i>Pagos</a>
 									<?php endif; ?>
 									<a href="<?php echo APP_URL; ?>reporteAsistencia/" class="btn btn-sm btn-secondary"><i class="fas fa-arrow-left me-1" aria-hidden="true"></i>Volver</a>
 								</div>
@@ -162,6 +191,10 @@
 
 	<script>
 	document.addEventListener('DOMContentLoaded', function () {
+		/* El detalle de lo que debe, abierto en pantallas grandes (como en Pagos). */
+		var deuda = document.getElementById('ds-pg-deuda');
+		if (deuda && window.matchMedia('(min-width: 992px)').matches) { deuda.open = true; }
+
 		var marcas = <?php echo $eventosJson; ?>;
 		var TIPOS = ['PRESENTE', 'ATRASO', 'JUSTIFICADO', 'FALTA'];
 
